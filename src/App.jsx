@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Cloud, Lock, Home, Calendar, Users, Building2, Clock, Settings, Plus, Pencil, Trash2, X, Check, RefreshCw, LogOut, Inbox, LayoutGrid, ChevronLeft, ChevronRight, Bell, Eye, AlertCircle } from 'lucide-react';
 
 const API_URL = 'https://rex-cloud-backend.vercel.app/api/calendar';
+const REQUESTS_API_URL = 'https://rex-cloud-backend.vercel.app/api/requests';
 const STORAGE = 'rex_admin_';
 const DEFAULT_LOCATION = 'Popeyes PLK Kraków Galeria Krakowska';
 
@@ -103,23 +104,51 @@ const StatCard = ({ label, value, icon: Icon, color }) => (<div className="bg-wh
 const useData = () => {
   const [employees, setEmployees] = useState(() => store.get('employees', []));
   const [centers, setCenters] = useState(() => store.get('centers', []));
-  const [requests, setRequests] = useState(() => store.get('requests', []));
+  const [requests, setRequests] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [sha, setSha] = useState(null);
+  const [requestsSha, setRequestsSha] = useState(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
 
+  // Sync shifts from GitHub
   const sync = useCallback(async () => {
     setLoading(true);
     try {
       const r = await fetch(API_URL);
       const d = await r.json();
-      if (d.success && d.content) { setShifts(parseICS(d.content)); setSha(d.sha); show('Zsynchronizowano z GitHub'); }
-    } catch { show('Błąd synchronizacji', 'error'); }
+      if (d.success && d.content) { setShifts(parseICS(d.content)); setSha(d.sha); }
+    } catch { show('Błąd synchronizacji kalendarza', 'error'); }
     setLoading(false);
   }, []);
 
+  // Sync requests from API
+  const syncRequests = useCallback(async () => {
+    try {
+      const r = await fetch(REQUESTS_API_URL);
+      const d = await r.json();
+      if (d.success) { 
+        setRequests(d.requests || []); 
+        setRequestsSha(d.sha);
+        return true;
+      }
+    } catch (e) { 
+      console.error('Requests sync error:', e);
+    }
+    return false;
+  }, []);
+
+  // Full sync
+  const fullSync = useCallback(async () => {
+    setLoading(true);
+    await sync();
+    await syncRequests();
+    show('Zsynchronizowano z GitHub');
+    setLoading(false);
+  }, [sync, syncRequests]);
+
+  // Save shifts to GitHub
   const save = useCallback(async (newShifts) => {
     if (!sha) { show('Brak SHA - synchronizuj najpierw', 'error'); return false; }
     setLoading(true);
@@ -131,14 +160,55 @@ const useData = () => {
     } catch { show('Błąd zapisu', 'error'); return false; } finally { setLoading(false); }
   }, [sha]);
 
+  // Update request status via API
+  const updateRequestStatus = useCallback(async (requestId, status) => {
+    setLoading(true);
+    try {
+      const r = await fetch(REQUESTS_API_URL, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ requestId, updates: { status, decidedAt: new Date().toISOString() } }) 
+      });
+      const d = await r.json();
+      if (d.success) { 
+        setRequests(prev => prev.map(req => req.id === requestId ? { ...req, status, decidedAt: new Date().toISOString() } : req));
+        show(status === 'approved' ? 'Wniosek zatwierdzony' : 'Wniosek odrzucony'); 
+        return true; 
+      }
+      show('Błąd: ' + d.error, 'error'); 
+      return false;
+    } catch { show('Błąd aktualizacji wniosku', 'error'); return false; } 
+    finally { setLoading(false); }
+  }, []);
+
+  // Delete request via API
+  const deleteRequest = useCallback(async (requestId) => {
+    setLoading(true);
+    try {
+      const r = await fetch(REQUESTS_API_URL, { 
+        method: 'DELETE', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ requestId }) 
+      });
+      const d = await r.json();
+      if (d.success) { 
+        setRequests(prev => prev.filter(req => req.id !== requestId));
+        show('Wniosek usunięty'); 
+        return true; 
+      }
+      show('Błąd: ' + d.error, 'error'); 
+      return false;
+    } catch { show('Błąd usuwania wniosku', 'error'); return false; } 
+    finally { setLoading(false); }
+  }, []);
+
   useEffect(() => { store.set('employees', employees); }, [employees]);
   useEffect(() => { store.set('centers', centers); }, [centers]);
-  useEffect(() => { store.set('requests', requests); }, [requests]);
-  useEffect(() => { sync(); }, []);
+  useEffect(() => { fullSync(); }, []);
 
   const pendingRequests = useMemo(() => requests.filter(r => r.status === 'pending').length, [requests]);
 
-  return { employees, setEmployees, centers, setCenters, requests, setRequests, shifts, setShifts, loading, toast, setToast, show, sync, save, sha, pendingRequests };
+  return { employees, setEmployees, centers, setCenters, requests, setRequests, shifts, setShifts, loading, toast, setToast, show, sync: fullSync, save, sha, pendingRequests, updateRequestStatus, deleteRequest, syncRequests };
 };
 
 // Login
@@ -276,12 +346,17 @@ const Dashboard = ({ data, setPage }) => {
 // Requests
 const Requests = ({ data }) => {
   const [filter, setFilter] = useState({ status: '' });
+  const [delConfirm, setDelConfirm] = useState(null);
 
   const filtered = data.requests.filter(r => { if (filter.status && r.status !== filter.status) return false; return true; }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  const handleStatus = (req, status) => {
-    data.setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status } : r));
-    data.show(status === 'approved' ? 'Wniosek zatwierdzony' : 'Wniosek odrzucony');
+  const handleStatus = async (req, status) => {
+    await data.updateRequestStatus(req.id, status);
+  };
+
+  const handleDelete = async (req) => {
+    await data.deleteRequest(req.id);
+    setDelConfirm(null);
   };
 
   return (
@@ -295,7 +370,7 @@ const Requests = ({ data }) => {
           <div className="bg-white rounded-2xl p-12 text-center shadow-sm"><AlertCircle className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.light }} /><p style={{ color: colors.primary.light }}>Brak wniosków do wyświetlenia</p></div>
         ) : (
           <div className="space-y-4">{filtered.map(r => {
-            const emp = data.employees.find(e => e.id === r.employeeId);
+            const emp = data.employees.find(e => e.id === r.employeeId) || { name: r.employeeName || 'Nieznany pracownik' };
             const type = requestTypes[r.type] || requestTypes.work;
             const status = requestStatuses[r.status];
             return (
@@ -305,16 +380,18 @@ const Requests = ({ data }) => {
                     <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ backgroundColor: type.color + '15' }}>{type.icon}</div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-lg" style={{ color: colors.primary.darkest }}>{emp?.name || 'Nieznany pracownik'}</p>
-                        {emp && <Badge color={jobPositions.find(j => j.id === emp.position)?.color || colors.primary.light} size="sm">{jobPositions.find(j => j.id === emp.position)?.name || emp.position}</Badge>}
+                        <p className="font-bold text-lg" style={{ color: colors.primary.darkest }}>{emp.name}</p>
+                        {emp.position && <Badge color={jobPositions.find(j => j.id === emp.position)?.color || colors.primary.light} size="sm">{jobPositions.find(j => j.id === emp.position)?.name || emp.position}</Badge>}
                       </div>
                       <p className="text-sm font-medium" style={{ color: type.color }}>{type.label}</p>
                       <p className="text-sm mt-1" style={{ color: colors.primary.light }}>{r.date}{r.endDate && r.endDate !== r.date && ` → ${r.endDate}`}{r.timeFrom && ` | ${r.timeFrom}`}{r.timeTo && ` - ${r.timeTo}`}{r.position && ` | ${positionNames[r.position]}`}</p>
+                      <p className="text-xs mt-1" style={{ color: colors.primary.light }}>ID: {r.id}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge color={status.color}>{status.label}</Badge>
-                    {r.status === 'pending' && (<><Btn variant="success" size="sm" icon={Check} onClick={() => handleStatus(r, 'approved')}>Zatwierdź</Btn><Btn variant="danger" size="sm" icon={X} onClick={() => handleStatus(r, 'rejected')}>Odrzuć</Btn></>)}
+                    {r.status === 'pending' && (<><Btn variant="success" size="sm" icon={Check} onClick={() => handleStatus(r, 'approved')} loading={data.loading}>Zatwierdź</Btn><Btn variant="danger" size="sm" icon={X} onClick={() => handleStatus(r, 'rejected')} loading={data.loading}>Odrzuć</Btn></>)}
+                    <Btn variant="ghost" size="sm" icon={Trash2} onClick={() => setDelConfirm(r)} />
                   </div>
                 </div>
                 {r.status === 'pending' && <div className="mt-3 p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: colors.accent.bg }}><AlertCircle className="w-4 h-4" style={{ color: colors.accent.dark }} /><span className="text-xs font-medium" style={{ color: colors.accent.dark }}>Wniosek oczekuje na zatwierdzenie przez administratora</span></div>}
@@ -323,6 +400,7 @@ const Requests = ({ data }) => {
           })}</div>
         )}
       </div>
+      <Confirm isOpen={!!delConfirm} onClose={() => setDelConfirm(null)} onConfirm={() => handleDelete(delConfirm)} title="Usuń wniosek" message={`Usunąć wniosek od ${delConfirm?.employeeName || 'pracownika'}?`} danger />
     </div>
   );
 };
@@ -708,19 +786,34 @@ const Evidence = ({ data }) => {
 
 // Settings
 const SettingsPage = ({ data, logout }) => {
-  const handleClear = () => { if (confirm('Wyczyścić wszystkie dane lokalne?')) { store.del('employees'); store.del('centers'); store.del('requests'); data.setEmployees([]); data.setCenters([]); data.setRequests([]); data.show('Wyczyszczono dane'); } };
+  const handleClear = () => { if (confirm('Wyczyścić dane lokalne (pracownicy)?')) { store.del('employees'); store.del('centers'); data.setEmployees([]); data.setCenters([]); data.show('Wyczyszczono dane lokalne'); } };
   const addSampleData = () => {
     if (data.employees.length === 0) { data.setEmployees([{ id: 1, name: 'Anna Kowalska', position: 'crew', hourlyRate: 27.70 }, { id: 2, name: 'Jan Nowak', position: 'expert', hourlyRate: 30.00 }, { id: 3, name: 'Maria Wiśniewska', position: 'jsm', hourlyRate: 35.00 }, { id: 4, name: 'Piotr Zieliński', position: 'crew', hourlyRate: 27.70 }, { id: 5, name: 'Katarzyna Dąbrowska', position: 'am', hourlyRate: 45.00 }, { id: 6, name: 'Tomasz Lewandowski', position: 'fm', hourlyRate: 40.00 }]); }
-    data.setRequests(prev => [{ id: Date.now() + 1, employeeId: 1, type: 'vacation', date: '2025-02-10', endDate: '2025-02-14', status: 'pending', createdAt: new Date().toISOString() }, { id: Date.now() + 2, employeeId: 2, type: 'no_work', date: '2025-02-05', status: 'approved', createdAt: new Date().toISOString() }, { id: Date.now() + 3, employeeId: 3, type: 'no_early', date: '2025-02-03', timeFrom: '10:00', status: 'pending', createdAt: new Date().toISOString() }, { id: Date.now() + 4, employeeId: 4, type: 'hours', date: '2025-02-08', timeFrom: '14:00', timeTo: '22:00', position: 'KIT', status: 'pending', createdAt: new Date().toISOString() }, ...prev]);
-    data.show('Dodano dane demo');
+    data.show('Dodano przykładowych pracowników');
   };
 
   return (
     <div className="flex-1 flex flex-col">
       <Header title="Ustawienia" subtitle="Konfiguracja systemu" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}><h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Synchronizacja z GitHub</h3><p className="text-sm mb-4" style={{ color: colors.primary.light }}>API: {API_URL}</p><Btn icon={RefreshCw} onClick={data.sync} loading={data.loading}>Synchronizuj teraz</Btn></div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.accent.dark}` }}><h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Dane lokalne</h3><div className="grid grid-cols-3 gap-4 mb-4"><div className="p-4 rounded-xl" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.medium }}>{data.employees.length}</p><p className="text-sm" style={{ color: colors.primary.dark }}>Pracownicy</p></div><div className="p-4 rounded-xl" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{data.requests.length}</p><p className="text-sm" style={{ color: colors.accent.dark }}>Wnioski</p></div><div className="p-4 rounded-xl" style={{ backgroundColor: '#f0fdf4' }}><p className="text-2xl font-bold" style={{ color: '#7CB342' }}>{data.shifts.length}</p><p className="text-sm" style={{ color: '#558B2F' }}>Zmiany</p></div></div><div className="flex gap-3"><Btn variant="secondary" onClick={addSampleData}>Dodaj dane demo</Btn><Btn variant="danger" onClick={handleClear}>Wyczyść dane</Btn></div></div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
+          <h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Synchronizacja z GitHub</h3>
+          <p className="text-sm mb-2" style={{ color: colors.primary.light }}>API Kalendarz: {API_URL}</p>
+          <p className="text-sm mb-4" style={{ color: colors.primary.light }}>API Wnioski: {REQUESTS_API_URL}</p>
+          <Btn icon={RefreshCw} onClick={data.sync} loading={data.loading}>Synchronizuj teraz</Btn>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.accent.dark}` }}>
+          <h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Dane</h3>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="p-4 rounded-xl" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.medium }}>{data.employees.length}</p><p className="text-sm" style={{ color: colors.primary.dark }}>Pracownicy (lokalnie)</p></div>
+            <div className="p-4 rounded-xl" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{data.requests.length}</p><p className="text-sm" style={{ color: colors.accent.dark }}>Wnioski (GitHub)</p></div>
+            <div className="p-4 rounded-xl" style={{ backgroundColor: '#f0fdf4' }}><p className="text-2xl font-bold" style={{ color: '#7CB342' }}>{data.shifts.length}</p><p className="text-sm" style={{ color: '#558B2F' }}>Zmiany (GitHub)</p></div>
+          </div>
+          <div className="flex gap-3">
+            <Btn variant="secondary" onClick={addSampleData}>Dodaj przykładowych pracowników</Btn>
+            <Btn variant="danger" onClick={handleClear}>Wyczyść dane lokalne</Btn>
+          </div>
+        </div>
         <div className="bg-white rounded-2xl p-6 shadow-sm"><h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Sesja</h3><Btn variant="secondary" icon={LogOut} onClick={logout}>Wyloguj się</Btn></div>
         <p className="text-center text-sm" style={{ color: colors.primary.light }}>REX Cloud Admin © 2025</p>
       </div>
