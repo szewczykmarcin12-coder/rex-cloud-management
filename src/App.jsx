@@ -190,6 +190,7 @@ const Sidebar = ({ page, setPage, user, logout, pendingRequests }) => {
     { id: 'shifts', label: 'Zmiany', icon: Calendar },
     { id: 'employees', label: 'Pracownicy', icon: Users },
     { id: 'time', label: 'Przepracowany czas', icon: Clock },
+    { id: 'evidence', label: 'Ewidencja', icon: Building2 },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
 
@@ -402,26 +403,71 @@ const Scheduler = ({ data }) => {
   );
 };
 
-// Shifts
+// Shifts with Edit/Delete
 const Shifts = ({ data }) => {
-  const [filter, setFilter] = useState({ date: '', position: '' });
-  const filtered = data.shifts.filter(s => { if (filter.date && !s.date.includes(filter.date)) return false; if (filter.position && s.position !== filter.position) return false; return true; });
+  const [filter, setFilter] = useState({ date: '', position: '', employee: '' });
+  const [editModal, setEditModal] = useState(false);
+  const [editShift, setEditShift] = useState(null);
+  const [editForm, setEditForm] = useState({ startTime: '', endTime: '', position: '', employeeName: '' });
+  const [delConfirm, setDelConfirm] = useState(null);
+
+  const filtered = data.shifts.filter(s => { 
+    if (filter.date && !s.date.includes(filter.date)) return false; 
+    if (filter.position && s.position !== filter.position) return false; 
+    if (filter.employee && !s.employeeName?.toLowerCase().includes(filter.employee.toLowerCase())) return false;
+    return true; 
+  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const openEdit = (shift) => {
+    setEditShift(shift);
+    setEditForm({ startTime: shift.startTime, endTime: shift.endTime, position: shift.position, employeeName: shift.employeeName || '' });
+    setEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editShift) return;
+    const updatedShift = { ...editShift, ...editForm };
+    const newShifts = data.shifts.map(s => s.id === editShift.id ? updatedShift : s);
+    if (await data.save(newShifts)) {
+      setEditModal(false);
+      setEditShift(null);
+    }
+  };
+
+  const handleDelete = async (shift) => {
+    const newShifts = data.shifts.filter(s => s.id !== shift.id);
+    if (await data.save(newShifts)) {
+      data.show('Zmiana usunięta');
+      setDelConfirm(null);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Zmiany" subtitle="Lista zmian z GitHub">
+      <Header title="Zmiany" subtitle="Lista zmian z GitHub - edycja i usuwanie">
         <Input type="date" value={filter.date} onChange={v => setFilter({ ...filter, date: v })} />
+        <Input placeholder="Pracownik..." value={filter.employee} onChange={v => setFilter({ ...filter, employee: v })} />
         <Select value={filter.position} onChange={v => setFilter({ ...filter, position: v })} options={[{ value: '', label: 'Wszystkie pozycje' }, ...Object.keys(positionNames).map(c => ({ value: c, label: c + ' - ' + positionNames[c] }))]} />
         <Btn variant="secondary" icon={RefreshCw} onClick={data.sync} loading={data.loading}>Odśwież</Btn>
       </Header>
       <div className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           {filtered.length === 0 ? (<div className="text-center py-12"><Calendar className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.light }} /><p style={{ color: colors.primary.light }}>{data.shifts.length === 0 ? 'Brak zmian w systemie' : 'Nie znaleziono zmian'}</p></div>) : (
-            <table className="w-full"><thead><tr style={{ backgroundColor: colors.primary.bg }}><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Data</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Godziny</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Pozycja</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Pracownik</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Lokalizacja</th></tr></thead>
-            <tbody>{filtered.map((s, i) => (<tr key={s.id || i} className="border-b hover:bg-slate-50 transition-colors" style={{ borderColor: colors.primary.bg }}><td className="px-6 py-4"><p className="font-semibold" style={{ color: colors.primary.darkest }}>{s.date}</p><p className="text-xs" style={{ color: colors.primary.light }}>{s.dayName}</p></td><td className="px-6 py-4 font-medium" style={{ color: colors.primary.dark }}>{s.startTime} - {s.endTime}</td><td className="px-6 py-4"><Badge color={positionColors[s.position]}>{s.position} - {positionNames[s.position]}</Badge></td><td className="px-6 py-4" style={{ color: s.employeeName ? colors.primary.darkest : colors.primary.light }}>{s.employeeName || 'Nieprzypisany'}</td><td className="px-6 py-4 text-sm" style={{ color: colors.primary.light }}>{s.location}</td></tr>))}</tbody></table>
+            <table className="w-full"><thead><tr style={{ backgroundColor: colors.primary.bg }}><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Data</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Godziny</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Pozycja</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Pracownik</th><th className="text-left px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Lokalizacja</th><th className="text-center px-6 py-4 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Akcje</th></tr></thead>
+            <tbody>{filtered.map((s, i) => (<tr key={s.id || i} className="border-b hover:bg-slate-50 transition-colors" style={{ borderColor: colors.primary.bg }}><td className="px-6 py-4"><p className="font-semibold" style={{ color: colors.primary.darkest }}>{s.date}</p><p className="text-xs" style={{ color: colors.primary.light }}>{s.dayName}</p></td><td className="px-6 py-4 font-medium" style={{ color: colors.primary.dark }}>{s.startTime} - {s.endTime}</td><td className="px-6 py-4"><Badge color={positionColors[s.position]}>{s.position} - {positionNames[s.position]}</Badge></td><td className="px-6 py-4" style={{ color: s.employeeName ? colors.primary.darkest : colors.primary.light }}>{s.employeeName || 'Nieprzypisany'}</td><td className="px-6 py-4 text-sm" style={{ color: colors.primary.light }}>{s.location}</td><td className="px-6 py-4"><div className="flex justify-center gap-2"><Btn variant="ghost" size="sm" icon={Pencil} onClick={() => openEdit(s)} /><Btn variant="ghost" size="sm" icon={Trash2} onClick={() => setDelConfirm(s)} /></div></td></tr>))}</tbody></table>
           )}
         </div>
       </div>
+      <Modal isOpen={editModal} onClose={() => setEditModal(false)} title="Edytuj zmianę">
+        {editShift && (<div className="space-y-4">
+          <div className="p-4 rounded-xl" style={{ backgroundColor: colors.primary.bg }}><p className="text-sm"><strong>Data:</strong> {editShift.date}</p><p className="text-sm mt-1"><strong>ID:</strong> {editShift.id}</p></div>
+          <div className="grid grid-cols-2 gap-4"><Input label="Od godziny" type="time" value={editForm.startTime} onChange={v => setEditForm({ ...editForm, startTime: v })} /><Input label="Do godziny" type="time" value={editForm.endTime} onChange={v => setEditForm({ ...editForm, endTime: v })} /></div>
+          <Select label="Pozycja na zmianie" value={editForm.position} onChange={v => setEditForm({ ...editForm, position: v })} options={Object.entries(positionNames).map(([k, v]) => ({ value: k, label: `${k} - ${v}` }))} />
+          <Select label="Pracownik" value={editForm.employeeName} onChange={v => setEditForm({ ...editForm, employeeName: v })} options={[{ value: '', label: 'Nieprzypisany' }, ...data.employees.map(e => ({ value: e.name, label: e.name }))]} />
+          <div className="flex justify-end gap-3 pt-4 border-t"><Btn variant="secondary" onClick={() => setEditModal(false)}>Anuluj</Btn><Btn onClick={handleSaveEdit} loading={data.loading}>Zapisz zmiany</Btn></div>
+        </div>)}
+      </Modal>
+      <Confirm isOpen={!!delConfirm} onClose={() => setDelConfirm(null)} onConfirm={() => handleDelete(delConfirm)} title="Usuń zmianę" message={`Usunąć zmianę z dnia ${delConfirm?.date} (${delConfirm?.startTime} - ${delConfirm?.endTime})?`} danger />
     </div>
   );
 };
@@ -486,6 +532,180 @@ const Time = ({ data }) => {
   );
 };
 
+// Evidence (Ewidencja)
+const Evidence = ({ data }) => {
+  const [month, setMonth] = useState(new Date().getMonth());
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [selectedEmp, setSelectedEmp] = useState(null);
+
+  const calcH = (st, et) => { const [sh, sm] = st.split(':').map(Number), [eh, em] = et.split(':').map(Number); let h = eh - sh + (em - sm) / 60; return h < 0 ? h + 24 : h; };
+  
+  const mShifts = data.shifts.filter(s => { const d = new Date(s.date); return d.getMonth() === month && d.getFullYear() === year; });
+  
+  const getDaysInMonth = () => { return new Date(year, month + 1, 0).getDate(); };
+  const daysArray = Array.from({ length: getDaysInMonth() }, (_, i) => i + 1);
+  
+  const getShiftForDay = (empName, day) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return mShifts.find(s => s.date === dateStr && s.employeeName === empName);
+  };
+
+  const empStats = data.employees.map(e => { 
+    const s = mShifts.filter(x => x.employeeName === e.name); 
+    const h = s.reduce((a, x) => a + calcH(x.startTime, x.endTime), 0); 
+    return { ...e, shifts: s, shiftsCount: s.length, totalHours: h }; 
+  });
+
+  const totalH = mShifts.reduce((a, s) => a + calcH(s.startTime, s.endTime), 0);
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header title="Ewidencja czasu pracy" subtitle="Szczegółowa ewidencja godzin pracowników">
+        <Select value={month.toString()} onChange={v => setMonth(+v)} options={months.map((m, i) => ({ value: i.toString(), label: m }))} />
+        <Select value={year.toString()} onChange={v => setYear(+v)} options={[2024, 2025, 2026].map(y => ({ value: y.toString(), label: y.toString() }))} />
+        <Btn variant="secondary" icon={RefreshCw} onClick={data.sync} loading={data.loading}>Odśwież</Btn>
+      </Header>
+      <div className="flex-1 p-6 overflow-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <StatCard label="Suma godzin" value={`${totalH.toFixed(1)}h`} icon={Clock} color={colors.primary.medium} />
+          <StatCard label="Liczba zmian" value={mShifts.length} icon={Calendar} color={colors.accent.dark} />
+          <StatCard label="Pracownicy" value={data.employees.length} icon={Users} color="#9C27B0" />
+          <StatCard label="Dni roboczych" value={getDaysInMonth()} icon={LayoutGrid} color="#7CB342" />
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b flex items-center justify-between" style={{ backgroundColor: colors.primary.bg }}>
+            <h3 className="font-bold text-lg" style={{ color: colors.primary.darkest }}>Ewidencja: {months[month]} {year}</h3>
+            <Badge color={colors.primary.medium}>{mShifts.length} zmian</Badge>
+          </div>
+          
+          {data.employees.length === 0 ? (
+            <div className="p-12 text-center"><Users className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.light }} /><p style={{ color: colors.primary.light }}>Brak pracowników</p></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ backgroundColor: colors.primary.bgLight }}>
+                    <th className="text-left px-4 py-3 font-semibold sticky left-0 bg-white z-10 min-w-[180px]" style={{ color: colors.primary.dark }}>Pracownik</th>
+                    {daysArray.map(day => {
+                      const d = new Date(year, month, day);
+                      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                      return <th key={day} className={`px-1 py-2 text-center min-w-[40px] ${isWeekend ? 'bg-orange-50' : ''}`} style={{ color: colors.primary.light }}><div className="text-xs">{dayNames[d.getDay()]}</div><div className="font-bold">{day}</div></th>;
+                    })}
+                    <th className="px-4 py-3 text-center font-semibold" style={{ color: colors.primary.dark }}>Σ Godz.</th>
+                    <th className="px-4 py-3 text-center font-semibold" style={{ color: colors.primary.dark }}>Σ Zmian</th>
+                    <th className="px-4 py-3 text-center font-semibold" style={{ color: colors.primary.dark }}>Zarobek</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {empStats.map(emp => {
+                    const pos = jobPositions.find(j => j.id === emp.position);
+                    const earnings = emp.totalHours * (emp.hourlyRate || 0);
+                    return (
+                      <tr key={emp.id} className="border-b hover:bg-slate-50" style={{ borderColor: colors.primary.bg }}>
+                        <td className="px-4 py-3 sticky left-0 bg-white z-10">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: pos?.color || colors.primary.medium }}>{emp.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}</div>
+                            <div><p className="font-semibold text-sm" style={{ color: colors.primary.darkest }}>{emp.name}</p><p className="text-xs" style={{ color: colors.primary.light }}>{pos?.name || emp.position}</p></div>
+                          </div>
+                        </td>
+                        {daysArray.map(day => {
+                          const shift = getShiftForDay(emp.name, day);
+                          const d = new Date(year, month, day);
+                          const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                          return (
+                            <td key={day} className={`px-1 py-2 text-center ${isWeekend ? 'bg-orange-50' : ''}`}>
+                              {shift ? (
+                                <div className="cursor-pointer" onClick={() => setSelectedEmp({ emp, shift, day })}>
+                                  <div className="text-[10px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: positionColors[shift.position] + '20', color: positionColors[shift.position] }}>
+                                    {calcH(shift.startTime, shift.endTime).toFixed(1)}h
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-200">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="px-4 py-3 text-center font-bold text-lg" style={{ color: colors.primary.medium }}>{emp.totalHours.toFixed(1)}h</td>
+                        <td className="px-4 py-3 text-center font-semibold">{emp.shiftsCount}</td>
+                        <td className="px-4 py-3 text-center font-bold" style={{ color: '#7CB342' }}>{earnings.toFixed(2)} zł</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ backgroundColor: colors.primary.bg }}>
+                    <td className="px-4 py-3 font-bold sticky left-0" style={{ backgroundColor: colors.primary.bg, color: colors.primary.darkest }}>SUMA</td>
+                    {daysArray.map(day => {
+                      const dayShifts = mShifts.filter(s => new Date(s.date).getDate() === day);
+                      const dayHours = dayShifts.reduce((a, s) => a + calcH(s.startTime, s.endTime), 0);
+                      return <td key={day} className="px-1 py-2 text-center text-xs font-semibold" style={{ color: colors.primary.dark }}>{dayHours > 0 ? dayHours.toFixed(0) : ''}</td>;
+                    })}
+                    <td className="px-4 py-3 text-center font-bold text-xl" style={{ color: colors.primary.darkest }}>{totalH.toFixed(1)}h</td>
+                    <td className="px-4 py-3 text-center font-bold text-lg" style={{ color: colors.primary.darkest }}>{mShifts.length}</td>
+                    <td className="px-4 py-3 text-center font-bold text-lg" style={{ color: '#7CB342' }}>{empStats.reduce((a, e) => a + e.totalHours * (e.hourlyRate || 0), 0).toFixed(2)} zł</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Legend */}
+        <div className="mt-4 bg-white rounded-2xl p-4 shadow-sm">
+          <h4 className="font-semibold mb-3" style={{ color: colors.primary.darkest }}>Legenda pozycji</h4>
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(positionNames).map(([code, name]) => (
+              <div key={code} className="flex items-center gap-2 px-3 py-1 rounded-lg" style={{ backgroundColor: positionColors[code] + '15' }}>
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: positionColors[code] }}></div>
+                <span className="text-sm font-medium" style={{ color: positionColors[code] }}>{code} - {name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Modal isOpen={!!selectedEmp} onClose={() => setSelectedEmp(null)} title="Szczegóły zmiany" size="sm">
+        {selectedEmp && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-4 rounded-xl" style={{ backgroundColor: colors.primary.bg }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: jobPositions.find(j => j.id === selectedEmp.emp.position)?.color || colors.primary.medium }}>
+                {selectedEmp.emp.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
+              </div>
+              <div>
+                <p className="font-bold" style={{ color: colors.primary.darkest }}>{selectedEmp.emp.name}</p>
+                <p className="text-sm" style={{ color: colors.primary.light }}>{jobPositions.find(j => j.id === selectedEmp.emp.position)?.name}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 rounded-xl" style={{ backgroundColor: colors.accent.bg }}>
+                <p className="text-xs font-semibold uppercase" style={{ color: colors.accent.dark }}>Data</p>
+                <p className="font-bold mt-1" style={{ color: colors.primary.darkest }}>{selectedEmp.shift.date}</p>
+              </div>
+              <div className="p-3 rounded-xl" style={{ backgroundColor: colors.accent.bg }}>
+                <p className="text-xs font-semibold uppercase" style={{ color: colors.accent.dark }}>Godziny</p>
+                <p className="font-bold mt-1" style={{ color: colors.primary.darkest }}>{selectedEmp.shift.startTime} - {selectedEmp.shift.endTime}</p>
+              </div>
+              <div className="p-3 rounded-xl" style={{ backgroundColor: positionColors[selectedEmp.shift.position] + '15' }}>
+                <p className="text-xs font-semibold uppercase" style={{ color: positionColors[selectedEmp.shift.position] }}>Pozycja</p>
+                <p className="font-bold mt-1" style={{ color: positionColors[selectedEmp.shift.position] }}>{selectedEmp.shift.position} - {positionNames[selectedEmp.shift.position]}</p>
+              </div>
+              <div className="p-3 rounded-xl" style={{ backgroundColor: '#f0fdf4' }}>
+                <p className="text-xs font-semibold uppercase" style={{ color: '#7CB342' }}>Czas pracy</p>
+                <p className="font-bold mt-1" style={{ color: '#558B2F' }}>{calcH(selectedEmp.shift.startTime, selectedEmp.shift.endTime).toFixed(2)}h</p>
+              </div>
+            </div>
+            <div className="pt-4 border-t">
+              <Btn variant="secondary" className="w-full" onClick={() => setSelectedEmp(null)}>Zamknij</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
+
 // Settings
 const SettingsPage = ({ data, logout }) => {
   const handleClear = () => { if (confirm('Wyczyścić wszystkie dane lokalne?')) { store.del('employees'); store.del('centers'); store.del('requests'); data.setEmployees([]); data.setCenters([]); data.setRequests([]); data.show('Wyczyszczono dane'); } };
@@ -515,7 +735,7 @@ export default function App() {
   const data = useData();
   const logout = () => { store.del('user'); setUser(null); setPage('dashboard'); };
   if (!user) return <Login onLogin={setUser} />;
-  const pages = { dashboard: <Dashboard data={data} setPage={setPage} />, scheduler: <Scheduler data={data} />, requests: <Requests data={data} />, shifts: <Shifts data={data} />, employees: <Employees data={data} />, time: <Time data={data} />, settings: <SettingsPage data={data} logout={logout} /> };
+  const pages = { dashboard: <Dashboard data={data} setPage={setPage} />, scheduler: <Scheduler data={data} />, requests: <Requests data={data} />, shifts: <Shifts data={data} />, employees: <Employees data={data} />, time: <Time data={data} />, evidence: <Evidence data={data} />, settings: <SettingsPage data={data} logout={logout} /> };
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
       <Sidebar page={page} setPage={setPage} user={user} logout={logout} pendingRequests={data.pendingRequests} />
