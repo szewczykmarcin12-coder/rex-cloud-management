@@ -114,13 +114,21 @@ const useData = () => {
 
   // Sync shifts from GitHub
   const sync = useCallback(async () => {
-    setLoading(true);
     try {
       const r = await fetch(API_URL);
       const d = await r.json();
-      if (d.success && d.content) { setShifts(parseICS(d.content)); setSha(d.sha); }
-    } catch { show('Błąd synchronizacji kalendarza', 'error'); }
-    setLoading(false);
+      if (d.success && d.content) { 
+        setShifts(parseICS(d.content)); 
+        setSha(d.sha); 
+        return true;
+      } else {
+        console.error('Calendar sync failed:', d.error);
+        return false;
+      }
+    } catch (e) { 
+      console.error('Calendar sync error:', e);
+      return false; 
+    }
   }, []);
 
   // Sync requests from API
@@ -142,9 +150,18 @@ const useData = () => {
   // Full sync
   const fullSync = useCallback(async () => {
     setLoading(true);
-    await sync();
-    await syncRequests();
-    show('Zsynchronizowano z GitHub');
+    const calendarOk = await sync();
+    const requestsOk = await syncRequests();
+    
+    if (calendarOk && requestsOk) {
+      show('Zsynchronizowano z GitHub');
+    } else if (calendarOk && !requestsOk) {
+      show('Kalendarz OK, błąd wniosków', 'error');
+    } else if (!calendarOk && requestsOk) {
+      show('Błąd kalendarza, wnioski OK', 'error');
+    } else {
+      show('Błąd synchronizacji', 'error');
+    }
     setLoading(false);
   }, [sync, syncRequests]);
 
