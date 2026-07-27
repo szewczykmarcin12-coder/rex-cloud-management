@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, Home, Settings, Download } from 'lucide-react';
 import { parseGrafik } from './parseGrafik.js';
+import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
 
 const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
@@ -156,8 +157,9 @@ const ImportPage = ({ data }) => {
     if (!file) return;
     setError(''); setParsing(true); setPreview(null);
     try {
-      const buf = await file.arrayBuffer();
-      const result = parseGrafik(buf);
+      const result = file.name.toLowerCase().endsWith('.csv')
+        ? parseExportCSV(await file.text())
+        : parseGrafik(await file.arrayBuffer());
       setPreview(result);
     } catch (e) {
       setError(e.message || 'Błąd odczytu pliku');
@@ -181,8 +183,8 @@ const ImportPage = ({ data }) => {
             onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
             <FileSpreadsheet className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.medium }} />
             <p className="font-semibold mb-1" style={{ color: colors.primary.darkest }}>Przeciągnij plik Excel tutaj</p>
-            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>lub kliknij, aby wybrać (.xlsx)</p>
-            <input ref={fileRef} type="file" accept=".xlsx,.xlsm" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>plik .xlsx (matryca) lub .csv (z przycisku „Eksportuj grafik")</p>
+            <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.csv" className="hidden" onChange={e => handleFile(e.target.files[0])} />
             <div className="flex justify-center"><Btn icon={Upload} loading={parsing} onClick={() => fileRef.current?.click()}>Wybierz plik</Btn></div>
           </div>
           {error && <div className="mt-4 bg-red-50 text-red-600 p-4 rounded-xl flex items-start gap-2"><AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" /><span className="text-sm">{error}</span></div>}
