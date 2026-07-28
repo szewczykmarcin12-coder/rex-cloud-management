@@ -81,10 +81,10 @@ const Login = ({ onLogin }) => {
           <p className="text-center text-sm mb-6" style={{ color: colors.primary.light }}>Dostęp tylko dla kierownika</p>
           {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
           <form onSubmit={submit} className="space-y-4">
-            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN administratora</label><input type="password" value={pin} onChange={e => setPin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none text-center text-2xl tracking-widest" style={{ borderColor: colors.primary.bg }} placeholder="••••" maxLength={8} disabled={loading} autoFocus /></div>
+            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN administratora</label><input type="password" value={pin} onChange={e => setPin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none text-center text-2xl tracking-widest" style={{ borderColor: colors.primary.bg }} placeholder="••••••" maxLength={6} disabled={loading} autoFocus /></div>
             <button type="submit" disabled={loading} className="w-full text-white font-semibold py-3 rounded-xl" style={{ backgroundColor: loading ? colors.primary.light : colors.primary.medium }}>{loading ? 'Sprawdzam...' : 'Zaloguj się'}</button>
           </form>
-          <p className="text-xs text-center mt-4" style={{ color: colors.primary.light }}>Domyślny PIN: 1234 (zmień w Ustawieniach)</p>
+          <p className="text-xs text-center mt-4" style={{ color: colors.primary.light }}>Domyślny PIN: 123456 (zmień w Ustawieniach)</p>
         </div>
       </div>
     </div>
@@ -359,6 +359,7 @@ const SettingsPage = ({ data }) => {
   const changePin = async () => {
     if (!cur || !nw) { data.show('Wypełnij pola', 'error'); return; }
     if (nw !== nw2) { data.show('Nowe PINy się różnią', 'error'); return; }
+    if (!/^\d{6}$/.test(nw)) { data.show('PIN musi mieć dokładnie 6 cyfr', 'error'); return; }
     const r = await api('/admin-auth', 'PUT', { currentPin: cur, newPin: nw });
     if (r.success) { data.show('PIN zmieniony'); setCur(''); setNw(''); setNw2(''); }
     else data.show(r.error || 'Błąd', 'error');
@@ -374,9 +375,9 @@ const SettingsPage = ({ data }) => {
         <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
           <h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Zmień PIN administratora</h3>
           <div className="space-y-3">
-            <input type="password" value={cur} onChange={e => setCur(e.target.value)} placeholder="Obecny PIN" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none" style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={nw} onChange={e => setNw(e.target.value)} placeholder="Nowy PIN" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none" style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={nw2} onChange={e => setNw2(e.target.value)} placeholder="Powtórz nowy PIN" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none" style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={cur} onChange={e => setCur(e.target.value)} placeholder="Obecny PIN (6 cyfr)" maxLength={6} inputMode="numeric" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none tracking-widest" style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={nw} onChange={e => setNw(e.target.value)} placeholder="Nowy PIN (6 cyfr)" maxLength={6} inputMode="numeric" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none tracking-widest" style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={nw2} onChange={e => setNw2(e.target.value)} placeholder="Powtórz nowy PIN" maxLength={6} inputMode="numeric" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none tracking-widest" style={{ borderColor: colors.primary.bg }} />
             <Btn onClick={changePin}>Zapisz nowy PIN</Btn>
           </div>
         </div>
