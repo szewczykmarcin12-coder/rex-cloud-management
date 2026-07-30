@@ -16,9 +16,20 @@ const stationColors = {
   'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#E74C3C', 'KANAPKI / WRAPY': '#00A3E0',
   'KONTROLER': '#1E3A8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
   'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#64748B',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#082567', 'MGR FUNKCYJNE': '#455A64', 'SZKOLENIA': '#26A69A'
+  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#082567', 'MGR FUNKCYJNE': '#455A64',
+  'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#00796B'
 };
 const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
+const godzZ = (s) => (s.hours != null ? s.hours : 0);
+const jestMgr = (st) => ['MANAGER', 'MGR FUNKCYJNE'].includes((st || '').toUpperCase());
+const jestSzk = (st) => ['SZKOLENIA', 'TRAINING', 'INSTRUKTOR'].includes((st || '').toUpperCase());
+const paraOpis = (s) => {
+  if (!s.partner) return null;
+  const st = (s.station || '').toUpperCase();
+  if (st === 'TRAINING') return `Instruktor: ${s.partner}`;
+  if (st === 'INSTRUKTOR') return `Szkoli: ${s.partner}`;
+  return null;
+};
 
 const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
 const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
@@ -113,17 +124,52 @@ const Sidebar = ({ page, setPage, logout }) => {
 // ===================== DASHBOARD =====================
 
 const Dashboard = ({ data, setPage }) => {
+  const gCrew = data.shifts.filter(s => !jestMgr(s.station) && !jestSzk(s.station)).reduce((a, s) => a + godzZ(s), 0);
+  const gSzk = data.shifts.filter(s => jestSzk(s.station)).reduce((a, s) => a + godzZ(s), 0);
+  const gMgr = data.shifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
   const stats = [
-    { label: 'Zmiany w grafiku', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
+    { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
     { label: 'Pracownicy', val: data.roster.length, icon: Users, color: '#9C27B0' },
-    { label: 'Zakres grafiku', val: data.meta.firstDate ? `${data.meta.firstDate.slice(5)} — ${data.meta.lastDate.slice(5)}` : '—', icon: LayoutGrid, color: colors.accent.dark }
+    { label: 'Załadowane miesiące', val: (data.months || []).length, icon: LayoutGrid, color: colors.accent.dark }
   ];
   return (
     <div className="flex-1 flex flex-col">
       <Header title="Strona domowa" subtitle="Przegląd systemu REX Cloud" />
       <div className="flex-1 p-8 space-y-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="grid grid-cols-3 gap-6">{stats.map((s, i) => <StatCard key={i} label={s.label} value={s.val} icon={s.icon} color={s.color} />)}</div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #26A69A' }}>
+          <div className="flex items-center gap-2 mb-4"><Clock className="w-5 h-5" style={{ color: '#26A69A' }} /><h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>Wyliczone godziny (wszystkie miesiące)</h3></div>
+          <div className="grid grid-cols-4 gap-4">
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.dark }}>{gCrew.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny CREW</p></div>
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: '#e0f2f1' }}><p className="text-2xl font-bold" style={{ color: '#00796B' }}>{gSzk.toFixed(1)}</p><p className="text-sm" style={{ color: '#00897B' }}>Godziny szkoleniowe</p></div>
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER</p></div>
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{(gCrew + gSzk + gMgr).toFixed(1)}</p><p className="text-sm" style={{ color: colors.accent.dark }}>RAZEM</p></div>
+          </div>
+        </div>
+
+        {(data.months || []).length > 0 && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Grafiki w systemie</h3>
+            <div className="space-y-2">
+              {data.months.map((m) => {
+                const [y, mo] = m.key.split('-').map(Number);
+                const label = `${months[mo - 1]} ${y}`;
+                const mShifts = data.shifts.filter(s => (s.date || '').slice(0, 7) === m.key);
+                const mH = mShifts.reduce((a, s) => a + godzZ(s), 0);
+                return (
+                  <div key={m.key} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ backgroundColor: colors.primary.bgLight }}>
+                    <div className="flex items-center gap-3"><Calendar className="w-5 h-5" style={{ color: colors.primary.medium }} /><div><p className="font-semibold" style={{ color: colors.primary.darkest }}>{label}</p><p className="text-xs" style={{ color: colors.primary.light }}>{m.count} zmian · {mH.toFixed(1)} h</p></div></div>
+                    <button onClick={() => { if (confirm(`Usunąć grafik: ${label}?`)) data.deleteMonth(m.key, label); }} className="p-2 rounded-lg hover:bg-red-50 text-red-500" title="Usuń ten miesiąc"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Import kolejnego miesiąca dodaje go tutaj — nie kasuje pozostałych.</p>
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.accent.dark}` }}>
           <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Szybkie akcje</h3>
           <div className="flex flex-wrap gap-3">
             <Btn icon={Upload} onClick={() => setPage('import')}>Importuj grafik z Excel</Btn>
@@ -260,6 +306,7 @@ const SchedulePage = ({ data }) => {
                         <p className="font-bold truncate" style={{ color: colors.primary.darkest }}>{s.name}</p>
                         <p style={{ color: colors.primary.light }}>{s.start}–{s.end}</p>
                         <p className="truncate" style={{ color: stationColor(s.station) }}>{s.station}</p>
+                        {paraOpis(s) && <p className="truncate italic" style={{ color: colors.primary.light }}>{paraOpis(s)}</p>}
                       </div>
                     ))}
                     {list.length === 0 && <p className="text-center text-xs py-4" style={{ color: colors.primary.light }}>—</p>}
@@ -398,6 +445,7 @@ const useData = () => {
   const [shifts, setShifts] = useState([]);
   const [roster, setRoster] = useState([]);
   const [meta, setMeta] = useState({});
+  const [months, setMonths] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
@@ -406,7 +454,7 @@ const useData = () => {
     setLoading(true);
     try {
       const r = await api('/schedule');
-      if (r.success) { setShifts(r.shifts || []); setRoster(r.roster || []); setMeta(r.meta || {}); }
+      if (r.success) { setShifts(r.shifts || []); setRoster(r.roster || []); setMeta(r.meta || {}); setMonths(r.months || []); }
     } catch { show('Błąd synchronizacji', 'error'); }
     setLoading(false);
   }, []);
@@ -415,24 +463,33 @@ const useData = () => {
     setLoading(true);
     try {
       const r = await api('/schedule', 'PUT', { shifts: parsed.shifts, roster: parsed.roster, meta: parsed.meta });
-      if (r.success) { setShifts(parsed.shifts); setRoster(parsed.roster); setMeta(parsed.meta); show(`Zaimportowano ${parsed.shifts.length} zmian`); }
+      if (r.success) { show(`Zaimportowano ${parsed.shifts.length} zmian (${parsed.meta.monthName || r.month})`); await sync(); }
       else show('Błąd importu: ' + r.error, 'error');
     } catch { show('Błąd zapisu do bazy', 'error'); }
     setLoading(false);
-  }, []);
+  }, [sync]);
+
+  const deleteMonth = useCallback(async (ym, label) => {
+    setLoading(true);
+    try {
+      const r = await api(`/schedule?month=${encodeURIComponent(ym)}`, 'DELETE');
+      if (r.success) { show(`Usunięto grafik: ${label || ym}`); await sync(); }
+    } catch { show('Błąd', 'error'); }
+    setLoading(false);
+  }, [sync]);
 
   const clearSchedule = useCallback(async () => {
     setLoading(true);
     try {
       const r = await api('/schedule', 'DELETE');
-      if (r.success) { setShifts([]); setRoster([]); setMeta({}); show('Grafik wyczyszczony'); }
+      if (r.success) { setShifts([]); setRoster([]); setMeta({}); setMonths([]); show('Wszystkie grafiki wyczyszczone'); }
     } catch { show('Błąd', 'error'); }
     setLoading(false);
   }, []);
 
   useEffect(() => { sync(); }, [sync]);
 
-  return { shifts, roster, meta, loading, toast, setToast, show, sync, importSchedule, clearSchedule };
+  return { shifts, roster, meta, months, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule };
 };
 
 // ===================== MAIN =====================

@@ -6,14 +6,14 @@ const dniPl = ['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek
 const mcPl  = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
 
 const KOLEJNOSC = ['PANIEROWANIE','SMAŻENIE','KANAPKI / WRAPY','KONTROLER','WSPARCIE WIECZORNE / FLEX',
-  'DISPATCHER','PHU','DESERY / NAPOJE','FRYTKI','ZMYWAK','PREP','DOSTAWA','SZKOLENIA','MANAGER','MGR FUNKCYJNE'];
+  'DISPATCHER','PHU','DESERY / NAPOJE','FRYTKI','ZMYWAK','PREP','DOSTAWA','SZKOLENIA','TRAINING','INSTRUKTOR','MANAGER','MGR FUNKCYJNE'];
 const rank = (s) => { const i = KOLEJNOSC.indexOf((s||'').toUpperCase()); return i === -1 ? 99 : i; };
 
 const KOLORY = {
   'PANIEROWANIE':[124,179,66],'SMAŻENIE':[231,76,60],'KANAPKI / WRAPY':[0,163,224],
   'KONTROLER':[30,58,138],'WSPARCIE WIECZORNE / FLEX':[156,39,176],'DISPATCHER':[255,112,67],
   'PHU':[0,137,123],'DESERY / NAPOJE':[236,64,122],'FRYTKI':[245,176,0],'ZMYWAK':[100,116,139],
-  'PREP':[141,110,99],'DOSTAWA':[92,107,192],'SZKOLENIA':[38,166,154],'MANAGER':[8,37,103],'MGR FUNKCYJNE':[69,90,100]
+  'PREP':[141,110,99],'DOSTAWA':[92,107,192],'SZKOLENIA':[38,166,154],'TRAINING':[38,166,154],'INSTRUKTOR':[0,121,107],'MANAGER':[8,37,103],'MGR FUNKCYJNE':[69,90,100]
 };
 const kolor = (s) => KOLORY[(s||'').toUpperCase()] || [57,81,133];
 
@@ -100,7 +100,12 @@ function renderDzien(doc, shifts, dateStr, location) {
     ludzie.forEach((s, i) => {
       if (i % 2 === 1) { doc.setFillColor(245,247,250); doc.rect(x, ry, colW, rowH, 'F'); }
       doc.setTextColor(...INK); doc.setFont('Lib','normal'); doc.setFontSize(8);
-      const nm = s.name.length > 26 ? s.name.slice(0,25)+'…' : s.name;
+      // przy szkoleniu dopisz parę: uczeń → instruktor / instruktor → uczeń
+      const stU = (s.station||'').toUpperCase();
+      let nmTxt = s.name;
+      if (s.partner && stU === 'TRAINING') nmTxt = `${s.name}  (instr.: ${s.partner})`;
+      else if (s.partner && stU === 'INSTRUKTOR') nmTxt = `${s.name}  (szkoli: ${s.partner})`;
+      const nm = nmTxt.length > 34 ? nmTxt.slice(0,33)+'…' : nmTxt;
       doc.text(nm, x + 2.5, ry + rowH - 1.5);
       doc.setFontSize(7.9);
       const gh = godzZmiany(s);
@@ -128,7 +133,7 @@ function renderDzien(doc, shifts, dateStr, location) {
 
   // Podsumowanie godzin
   const isMgr = (st)=>['MANAGER','MGR FUNKCYJNE'].includes((st||'').toUpperCase());
-  const isSzk = (st)=>(st||'').toUpperCase()==='SZKOLENIA';
+  const isSzk = (st)=>['SZKOLENIA','TRAINING','INSTRUKTOR'].includes((st||'').toUpperCase());
   const gCrew = dzienne.filter(s=>!isMgr(s.station)&&!isSzk(s.station)).reduce((a,s)=>a+godzZmiany(s),0);
   const gMgr  = dzienne.filter(s=>isMgr(s.station)).reduce((a,s)=>a+godzZmiany(s),0);
   const gSzk  = dzienne.filter(s=>isSzk(s.station)).reduce((a,s)=>a+godzZmiany(s),0);

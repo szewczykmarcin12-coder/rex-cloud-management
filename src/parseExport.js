@@ -32,11 +32,14 @@ export function parseExportCSV(text) {
     const start = (parts[2] || '').trim();
     const end = (parts[3] || '').trim();
     const hoursRaw = (parts[4] || '').trim();
-    const station = (parts.slice(5).join(',') || '').trim(); // na wypadek przecinka w nazwie stanowiska
+    const station = (parts[5] || '').trim();
+    const partner = (parts[6] || '').trim(); // opcjonalna kolumna "Para" (instruktor/uczeń)
     if (!name || !date) continue;
     let hours = hoursRaw ? parseFloat(hoursRaw.replace(',', '.')) : null;
     if (hours == null || isNaN(hours)) hours = calcHours(start, end);
-    shifts.push({ name: name.toUpperCase(), date, start, end, hours, station });
+    const shift = { name: name.toUpperCase(), date, start, end, hours, station };
+    if (partner) shift.partner = partner.toUpperCase();
+    shifts.push(shift);
   }
 
   if (shifts.length === 0) throw new Error('Nie znaleziono zmian w pliku eksportu. Sprawdź, czy plik pochodzi z przycisku „Eksportuj grafik".');
