@@ -37,6 +37,17 @@ export function parseExportCSV(text) {
     if (!name || !date) continue;
     let hours = hoursRaw ? parseFloat(hoursRaw.replace(',', '.')) : null;
     if (hours == null || isNaN(hours)) hours = calcHours(start, end);
+
+    // "instruktor; uczeń" w polu nazwiska → dwa powiązane wiersze
+    if (name.includes(';')) {
+      const [instrRaw, uczRaw] = name.split(';');
+      const instr = (instrRaw || '').trim().toUpperCase();
+      const ucz = (uczRaw || '').trim().toUpperCase();
+      if (instr) shifts.push({ name: instr, date, start, end, hours, station: 'instruktor', partner: ucz || undefined });
+      if (ucz) shifts.push({ name: ucz, date, start, end, hours, station: 'training', partner: instr || undefined });
+      continue;
+    }
+
     const shift = { name: name.toUpperCase(), date, start, end, hours, station };
     if (partner) shift.partner = partner.toUpperCase();
     shifts.push(shift);
