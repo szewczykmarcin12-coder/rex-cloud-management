@@ -132,14 +132,25 @@ export function parseGrafik(arrayBuffer) {
         const station = sections[r] || '';
         if (station && STOP_SECTIONS.has(station.toUpperCase())) continue;
 
-        shifts.push({
-          name: name.trim().toUpperCase(),
-          date: dateStr,
-          start,
-          end: end || '',
-          hours,
-          station
-        });
+        const base = { date: dateStr, start, end: end || '', hours };
+
+        // Sekcja SZKOLENIA: komórka w formacie "instruktor; uczeń" → dwa powiązane wiersze
+        if (station.toUpperCase() === 'SZKOLENIA' && name.includes(';')) {
+          const [instrRaw, uczRaw] = name.split(';');
+          const instr = (instrRaw || '').trim().toUpperCase();
+          const ucz = (uczRaw || '').trim().toUpperCase();
+          if (instr) {
+            // instruktor: stanowisko "instruktor", w karcie widzi ucznia
+            shifts.push({ ...base, name: instr, station: 'instruktor', partner: ucz || undefined });
+          }
+          if (ucz) {
+            // uczeń: stanowisko "training", w karcie widzi instruktora
+            shifts.push({ ...base, name: ucz, station: 'training', partner: instr || undefined });
+          }
+          continue;
+        }
+
+        shifts.push({ ...base, name: name.trim().toUpperCase(), station });
       }
     }
   }
