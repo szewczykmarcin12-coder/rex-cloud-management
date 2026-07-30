@@ -134,19 +134,14 @@ export function parseGrafik(arrayBuffer) {
 
         const base = { date: dateStr, start, end: end || '', hours };
 
-        // Sekcja SZKOLENIA: komórka w formacie "instruktor; uczeń" → dwa powiązane wiersze
-        if (station.toUpperCase() === 'SZKOLENIA' && name.includes(';')) {
+        // Format "instruktor; uczeń" w KAŻDEJ komórce → dwa powiązane wiersze
+        // (nie tylko w sekcji SZKOLENIA — średnik jednoznacznie oznacza parę szkoleniową)
+        if (name.includes(';')) {
           const [instrRaw, uczRaw] = name.split(';');
           const instr = (instrRaw || '').trim().toUpperCase();
           const ucz = (uczRaw || '').trim().toUpperCase();
-          if (instr) {
-            // instruktor: stanowisko "instruktor", w karcie widzi ucznia
-            shifts.push({ ...base, name: instr, station: 'instruktor', partner: ucz || undefined });
-          }
-          if (ucz) {
-            // uczeń: stanowisko "training", w karcie widzi instruktora
-            shifts.push({ ...base, name: ucz, station: 'training', partner: instr || undefined });
-          }
+          if (instr) shifts.push({ ...base, name: instr, station: 'instruktor', partner: ucz || undefined });
+          if (ucz) shifts.push({ ...base, name: ucz, station: 'training', partner: instr || undefined });
           continue;
         }
 
