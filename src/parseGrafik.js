@@ -134,14 +134,16 @@ export function parseGrafik(arrayBuffer) {
 
         const base = { date: dateStr, start, end: end || '', hours };
 
-        // Format "instruktor; uczeń" w KAŻDEJ komórce → dwa powiązane wiersze
-        // (nie tylko w sekcji SZKOLENIA — średnik jednoznacznie oznacza parę szkoleniową)
+        // Format "instruktor; uczeń" → dwa powiązane wiersze.
+        // Stanowisko = sekcja, w której wpisano parę (pozycja, np. KANAPKI / WRAPY);
+        // rola oznacza instruktora/ucznia. Dzięki temu para trafia do bloku danej pozycji.
         if (name.includes(';')) {
           const [instrRaw, uczRaw] = name.split(';');
           const instr = (instrRaw || '').trim().toUpperCase();
           const ucz = (uczRaw || '').trim().toUpperCase();
-          if (instr) shifts.push({ ...base, name: instr, station: 'instruktor', partner: ucz || undefined });
-          if (ucz) shifts.push({ ...base, name: ucz, station: 'training', partner: instr || undefined });
+          const pozycja = station || 'SZKOLENIA';
+          if (instr) shifts.push({ ...base, name: instr, station: pozycja, rola: 'instruktor', partner: ucz || undefined });
+          if (ucz) shifts.push({ ...base, name: ucz, station: pozycja, rola: 'training', partner: instr || undefined });
           continue;
         }
 

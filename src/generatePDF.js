@@ -36,6 +36,20 @@ const godzZmiany = (s) => {
   let h = eh - sh + (em - sm) / 60; if (h < 0) h += 24; return Math.round(h*100)/100;
 };
 
+// Rola szkoleniowa: nowy model (s.rola) albo stary (station 'training'/'instruktor')
+const rolaSzk = (s) => {
+  const r = (s.rola || '').toLowerCase();
+  if (r === 'instruktor' || r === 'training') return r;
+  const st = (s.station || '').toLowerCase();
+  if (st === 'instruktor' || st === 'training') return st;
+  return null;
+};
+const jestInstr = (s) => rolaSzk(s) === 'instruktor';
+const jestUczen = (s) => rolaSzk(s) === 'training';
+const jestSzkStacja = (s) => (s.station || '').toUpperCase() === 'SZKOLENIA' && !s.rola;
+const jestSzkolenie = (s) => !!rolaSzk(s) || jestSzkStacja(s);
+const jestMgrPdf = (st) => ['MANAGER', 'MGR FUNKCYJNE'].includes((st || '').toUpperCase());
+
 function fonty(doc) {
   doc.addFileToVFS('LibSans.ttf', LIB_SANS_REGULAR);
   doc.addFont('LibSans.ttf', 'Lib', 'normal');
@@ -45,14 +59,14 @@ function fonty(doc) {
 }
 
 // ── Render jednego dnia ──────────────────────────────────────────────
-function renderDzien(doc, shifts, dateStr, location) {
+function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 8;
   const d = new Date(dateStr);
 
   const dzienne = shifts.filter(s => s.date === dateStr);
-  const sumaGodz = dzienne.reduce((a,s)=>a+godzZmiany(s),0);
+  const sumaGodz = dzienne.reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
 
   // ── NAGŁÓWEK ──
   doc.setFillColor(...NAVY); doc.rect(0,0,W,21,'F');
@@ -100,12 +114,12 @@ function renderDzien(doc, shifts, dateStr, location) {
     ludzie.forEach((s, i) => {
       if (i % 2 === 1) { doc.setFillColor(245,247,250); doc.rect(x, ry, colW, rowH, 'F'); }
       doc.setTextColor(...INK); doc.setFont('Lib','normal'); doc.setFontSize(8);
-      // przy szkoleniu dopisz parę: uczeń → instruktor / instruktor → uczeń
-      const stU = (s.station||'').toUpperCase();
+      // przy szkoleniu dopisz rolę i parę (uczeń → instruktor / instruktor → uczeń)
+      const r = rolaSzk(s);
       let nmTxt = s.name;
-      if (s.partner && stU === 'TRAINING') nmTxt = `${s.name}  (instr.: ${s.partner})`;
-      else if (s.partner && stU === 'INSTRUKTOR') nmTxt = `${s.name}  (szkoli: ${s.partner})`;
-      const nm = nmTxt.length > 34 ? nmTxt.slice(0,33)+'…' : nmTxt;
+      if (r === 'training') nmTxt = `${s.name}  (szkol.${s.partner ? ', instr.: ' + s.partner : ''})`;
+      else if (r === 'instruktor') nmTxt = `${s.name}  (instruktor${s.partner ? ', szkoli: ' + s.partner : ''})`;
+      const nm = nmTxt.length > 40 ? nmTxt.slice(0,39)+'…' : nmTxt;
       doc.text(nm, x + 2.5, ry + rowH - 1.5);
       doc.setFontSize(7.9);
       const gh = godzZmiany(s);
@@ -131,12 +145,10 @@ function renderDzien(doc, shifts, dateStr, location) {
   let sy = bodyTop;
   const sInner = sideW - 6;
 
-  // Podsumowanie godzin
-  const isMgr = (st)=>['MANAGER','MGR FUNKCYJNE'].includes((st||'').toUpperCase());
-  const isSzk = (st)=>['SZKOLENIA','TRAINING','INSTRUKTOR'].includes((st||'').toUpperCase());
-  const gCrew = dzienne.filter(s=>!isMgr(s.station)&&!isSzk(s.station)).reduce((a,s)=>a+godzZmiany(s),0);
-  const gMgr  = dzienne.filter(s=>isMgr(s.station)).reduce((a,s)=>a+godzZmiany(s),0);
-  const gSzk  = dzienne.filter(s=>isSzk(s.station)).reduce((a,s)=>a+godzZmiany(s),0);
+  // Podsumowanie godzin — instruktor do CREW, uczeń do szkoleniowych (obie osoby liczone)
+  const gCrew = dzienne.filter(s=>!jestMgrPdf(s.station)&&!jestUczen(s)&&!jestSzkStacja(s)).reduce((a,s)=>a+godzZmiany(s),0);
+  const gMgr  = dzienne.filter(s=>jestMgrPdf(s.station)).reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
+  const gSzk  = dzienne.filter(s=>jestUczen(s)||jestSzkStacja(s)).reduce((a,s)=>a+godzZmiany(s),0);
 
   const naglowekBoxu = (x,yy,w,txt) => {
     doc.setFillColor(...NAVY); doc.roundedRect(x,yy,w,6.6,1,1,'F');
@@ -227,22 +239,25 @@ function renderDzien(doc, shifts, dateStr, location) {
   doc.text('A4 · orientacja pozioma', W - M, H - 3, { align:'right' });
 }
 
-export function generateDayPDF(shifts, dateStr, location = 'Popeyes PLK Kraków Galeria Krakowska') {
+export function generateDayPDF(shifts, dateStr, location = 'Popeyes PLK Kraków Galeria Krakowska', dodatkiMgr = 0) {
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
   fonty(doc);
-  renderDzien(doc, shifts, dateStr, location);
+  renderDzien(doc, shifts, dateStr, location, dodatkiMgr);
   return doc;
 }
 
-export function generateRangePDF(shifts, startDate, endDate, location = 'Popeyes PLK Kraków Galeria Krakowska') {
+// planowanie = { [YYYY-MM]: { mgr:{date:h}, mgrFunk:{date:h} } } — ręczne godziny MGR doliczane per dzień
+export function generateRangePDF(shifts, startDate, endDate, location = 'Popeyes PLK Kraków Galeria Krakowska', planowanie = {}) {
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
   fonty(doc);
   const start = new Date(startDate), end = new Date(endDate);
   let first = true;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
     const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const pl = planowanie[ds.slice(0,7)] || {};
+    const dod = (Number((pl.mgr||{})[ds]) || 0) + (Number((pl.mgrFunk||{})[ds]) || 0);
     if (!first) doc.addPage('a4','landscape');
-    renderDzien(doc, shifts, ds, location);
+    renderDzien(doc, shifts, ds, location, dod);
     first = false;
   }
   return doc;

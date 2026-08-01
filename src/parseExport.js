@@ -33,23 +33,26 @@ export function parseExportCSV(text) {
     const end = (parts[3] || '').trim();
     const hoursRaw = (parts[4] || '').trim();
     const station = (parts[5] || '').trim();
-    const partner = (parts[6] || '').trim(); // opcjonalna kolumna "Para" (instruktor/uczeń)
+    const partner = (parts[6] || '').trim(); // kolumna "Para" (druga osoba)
+    const rola = (parts[7] || '').trim().toLowerCase(); // kolumna "Rola": instruktor / training
     if (!name || !date) continue;
     let hours = hoursRaw ? parseFloat(hoursRaw.replace(',', '.')) : null;
     if (hours == null || isNaN(hours)) hours = calcHours(start, end);
 
-    // "instruktor; uczeń" w polu nazwiska → dwa powiązane wiersze
+    // "instruktor; uczeń" w polu nazwiska → dwa powiązane wiersze; stanowisko = pozycja
     if (name.includes(';')) {
       const [instrRaw, uczRaw] = name.split(';');
       const instr = (instrRaw || '').trim().toUpperCase();
       const ucz = (uczRaw || '').trim().toUpperCase();
-      if (instr) shifts.push({ name: instr, date, start, end, hours, station: 'instruktor', partner: ucz || undefined });
-      if (ucz) shifts.push({ name: ucz, date, start, end, hours, station: 'training', partner: instr || undefined });
+      const pozycja = station || 'SZKOLENIA';
+      if (instr) shifts.push({ name: instr, date, start, end, hours, station: pozycja, rola: 'instruktor', partner: ucz || undefined });
+      if (ucz) shifts.push({ name: ucz, date, start, end, hours, station: pozycja, rola: 'training', partner: instr || undefined });
       continue;
     }
 
     const shift = { name: name.toUpperCase(), date, start, end, hours, station };
     if (partner) shift.partner = partner.toUpperCase();
+    if (rola === 'instruktor' || rola === 'training') shift.rola = rola;
     shifts.push(shift);
   }
 

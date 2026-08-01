@@ -22,16 +22,60 @@ const stationColors = {
 const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
 const godzZ = (s) => (s.hours != null ? s.hours : 0);
 const jestMgr = (st) => ['MANAGER', 'MGR FUNKCYJNE'].includes((st || '').toUpperCase());
-const jestSzk = (st) => ['SZKOLENIA', 'TRAINING', 'INSTRUKTOR'].includes((st || '').toUpperCase());
-const paraOpis = (s) => {
-  if (!s.partner) return null;
-  const st = (s.station || '').toUpperCase();
-  if (st === 'TRAINING') return `Instruktor: ${s.partner}`;
-  if (st === 'INSTRUKTOR') return `Szkoli: ${s.partner}`;
+// Rola szkoleniowa: nowy model (s.rola) albo stary (station 'training'/'instruktor')
+const rolaSzk = (s) => {
+  const r = (s.rola || '').toLowerCase();
+  if (r === 'instruktor' || r === 'training') return r;
+  const st = (s.station || '').toLowerCase();
+  if (st === 'instruktor' || st === 'training') return st;
   return null;
+};
+const jestInstruktor = (s) => rolaSzk(s) === 'instruktor';
+const jestUczen = (s) => rolaSzk(s) === 'training';
+const jestSzkStacja = (s) => (s.station || '').toUpperCase() === 'SZKOLENIA' && !s.rola;
+const jestSzkolenie = (s) => !!rolaSzk(s) || jestSzkStacja(s);
+// Pozycja do wyświetlenia (stare dane training/instruktor pokazują "Szkolenie")
+const etykietaStacji = (s) => {
+  const st = (s.station || '').toLowerCase();
+  if (st === 'training' || st === 'instruktor') return 'Szkolenie';
+  return s.station;
+};
+// Znacznik szkolenia obok pozycji
+const paraOpis = (s) => {
+  const r = rolaSzk(s);
+  if (!r) return null;
+  const kto = s.partner ? `: ${s.partner}` : '';
+  return r === 'instruktor' ? `Szkolenie · szkoli${kto}` : `Szkolenie · instr.${kto}`;
 };
 
 const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+
+// ── Planowanie godzin (plan miesiąca + ręczne godziny MGR / MGR funkcyjne) ──
+const dniMiesiaca = (ym) => {
+  if (!ym) return [];
+  const [y, m] = ym.split('-').map(Number);
+  const n = new Date(y, m, 0).getDate();
+  const out = [];
+  for (let d = 1; d <= n; d++) out.push(`${ym}-${String(d).padStart(2, '0')}`);
+  return out;
+};
+const sumaDodatkow = (mapaDni) => Object.values(mapaDni || {}).reduce((a, v) => a + (Number(v) || 0), 0);
+const sumaManualWszystkie = (planowanie) => Object.values(planowanie || {}).reduce((a, p) => a + sumaDodatkow(p.mgr) + sumaDodatkow(p.mgrFunk), 0);
+const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
+  const mShifts = shifts.filter(s => (s.date || '').slice(0, 7) === ym);
+  const crew = mShifts.filter(s => !jestMgr(s.station) && !jestUczen(s) && !jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const szkol = mShifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const mgrSched = mShifts.filter(s => (s.station || '').toUpperCase() === 'MANAGER').reduce((a, s) => a + godzZ(s), 0);
+  const funkSched = mShifts.filter(s => (s.station || '').toUpperCase() === 'MGR FUNKCYJNE').reduce((a, s) => a + godzZ(s), 0);
+  const p = (planowanie || {})[ym] || {};
+  const mgrManual = sumaDodatkow(p.mgr);
+  const funkManual = sumaDodatkow(p.mgrFunk);
+  const mgr = mgrSched + mgrManual;
+  const funk = funkSched + funkManual;
+  const total = crew + szkol + mgr + funk;
+  const planTotal = Number(p.planTotal) || 0;
+  return { crew, szkol, mgrSched, mgrManual, funkSched, funkManual, mgr, funk, total, planTotal, mShifts };
+};
 const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
 
 const store = {
@@ -110,6 +154,7 @@ const Sidebar = ({ page, setPage, logout }) => {
     { id: 'import', label: 'Import z Excel', icon: Upload },
     { id: 'schedule', label: 'Grafik', icon: LayoutGrid },
     { id: 'print', label: 'Drukuj grafik', icon: Printer },
+    { id: 'plan', label: 'Plan godzin', icon: Clock },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
   return (
@@ -124,9 +169,12 @@ const Sidebar = ({ page, setPage, logout }) => {
 // ===================== DASHBOARD =====================
 
 const Dashboard = ({ data, setPage }) => {
-  const gCrew = data.shifts.filter(s => !jestMgr(s.station) && !jestSzk(s.station)).reduce((a, s) => a + godzZ(s), 0);
-  const gSzk = data.shifts.filter(s => jestSzk(s.station)).reduce((a, s) => a + godzZ(s), 0);
-  const gMgr = data.shifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
+  // Instruktor (osoba szkoląca) liczony do CREW; uczeń do szkoleniowych. Obie osoby liczone.
+  const gCrew = data.shifts.filter(s => !jestMgr(s.station) && !jestUczen(s) && !jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const gSzk = data.shifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const gMgrSched = data.shifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
+  const gManual = sumaManualWszystkie(data.planowanie); // ręczne godziny MGR + funkcyjne (wszystkie miesiące)
+  const gMgr = gMgrSched + gManual;
   const stats = [
     { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
     { label: 'Pracownicy', val: data.roster.length, icon: Users, color: '#9C27B0' },
@@ -143,7 +191,7 @@ const Dashboard = ({ data, setPage }) => {
           <div className="grid grid-cols-4 gap-4">
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.dark }}>{gCrew.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny CREW</p></div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: '#e0f2f1' }}><p className="text-2xl font-bold" style={{ color: '#00796B' }}>{gSzk.toFixed(1)}</p><p className="text-sm" style={{ color: '#00897B' }}>Godziny szkoleniowe</p></div>
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER</p></div>
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER{gManual ? ` (+${gManual.toFixed(0)} ręcznie)` : ''}</p></div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{(gCrew + gSzk + gMgr).toFixed(1)}</p><p className="text-sm" style={{ color: colors.accent.dark }}>RAZEM</p></div>
           </div>
         </div>
@@ -305,8 +353,8 @@ const SchedulePage = ({ data }) => {
                       <div key={i} className="rounded-lg p-1.5 text-[11px]" style={{ backgroundColor: stationColor(s.station) + '12', borderLeft: `3px solid ${stationColor(s.station)}` }}>
                         <p className="font-bold truncate" style={{ color: colors.primary.darkest }}>{s.name}</p>
                         <p style={{ color: colors.primary.light }}>{s.start}–{s.end}</p>
-                        <p className="truncate" style={{ color: stationColor(s.station) }}>{s.station}</p>
-                        {paraOpis(s) && <p className="truncate italic" style={{ color: colors.primary.light }}>{paraOpis(s)}</p>}
+                        <p className="truncate" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</p>
+                        {paraOpis(s) && <p className="truncate italic" style={{ color: '#00796B' }}>{paraOpis(s)}</p>}
                       </div>
                     ))}
                     {list.length === 0 && <p className="text-center text-xs py-4" style={{ color: colors.primary.light }}>—</p>}
@@ -336,11 +384,13 @@ const PrintPage = ({ data }) => {
       let doc;
       let fname;
       if (mode === 'day') {
-        doc = generateDayPDF(data.shifts, singleDate);
+        const pl = data.planowanie[singleDate.slice(0, 7)] || {};
+        const dod = (Number((pl.mgr || {})[singleDate]) || 0) + (Number((pl.mgrFunk || {})[singleDate]) || 0);
+        doc = generateDayPDF(data.shifts, singleDate, undefined, dod);
         fname = `grafik_${singleDate}.pdf`;
       } else {
         if (new Date(rangeEnd) < new Date(rangeStart)) { data.show('Data końcowa przed początkową', 'error'); setBusy(false); return; }
-        doc = generateRangePDF(data.shifts, rangeStart, rangeEnd);
+        doc = generateRangePDF(data.shifts, rangeStart, rangeEnd, undefined, data.planowanie);
         fname = `grafik_${rangeStart}_${rangeEnd}.pdf`;
       }
       if (open) {
@@ -439,6 +489,116 @@ const SettingsPage = ({ data }) => {
   );
 };
 
+// ===================== PLAN GODZIN =====================
+
+const Sekcja = ({ children, kolor, tytul, ikona: Ik }) => (
+  <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${kolor}` }}>
+    <div className="flex items-center gap-2 mb-4">{Ik && <Ik className="w-5 h-5" style={{ color: kolor }} />}<h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>{tytul}</h3></div>
+    {children}
+  </div>
+);
+
+const PlanPage = ({ data }) => {
+  const domyslnyYm = (data.months && data.months[0]?.key) || (data.meta.firstDate || '').slice(0, 7) || new Date().toISOString().slice(0, 7);
+  const [ym, setYm] = useState(domyslnyYm);
+  const dni = dniMiesiaca(ym);
+  const [mgrH, setMgrH] = useState(8);
+  const [mgrDate, setMgrDate] = useState(dni[0] || '');
+  const [funkH, setFunkH] = useState(8);
+  const [funkDate, setFunkDate] = useState(dni[0] || '');
+  const [wd, setWd] = useState([]);
+  const [planLocal, setPlanLocal] = useState('');
+  useEffect(() => { const d = dniMiesiaca(ym); setMgrDate(d[0] || ''); setFunkDate(d[0] || ''); }, [ym]);
+
+  const p = podsumowanieMiesiaca(data.shifts, data.planowanie, ym);
+  useEffect(() => { setPlanLocal(p.planTotal ? String(p.planTotal) : ''); }, [ym, p.planTotal]);
+  const nadmiar = p.planTotal > 0 ? p.total - p.planTotal : 0;
+  const pct = p.planTotal > 0 ? Math.min(100, (p.total / p.planTotal) * 100) : 0;
+  const kolorStanu = p.planTotal === 0 ? colors.primary.light : nadmiar > 0 ? '#E74C3C' : (p.total >= p.planTotal * 0.95 ? '#F5B000' : '#2E9E5B');
+  const topDni = (() => {
+    const g = {};
+    p.mShifts.forEach(s => { g[s.date] = (g[s.date] || 0) + godzZ(s); });
+    return Object.entries(g).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  })();
+  const [y, m] = ym.split('-').map(Number);
+  const label = `${months[m - 1]} ${y}`;
+  const dniTyg = [['Pn', 1], ['Wt', 2], ['Śr', 3], ['Cz', 4], ['Pt', 5], ['So', 6], ['Nd', 0]];
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header title="Plan godzin" subtitle="Plan miesiąca, ręczne godziny MGR i monitoring przekroczeń" />
+      <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium" style={{ color: colors.primary.dark }}>Miesiąc:</span>
+          <select value={ym} onChange={e => setYm(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>
+            {(data.months && data.months.length ? data.months : [{ key: ym, label }]).map(mm => <option key={mm.key} value={mm.key}>{mm.label || mm.key}</option>)}
+          </select>
+        </div>
+
+        <Sekcja kolor={kolorStanu} tytul={`Plan total — ${label}`} ikona={LayoutGrid}>
+          <div className="flex flex-wrap items-end gap-4 mb-4">
+            <div>
+              <label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Plan total godzin (miesiąc)</label>
+              <input type="number" value={planLocal} onChange={e => setPlanLocal(e.target.value)} onBlur={() => data.setPlanTotal(ym, planLocal)} placeholder="np. 1800" className="w-40 px-3 py-2 rounded-lg border text-lg font-semibold" style={{ borderColor: colors.primary.bg }} />
+            </div>
+            <div className="flex-1 min-w-[220px]">
+              <div className="flex justify-between text-sm mb-1"><span style={{ color: colors.primary.dark }}>Zaplanowano: <b>{p.total.toFixed(1)} h</b></span><span style={{ color: colors.primary.light }}>{p.planTotal ? `z ${p.planTotal} h` : 'brak planu'}</span></div>
+              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: colors.primary.bg }}>
+                <div style={{ width: `${pct}%`, height: '100%', backgroundColor: kolorStanu, transition: 'width .3s' }} />
+              </div>
+            </div>
+          </div>
+          {p.planTotal > 0 && (nadmiar > 0
+            ? <div className="rounded-xl p-4" style={{ backgroundColor: '#fdecea' }}>
+                <p className="font-semibold mb-1" style={{ color: '#E74C3C' }}>Przekroczenie planu o {nadmiar.toFixed(1)} h</p>
+                <p className="text-sm mb-2" style={{ color: colors.primary.dark }}>Sugerowane ścięcie: <b>{nadmiar.toFixed(1)} h</b>. Dni z największą liczbą godzin (kandydaci do redukcji):</p>
+                <div className="flex flex-wrap gap-2">{topDni.map(([d, h]) => <span key={d} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: 'white', color: colors.primary.dark }}>{d.slice(5)} — {h.toFixed(1)} h</span>)}</div>
+              </div>
+            : <div className="rounded-xl p-3 text-sm" style={{ backgroundColor: '#e9f7ef', color: '#2E9E5B' }}>W ramach planu — pozostało {(p.planTotal - p.total).toFixed(1)} h.</div>)}
+          <div className="grid grid-cols-4 gap-3 mt-4 text-center text-sm">
+            <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bg }}><b>{p.crew.toFixed(1)}</b><br />CREW</div>
+            <div className="rounded-lg p-2" style={{ backgroundColor: '#e0f2f1' }}><b>{p.szkol.toFixed(1)}</b><br />Szkoleniowe</div>
+            <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bgLight }}><b>{p.mgr.toFixed(1)}</b><br />MGR{p.mgrManual ? ` (+${p.mgrManual})` : ''}</div>
+            <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bgLight }}><b>{p.funk.toFixed(1)}</b><br />MGR funkc.{p.funkManual ? ` (+${p.funkManual})` : ''}</div>
+          </div>
+        </Sekcja>
+
+        <Sekcja kolor="#082567" tytul="Godziny MGR (ręcznie)" ikona={Clock}>
+          <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Dodaj godziny managera do sumy RAZEM — w wybrany dzień albo w każdy dzień miesiąca. Ręcznie dodane: <b>{p.mgrManual.toFixed(1)} h</b> ({Object.keys((data.planowanie[ym] || {}).mgr || {}).length} dni).</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Godziny</label><input type="number" value={mgrH} onChange={e => setMgrH(e.target.value)} className="w-24 px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dzień</label><select value={mgrDate} onChange={e => setMgrDate(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{dni.map(d => <option key={d} value={d}>{d.slice(5)}</option>)}</select></div>
+            <Btn variant="secondary" onClick={() => data.applyGodziny(ym, 'mgr', 'day', mgrH, mgrDate)}>Zastosuj w ten dzień</Btn>
+            <Btn onClick={() => data.applyGodziny(ym, 'mgr', 'month', mgrH)}>Przenieś na cały miesiąc</Btn>
+            <Btn variant="secondary" onClick={() => data.clearGodziny(ym, 'mgr')}>Wyczyść</Btn>
+          </div>
+        </Sekcja>
+
+        <Sekcja kolor="#455A64" tytul="Godziny MGR funkcyjne (ręcznie)" ikona={Clock}>
+          <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Jak wyżej, dodatkowo „wg schematu" — np. 8 h w każdy poniedziałek. Ręcznie dodane: <b>{p.funkManual.toFixed(1)} h</b> ({Object.keys((data.planowanie[ym] || {}).mgrFunk || {}).length} dni).</p>
+          <div className="flex flex-wrap items-end gap-3 mb-3">
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Godziny</label><input type="number" value={funkH} onChange={e => setFunkH(e.target.value)} className="w-24 px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dzień</label><select value={funkDate} onChange={e => setFunkDate(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{dni.map(d => <option key={d} value={d}>{d.slice(5)}</option>)}</select></div>
+            <Btn variant="secondary" onClick={() => data.applyGodziny(ym, 'mgrFunk', 'day', funkH, funkDate)}>Ten dzień</Btn>
+            <Btn onClick={() => data.applyGodziny(ym, 'mgrFunk', 'month', funkH)}>Cały miesiąc</Btn>
+            <Btn variant="secondary" onClick={() => data.clearGodziny(ym, 'mgrFunk')}>Wyczyść</Btn>
+          </div>
+          <div className="rounded-xl p-3" style={{ backgroundColor: colors.primary.bgLight }}>
+            <p className="text-xs mb-2" style={{ color: colors.primary.dark }}>Schemat — wybierz dni tygodnia, potem „Wg schematu":</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {dniTyg.map(([lbl, val]) => {
+                const on = wd.includes(val);
+                return <button key={val} onClick={() => setWd(w => on ? w.filter(x => x !== val) : [...w, val])} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{lbl}</button>;
+              })}
+            </div>
+            <Btn onClick={() => { if (!wd.length) { data.show('Zaznacz dni tygodnia', 'error'); return; } data.applyGodziny(ym, 'mgrFunk', 'schemat', funkH, null, wd); }}>Wg schematu ({wd.length} dni tyg.)</Btn>
+          </div>
+        </Sekcja>
+      </div>
+    </div>
+  );
+};
+
 // ===================== DATA HOOK =====================
 
 const useData = () => {
@@ -446,6 +606,9 @@ const useData = () => {
   const [roster, setRoster] = useState([]);
   const [meta, setMeta] = useState({});
   const [months, setMonths] = useState([]);
+  const [planowanie, setPlanowanie] = useState({});
+  const planRef = useRef({});
+  useEffect(() => { planRef.current = planowanie; }, [planowanie]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
@@ -455,6 +618,8 @@ const useData = () => {
     try {
       const r = await api('/schedule');
       if (r.success) { setShifts(r.shifts || []); setRoster(r.roster || []); setMeta(r.meta || {}); setMonths(r.months || []); }
+      const rp = await api('/planning');
+      if (rp.success) setPlanowanie(rp.planowanie || {});
     } catch { show('Błąd synchronizacji', 'error'); }
     setLoading(false);
   }, []);
@@ -489,7 +654,38 @@ const useData = () => {
 
   useEffect(() => { sync(); }, [sync]);
 
-  return { shifts, roster, meta, months, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule };
+  // ── Akcje planowania (zapisują cały obiekt planu do backendu) ──
+  const persistPlan = useCallback(async (next) => {
+    planRef.current = next;
+    setPlanowanie(next);
+    try { await api('/planning', 'PUT', { planowanie: next }); } catch { show('Błąd zapisu planu', 'error'); }
+  }, []);
+  const setPlanTotal = useCallback((ym, val) => {
+    const cur = planRef.current;
+    persistPlan({ ...cur, [ym]: { ...(cur[ym] || {}), planTotal: Number(val) || 0 } });
+  }, [persistPlan]);
+  const applyGodziny = useCallback((ym, kind, mode, hours, date, weekdays) => {
+    const h = Number(hours) || 0;
+    let dates = [];
+    if (mode === 'day' && date) dates = [date];
+    else if (mode === 'month') dates = dniMiesiaca(ym);
+    else if (mode === 'schemat') dates = dniMiesiaca(ym).filter(d => { const [Y, M, D] = d.split('-').map(Number); return (weekdays || []).includes(new Date(Y, M - 1, D).getDay()); });
+    if (!dates.length) { show('Wybierz dzień lub dni', 'error'); return; }
+    const cur = planRef.current;
+    const mies = { ...(cur[ym] || {}) };
+    const mapa = { ...(mies[kind] || {}) };
+    dates.forEach(d => { if (h > 0) mapa[d] = h; else delete mapa[d]; });
+    mies[kind] = mapa;
+    persistPlan({ ...cur, [ym]: mies });
+    show(`${kind === 'mgr' ? 'MGR' : 'MGR funkcyjne'}: ${h}h ${mode === 'month' ? 'na cały miesiąc' : mode === 'schemat' ? 'wg schematu' : 'w wybrany dzień'} (${dates.length} dni)`);
+  }, [persistPlan]);
+  const clearGodziny = useCallback((ym, kind) => {
+    const cur = planRef.current;
+    persistPlan({ ...cur, [ym]: { ...(cur[ym] || {}), [kind]: {} } });
+    show('Wyczyszczono ręczne godziny');
+  }, [persistPlan]);
+
+  return { shifts, roster, meta, months, planowanie, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny };
 };
 
 // ===================== MAIN =====================
@@ -507,6 +703,7 @@ export default function App() {
     import: <ImportPage data={data} />,
     schedule: <SchedulePage data={data} />,
     print: <PrintPage data={data} />,
+    plan: <PlanPage data={data} />,
     settings: <SettingsPage data={data} />
   };
 
