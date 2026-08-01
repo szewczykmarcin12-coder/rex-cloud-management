@@ -63,7 +63,7 @@ const sumaDodatkow = (mapaDni) => Object.values(mapaDni || {}).reduce((a, v) => 
 const sumaManualWszystkie = (planowanie) => Object.values(planowanie || {}).reduce((a, p) => a + sumaDodatkow(p.mgr) + sumaDodatkow(p.mgrFunk), 0);
 const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
   const mShifts = shifts.filter(s => (s.date || '').slice(0, 7) === ym);
-  const crew = mShifts.filter(s => !jestMgr(s.station) && !jestUczen(s) && !jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const crew = mShifts.filter(s => !jestMgr(s.station) && !jestSzkolenie(s)).reduce((a, s) => a + godzZ(s), 0);
   const szkol = mShifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
   const mgrSched = mShifts.filter(s => (s.station || '').toUpperCase() === 'MANAGER').reduce((a, s) => a + godzZ(s), 0);
   const funkSched = mShifts.filter(s => (s.station || '').toUpperCase() === 'MGR FUNKCYJNE').reduce((a, s) => a + godzZ(s), 0);
@@ -170,7 +170,7 @@ const Sidebar = ({ page, setPage, logout }) => {
 
 const Dashboard = ({ data, setPage }) => {
   // Instruktor (osoba szkoląca) liczony do CREW; uczeń do szkoleniowych. Obie osoby liczone.
-  const gCrew = data.shifts.filter(s => !jestMgr(s.station) && !jestUczen(s) && !jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const gCrew = data.shifts.filter(s => !jestMgr(s.station) && !jestSzkolenie(s)).reduce((a, s) => a + godzZ(s), 0);
   const gSzk = data.shifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
   const gMgrSched = data.shifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
   const gManual = sumaManualWszystkie(data.planowanie); // ręczne godziny MGR + funkcyjne (wszystkie miesiące)
@@ -204,7 +204,7 @@ const Dashboard = ({ data, setPage }) => {
                 const [y, mo] = m.key.split('-').map(Number);
                 const label = `${months[mo - 1]} ${y}`;
                 const mShifts = data.shifts.filter(s => (s.date || '').slice(0, 7) === m.key);
-                const mH = mShifts.reduce((a, s) => a + godzZ(s), 0);
+                const mH = mShifts.filter(s => !jestInstruktor(s)).reduce((a, s) => a + godzZ(s), 0);
                 return (
                   <div key={m.key} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ backgroundColor: colors.primary.bgLight }}>
                     <div className="flex items-center gap-3"><Calendar className="w-5 h-5" style={{ color: colors.primary.medium }} /><div><p className="font-semibold" style={{ color: colors.primary.darkest }}>{label}</p><p className="text-xs" style={{ color: colors.primary.light }}>{m.count} zmian · {mH.toFixed(1)} h</p></div></div>

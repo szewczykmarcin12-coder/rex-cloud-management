@@ -66,7 +66,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
   const d = new Date(dateStr);
 
   const dzienne = shifts.filter(s => s.date === dateStr);
-  const sumaGodz = dzienne.reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
+  const sumaGodz = dzienne.filter(s=>!jestInstr(s)).reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
 
   // ── NAGŁÓWEK ──
   doc.setFillColor(...NAVY); doc.rect(0,0,W,21,'F');
@@ -105,9 +105,10 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
     doc.setFillColor(...kol); doc.roundedRect(x, yy, colW, headH, 1, 1, 'F');
     doc.setTextColor(255,255,255); doc.setFont('Lib','bold'); doc.setFontSize(8.3);
     doc.text(st, x + 2.5, yy + headH - 2);
-    const gsum = ludzie.reduce((a,s)=>a+godzZmiany(s),0);
+    const gsum = ludzie.filter(s=>!jestInstr(s)).reduce((a,s)=>a+godzZmiany(s),0);
+    const samiInstr = ludzie.length > 0 && ludzie.every(s=>jestInstr(s));
     doc.setFontSize(7.4);
-    doc.text(`${ludzie.length} os. · ${gsum.toFixed(1)}h`, x + colW - 2.5, yy + headH - 2, { align:'right' });
+    doc.text(samiInstr ? `${ludzie.length} os. · szkoli` : `${ludzie.length} os. · ${gsum.toFixed(1)}h`, x + colW - 2.5, yy + headH - 2, { align:'right' });
     // wiersze
     let ry = yy + headH;
     ludzie.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
@@ -146,7 +147,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
   const sInner = sideW - 6;
 
   // Podsumowanie godzin — instruktor do CREW, uczeń do szkoleniowych (obie osoby liczone)
-  const gCrew = dzienne.filter(s=>!jestMgrPdf(s.station)&&!jestUczen(s)&&!jestSzkStacja(s)).reduce((a,s)=>a+godzZmiany(s),0);
+  const gCrew = dzienne.filter(s=>!jestMgrPdf(s.station)&&!jestSzkolenie(s)).reduce((a,s)=>a+godzZmiany(s),0);
   const gMgr  = dzienne.filter(s=>jestMgrPdf(s.station)).reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
   const gSzk  = dzienne.filter(s=>jestUczen(s)||jestSzkStacja(s)).reduce((a,s)=>a+godzZmiany(s),0);
 
