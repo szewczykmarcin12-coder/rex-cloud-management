@@ -173,7 +173,7 @@ const Sidebar = ({ page, setPage, logout, role }) => {
     { id: 'plan', label: 'Plan godzin', icon: Clock },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
-  const menu = role === 'asm' ? pelne : pelne.filter(m => m.id === 'print');
+  const menu = role === 'asm' ? pelne : pelne.filter(m => ['dashboard', 'schedule', 'print'].includes(m.id));
   return (
     <div className="w-72 h-screen flex flex-col" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
       <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany · wydruk'}</p></div></div></div>
@@ -746,10 +746,10 @@ export default function App() {
   const sesja = store.get('admin_session');
   const [authed, setAuthed] = useState(() => !!sesja);
   const [role, setRole] = useState(() => (sesja && sesja.role) || 'kierownik');
-  const [page, setPage] = useState(() => (sesja && sesja.role === 'asm') ? 'dashboard' : 'print');
+  const [page, setPage] = useState('dashboard');
   const data = useData();
-  const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setPage('print'); };
-  const onLogin = (r) => { setRole(r); setAuthed(true); setPage(r === 'asm' ? 'dashboard' : 'print'); };
+  const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setPage('dashboard'); };
+  const onLogin = (r) => { setRole(r); setAuthed(true); setPage('dashboard'); };
 
   if (!authed) return <Login onLogin={onLogin} />;
 
@@ -761,9 +761,9 @@ export default function App() {
     plan: <PlanPage data={data} />,
     settings: <SettingsPage data={data} />
   };
-  // Kierownik zmiany ma dostęp wyłącznie do wydruku
-  const dozwolone = role === 'asm' ? Object.keys(pages) : ['print'];
-  const widok = dozwolone.includes(page) ? page : 'print';
+  // Kierownik zmiany: strona domowa, grafik i wydruk. ASM: wszystko.
+  const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'schedule', 'print'];
+  const widok = dozwolone.includes(page) ? page : 'dashboard';
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>

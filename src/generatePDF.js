@@ -108,7 +108,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
     const gsum = ludzie.filter(s=>!jestInstr(s)).reduce((a,s)=>a+godzZmiany(s),0);
     const samiInstr = ludzie.length > 0 && ludzie.every(s=>jestInstr(s));
     doc.setFontSize(7.4);
-    doc.text(samiInstr ? `${ludzie.length} os. · szkoli` : `${ludzie.length} os. · ${gsum.toFixed(1)}h`, x + colW - 2.5, yy + headH - 2, { align:'right' });
+    doc.text(samiInstr ? `szkoli` : `${gsum.toFixed(1)}h`, x + colW - 2.5, yy + headH - 2, { align:'right' });
     // wiersze
     let ry = yy + headH;
     ludzie.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
