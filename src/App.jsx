@@ -154,7 +154,6 @@ const Login = ({ onLogin }) => {
             )}
             <button type="submit" disabled={loading} className="w-full text-white font-semibold py-3 rounded-xl" style={{ backgroundColor: loading ? colors.primary.light : colors.primary.medium }}>{loading ? 'Sprawdzam...' : 'Zaloguj się'}</button>
           </form>
-          <p className="text-xs text-center mt-4" style={{ color: colors.primary.light }}>{tryb === 'asm' ? 'Domyślnie: login „asm", hasło „asm12345" (zmień w Ustawieniach)' : 'Domyślny PIN: 123456'}</p>
         </div>
       </div>
     </div>
