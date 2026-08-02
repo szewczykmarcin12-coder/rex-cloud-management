@@ -115,41 +115,57 @@ const Header = ({ title, subtitle, children }) => (<div className="bg-white/90 b
 // ===================== LOGIN =====================
 
 const Login = ({ onLogin }) => {
+  const [tryb, setTryb] = useState('pin'); // 'pin' | 'asm'
   const [pin, setPin] = useState('');
+  const [login, setLogin] = useState('');
+  const [haslo, setHaslo] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
-      const r = await api('/admin-auth', 'POST', { pin });
-      if (r.success) { store.set('admin_session', { at: Date.now() }); onLogin(); }
-      else setErr(r.error || 'Nieprawidłowy PIN');
+      const body = tryb === 'asm' ? { login, password: haslo } : { pin };
+      const r = await api('/admin-auth', 'POST', body);
+      if (r.success) { store.set('admin_session', { at: Date.now(), role: r.role }); onLogin(r.role); }
+      else setErr(r.error || 'Błąd logowania');
     } catch { setErr('Błąd połączenia z serwerem'); }
     setLoading(false);
   };
+  const zakl = (id, txt) => (
+    <button type="button" onClick={() => { setTryb(id); setErr(''); }} className="flex-1 py-2 rounded-lg text-sm font-medium transition-all" style={{ backgroundColor: tryb === id ? colors.primary.medium : 'transparent', color: tryb === id ? 'white' : colors.primary.light }}>{txt}</button>
+  );
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #051845, ${colors.primary.darkest})` }}>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-12"><div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-8 h-8 text-white" /></div><div><span className="text-white text-3xl font-light">REX</span><span className="text-3xl font-light ml-2" style={{ color: colors.primary.bg }}>Cloud</span></div></div>
         <div className="bg-white rounded-2xl p-8">
           <div className="flex items-center justify-center gap-2 mb-2"><Lock className="w-5 h-5" style={{ color: colors.primary.medium }} /><h2 className="text-2xl font-semibold" style={{ color: colors.primary.darkest }}>Panel Administratora</h2></div>
-          <p className="text-center text-sm mb-6" style={{ color: colors.primary.light }}>Dostęp tylko dla kierownika</p>
+          <p className="text-center text-sm mb-5" style={{ color: colors.primary.light }}>{tryb === 'asm' ? 'ASM — pełny dostęp' : 'Kierownik zmiany — wydruk grafiku'}</p>
+          <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ backgroundColor: colors.primary.bgLight }}>{zakl('pin', 'Kierownik (PIN)')}{zakl('asm', 'ASM')}</div>
           {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
           <form onSubmit={submit} className="space-y-4">
-            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN administratora</label><input type="password" value={pin} onChange={e => setPin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none text-center text-2xl tracking-widest" style={{ borderColor: colors.primary.bg }} placeholder="••••••" maxLength={6} disabled={loading} autoFocus /></div>
+            {tryb === 'pin' ? (
+              <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN kierownika</label><input type="password" value={pin} onChange={e => setPin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none text-center text-2xl tracking-widest" style={{ borderColor: colors.primary.bg }} placeholder="••••••" maxLength={6} inputMode="numeric" disabled={loading} autoFocus /></div>
+            ) : (
+              <>
+                <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>Login ASM</label><input type="text" value={login} onChange={e => setLogin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="login" disabled={loading} autoFocus /></div>
+                <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>Hasło ASM</label><input type="password" value={haslo} onChange={e => setHaslo(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="hasło" disabled={loading} /></div>
+              </>
+            )}
             <button type="submit" disabled={loading} className="w-full text-white font-semibold py-3 rounded-xl" style={{ backgroundColor: loading ? colors.primary.light : colors.primary.medium }}>{loading ? 'Sprawdzam...' : 'Zaloguj się'}</button>
           </form>
-          <p className="text-xs text-center mt-4" style={{ color: colors.primary.light }}>Domyślny PIN: 123456 (zmień w Ustawieniach)</p>
+          <p className="text-xs text-center mt-4" style={{ color: colors.primary.light }}>{tryb === 'asm' ? 'Domyślnie: login „asm", hasło „asm12345" (zmień w Ustawieniach)' : 'Domyślny PIN: 123456'}</p>
         </div>
       </div>
     </div>
   );
+
 };
 
 // ===================== SIDEBAR =====================
 
-const Sidebar = ({ page, setPage, logout }) => {
-  const menu = [
+const Sidebar = ({ page, setPage, logout, role }) => {
+  const pelne = [
     { id: 'dashboard', label: 'Strona domowa', icon: Home },
     { id: 'import', label: 'Import z Excel', icon: Upload },
     { id: 'schedule', label: 'Grafik', icon: LayoutGrid },
@@ -157,9 +173,10 @@ const Sidebar = ({ page, setPage, logout }) => {
     { id: 'plan', label: 'Plan godzin', icon: Clock },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
+  const menu = role === 'asm' ? pelne : pelne.filter(m => m.id === 'print');
   return (
     <div className="w-72 h-screen flex flex-col" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
-      <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">Panel administratora</p></div></div></div>
+      <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany · wydruk'}</p></div></div></div>
       <nav className="flex-1 p-3 space-y-1">{menu.map(m => (<button key={m.id} onClick={() => setPage(m.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${page === m.id ? 'bg-white/15 text-white shadow-lg' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}><m.icon className="w-5 h-5" /><span className="font-medium">{m.label}</span></button>))}</nav>
       <div className="p-4 border-t border-white/10"><button onClick={logout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-red-400 hover:bg-white/5 transition-all"><LogOut className="w-5 h-5" /><span className="font-medium">Wyloguj się</span></button></div>
     </div>
@@ -450,34 +467,69 @@ const PrintPage = ({ data }) => {
 // ===================== SETTINGS =====================
 
 const SettingsPage = ({ data }) => {
-  const [cur, setCur] = useState('');
-  const [nw, setNw] = useState('');
-  const [nw2, setNw2] = useState('');
+  // Zmiana PIN kierownika zmiany — wymaga hasła ASM
+  const [pinNew, setPinNew] = useState('');
+  const [pinNew2, setPinNew2] = useState('');
+  const [pinAsmPass, setPinAsmPass] = useState('');
+  // Zmiana poświadczeń ASM — wymaga obecnego hasła ASM
+  const [asmLogin, setAsmLogin] = useState('');
+  const [asmCur, setAsmCur] = useState('');
+  const [asmNew, setAsmNew] = useState('');
+  const [asmNew2, setAsmNew2] = useState('');
+  useEffect(() => { api('/admin-auth').then(r => { if (r.success && r.asmLogin) setAsmLogin(r.asmLogin); }).catch(() => {}); }, []);
+
   const changePin = async () => {
-    if (!cur || !nw) { data.show('Wypełnij pola', 'error'); return; }
-    if (nw !== nw2) { data.show('Nowe PINy się różnią', 'error'); return; }
-    if (!/^\d{6}$/.test(nw)) { data.show('PIN musi mieć dokładnie 6 cyfr', 'error'); return; }
-    const r = await api('/admin-auth', 'PUT', { currentPin: cur, newPin: nw });
-    if (r.success) { data.show('PIN zmieniony'); setCur(''); setNw(''); setNw2(''); }
+    if (!pinAsmPass) { data.show('Podaj hasło ASM', 'error'); return; }
+    if (!/^\d{6}$/.test(pinNew)) { data.show('PIN musi mieć dokładnie 6 cyfr', 'error'); return; }
+    if (pinNew !== pinNew2) { data.show('Nowe PINy się różnią', 'error'); return; }
+    const r = await api('/admin-auth', 'PUT', { newPin: pinNew, asmPassword: pinAsmPass });
+    if (r.success) { data.show('PIN kierownika zmieniony'); setPinNew(''); setPinNew2(''); setPinAsmPass(''); }
+    else data.show(r.error || 'Błąd', 'error');
+  };
+  const changeAsm = async () => {
+    if (!asmCur) { data.show('Podaj obecne hasło ASM', 'error'); return; }
+    if (asmNew && asmNew.length < 6) { data.show('Nowe hasło min. 6 znaków', 'error'); return; }
+    if (asmNew !== asmNew2) { data.show('Nowe hasła się różnią', 'error'); return; }
+    if (!asmNew && !asmLogin.trim()) { data.show('Nic do zmiany', 'error'); return; }
+    const body = { currentPassword: asmCur };
+    if (asmLogin.trim()) body.newLogin = asmLogin.trim();
+    if (asmNew) body.newPassword = asmNew;
+    const r = await api('/admin-auth', 'PUT', body);
+    if (r.success) { data.show('Poświadczenia ASM zaktualizowane'); setAsmCur(''); setAsmNew(''); setAsmNew2(''); }
     else data.show(r.error || 'Błąd', 'error');
   };
   const clearSchedule = async () => {
     if (!confirm('Usunąć cały grafik z systemu? Pracownicy nie zobaczą żadnych zmian.')) return;
     await data.clearSchedule();
   };
+  const inp = "w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none";
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Ustawienia" subtitle="Konfiguracja panelu" />
+      <Header title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
-          <h3 className="text-lg font-bold mb-4" style={{ color: colors.primary.darkest }}>Zmień PIN administratora</h3>
+          <h3 className="text-lg font-bold mb-1" style={{ color: colors.primary.darkest }}>PIN kierownika zmiany</h3>
+          <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Kierownicy zmiany logują się PIN-em i mają dostęp tylko do wydruku grafiku. Zmiana wymaga hasła ASM.</p>
           <div className="space-y-3">
-            <input type="password" value={cur} onChange={e => setCur(e.target.value)} placeholder="Obecny PIN (6 cyfr)" maxLength={6} inputMode="numeric" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none tracking-widest" style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={nw} onChange={e => setNw(e.target.value)} placeholder="Nowy PIN (6 cyfr)" maxLength={6} inputMode="numeric" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none tracking-widest" style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={nw2} onChange={e => setNw2(e.target.value)} placeholder="Powtórz nowy PIN" maxLength={6} inputMode="numeric" className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none tracking-widest" style={{ borderColor: colors.primary.bg }} />
-            <Btn onClick={changePin}>Zapisz nowy PIN</Btn>
+            <input type="password" value={pinNew} onChange={e => setPinNew(e.target.value)} placeholder="Nowy PIN (6 cyfr)" maxLength={6} inputMode="numeric" className={inp + " tracking-widest"} style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={pinNew2} onChange={e => setPinNew2(e.target.value)} placeholder="Powtórz nowy PIN" maxLength={6} inputMode="numeric" className={inp + " tracking-widest"} style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={pinAsmPass} onChange={e => setPinAsmPass(e.target.value)} placeholder="Hasło ASM (potwierdzenie)" className={inp} style={{ borderColor: colors.primary.bg }} />
+            <Btn onClick={changePin}>Zapisz PIN kierownika</Btn>
           </div>
         </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #082567` }}>
+          <h3 className="text-lg font-bold mb-1" style={{ color: colors.primary.darkest }}>Login i hasło ASM</h3>
+          <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Pełny dostęp (układanie i import grafiku, plan godzin). Zmienić może wyłącznie ASM, podając obecne hasło.</p>
+          <div className="space-y-3">
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Login ASM</label><input type="text" value={asmLogin} onChange={e => setAsmLogin(e.target.value)} placeholder="login" className={inp} style={{ borderColor: colors.primary.bg }} /></div>
+            <input type="password" value={asmNew} onChange={e => setAsmNew(e.target.value)} placeholder="Nowe hasło ASM (min. 6 znaków, puste = bez zmiany)" className={inp} style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={asmNew2} onChange={e => setAsmNew2(e.target.value)} placeholder="Powtórz nowe hasło" className={inp} style={{ borderColor: colors.primary.bg }} />
+            <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#082567' }} />
+            <Btn onClick={changeAsm}>Zapisz poświadczenia ASM</Btn>
+          </div>
+        </div>
+
         <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #E74C3C` }}>
           <h3 className="text-lg font-bold mb-2" style={{ color: colors.primary.darkest }}>Strefa zagrożenia</h3>
           <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Usuń cały grafik z bazy danych.</p>
@@ -691,12 +743,15 @@ const useData = () => {
 // ===================== MAIN =====================
 
 export default function App() {
-  const [authed, setAuthed] = useState(() => !!store.get('admin_session'));
-  const [page, setPage] = useState('dashboard');
+  const sesja = store.get('admin_session');
+  const [authed, setAuthed] = useState(() => !!sesja);
+  const [role, setRole] = useState(() => (sesja && sesja.role) || 'kierownik');
+  const [page, setPage] = useState(() => (sesja && sesja.role === 'asm') ? 'dashboard' : 'print');
   const data = useData();
-  const logout = () => { store.del('admin_session'); setAuthed(false); setPage('dashboard'); };
+  const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setPage('print'); };
+  const onLogin = (r) => { setRole(r); setAuthed(true); setPage(r === 'asm' ? 'dashboard' : 'print'); };
 
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+  if (!authed) return <Login onLogin={onLogin} />;
 
   const pages = {
     dashboard: <Dashboard data={data} setPage={setPage} />,
@@ -706,11 +761,14 @@ export default function App() {
     plan: <PlanPage data={data} />,
     settings: <SettingsPage data={data} />
   };
+  // Kierownik zmiany ma dostęp wyłącznie do wydruku
+  const dozwolone = role === 'asm' ? Object.keys(pages) : ['print'];
+  const widok = dozwolone.includes(page) ? page : 'print';
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
-      <Sidebar page={page} setPage={setPage} logout={logout} />
-      <div className="flex-1 flex flex-col overflow-hidden"><div className="flex-1 overflow-y-auto">{pages[page] || pages.dashboard}</div></div>
+      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} />
+      <div className="flex-1 flex flex-col overflow-hidden"><div className="flex-1 overflow-y-auto">{pages[widok] || pages.print}</div></div>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </div>
   );
