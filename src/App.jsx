@@ -76,6 +76,16 @@ const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
   const planTotal = Number(p.planTotal) || 0;
   return { crew, szkol, mgrSched, mgrManual, funkSched, funkManual, mgr, funk, total, planTotal, mShifts };
 };
+
+// ── Giełda zamian (wyświetlanie) ──
+const dfmt = (ds) => { const d = new Date(ds); const dni = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb']; return `${dni[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const opisZmiany = (s) => `${dfmt(s.date)} · ${s.station} · ${s.start}–${s.end} (${s.hours}h)`;
+const statusZamiany = (s) => {
+  if (s.status === 'approved') return { txt: `Zatwierdzona — przejęła: ${s.approvedVolunteer}`, kol: '#2E9E5B', bg: '#e9f7ef' };
+  if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#E74C3C', bg: '#fdecea' };
+  if (s.status === 'cancelled') return { txt: 'Anulowana', kol: '#94a3b8', bg: '#f1f5f9' };
+  return s.volunteers.length ? { txt: `Zgłoszeń: ${s.volunteers.length}`, kol: '#F5B000', bg: '#fff8e6' } : { txt: 'Otwarta', kol: colors.primary.medium, bg: colors.primary.bgLight };
+};
 const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
 
 const store = {
@@ -163,20 +173,21 @@ const Login = ({ onLogin }) => {
 
 // ===================== SIDEBAR =====================
 
-const Sidebar = ({ page, setPage, logout, role }) => {
+const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
   const pelne = [
     { id: 'dashboard', label: 'Strona domowa', icon: Home },
     { id: 'import', label: 'Import z Excel', icon: Upload },
     { id: 'schedule', label: 'Grafik', icon: LayoutGrid },
     { id: 'print', label: 'Drukuj grafik', icon: Printer },
     { id: 'plan', label: 'Plan godzin', icon: Clock },
+    { id: 'swaps', label: 'Zamiany', icon: RefreshCw, badge: pendingSwaps },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
   const menu = role === 'asm' ? pelne : pelne.filter(m => ['dashboard', 'schedule', 'print'].includes(m.id));
   return (
     <div className="w-72 h-screen flex flex-col" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
       <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany · wydruk'}</p></div></div></div>
-      <nav className="flex-1 p-3 space-y-1">{menu.map(m => (<button key={m.id} onClick={() => setPage(m.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${page === m.id ? 'bg-white/15 text-white shadow-lg' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}><m.icon className="w-5 h-5" /><span className="font-medium">{m.label}</span></button>))}</nav>
+      <nav className="flex-1 p-3 space-y-1">{menu.map(m => (<button key={m.id} onClick={() => setPage(m.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${page === m.id ? 'bg-white/15 text-white shadow-lg' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}><m.icon className="w-5 h-5" /><span className="font-medium">{m.label}</span>{m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}</button>))}</nav>
       <div className="p-4 border-t border-white/10"><button onClick={logout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-red-400 hover:bg-white/5 transition-all"><LogOut className="w-5 h-5" /><span className="font-medium">Wyloguj się</span></button></div>
     </div>
   );
@@ -650,6 +661,80 @@ const PlanPage = ({ data }) => {
   );
 };
 
+// ===================== GIEŁDA ZAMIAN =====================
+
+const AdminSwaps = ({ data }) => {
+  const doAkceptacji = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0);
+  const oczekujace = data.swaps.filter(s => s.status === 'open' && s.volunteers.length === 0);
+  const historia = data.swaps.filter(s => ['approved', 'rejected', 'cancelled'].includes(s.status)).sort((a, b) => b.createdAt - a.createdAt);
+  const [wyb, setWyb] = useState({});
+  const chosen = (s) => wyb[s.id] || s.volunteers[0];
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header title="Giełda zamian" subtitle="Prośby o zamianę od pracowników — akceptacja przenosi zmianę na grafik" />
+      <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+        <div className="flex items-center justify-between">
+          <div />
+          <Btn variant="secondary" icon={RefreshCw} onClick={data.refreshSwaps}>Odśwież</Btn>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #F5B000' }}>
+          <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Do akceptacji ({doAkceptacji.length})</h3>
+          {doAkceptacji.length === 0 ? <p className="text-sm" style={{ color: colors.primary.light }}>Brak zamian czekających na akceptację.</p> : (
+            <div className="space-y-3">
+              {doAkceptacji.map(s => (
+                <div key={s.id} className="rounded-xl p-4" style={{ backgroundColor: colors.primary.bgLight }}>
+                  <p className="text-sm" style={{ color: colors.primary.dark }}><b style={{ color: colors.primary.darkest }}>{s.requester}</b> oddaje zmianę: {opisZmiany(s.shift)}</p>
+                  {s.note && <p className="text-xs italic mt-0.5" style={{ color: colors.primary.light }}>„{s.note}"</p>}
+                  <p className="text-xs mt-3 mb-1" style={{ color: colors.primary.light }}>Zgłoszeni — wybierz, kto przejmie:</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {s.volunteers.map(v => { const on = chosen(s) === v; return (
+                      <button key={v} onClick={() => setWyb(w => ({ ...w, [s.id]: v }))} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{v}</button>
+                    ); })}
+                  </div>
+                  <div className="flex gap-2">
+                    <Btn onClick={() => data.approveSwap(s.id, chosen(s))}>Zatwierdź → {chosen(s)}</Btn>
+                    <Btn variant="secondary" onClick={() => data.rejectSwap(s.id)}>Odrzuć</Btn>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {oczekujace.length > 0 && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Otwarte — czekają na chętnych ({oczekujace.length})</h3>
+            <div className="space-y-2">
+              {oczekujace.map(s => (
+                <div key={s.id} className="rounded-xl p-3 flex items-center justify-between" style={{ backgroundColor: colors.primary.bgLight }}>
+                  <p className="text-sm" style={{ color: colors.primary.dark }}><b>{s.requester}</b> — {opisZmiany(s.shift)}</p>
+                  <span className="text-xs" style={{ color: colors.primary.light }}>brak zgłoszeń</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #94a3b8' }}>
+          <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Historia ({historia.length})</h3>
+          {historia.length === 0 ? <p className="text-sm" style={{ color: colors.primary.light }}>Brak zakończonych zamian.</p> : (
+            <div className="space-y-2">
+              {historia.map(s => { const st = statusZamiany(s); return (
+                <div key={s.id} className="rounded-xl p-3" style={{ backgroundColor: st.bg }}>
+                  <p className="text-xs" style={{ color: colors.primary.dark }}><b>{s.requester}</b> — {opisZmiany(s.shift)}</p>
+                  <p className="text-xs mt-0.5 font-medium" style={{ color: st.kol }}>{st.txt}</p>
+                </div>
+              ); })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ===================== DATA HOOK =====================
 
 const useData = () => {
@@ -660,6 +745,7 @@ const useData = () => {
   const [planowanie, setPlanowanie] = useState({});
   const planRef = useRef({});
   useEffect(() => { planRef.current = planowanie; }, [planowanie]);
+  const [swaps, setSwaps] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
@@ -671,6 +757,8 @@ const useData = () => {
       if (r.success) { setShifts(r.shifts || []); setRoster(r.roster || []); setMeta(r.meta || {}); setMonths(r.months || []); }
       const rp = await api('/planning');
       if (rp.success) setPlanowanie(rp.planowanie || {});
+      const rs = await api('/swaps');
+      if (rs.success) setSwaps(rs.swaps || []);
     } catch { show('Błąd synchronizacji', 'error'); }
     setLoading(false);
   }, []);
@@ -736,7 +824,21 @@ const useData = () => {
     show('Wyczyszczono ręczne godziny');
   }, [persistPlan]);
 
-  return { shifts, roster, meta, months, planowanie, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny };
+  const refreshSwaps = useCallback(async () => {
+    try { const rs = await api('/swaps'); if (rs.success) setSwaps(rs.swaps || []); } catch {}
+  }, []);
+  const approveSwap = useCallback(async (id, volunteer) => {
+    const r = await api('/swaps', 'PUT', { id, action: 'approve', volunteer });
+    if (r.success) { show(`Zamiana zatwierdzona — zmianę przejmuje ${r.swap.approvedVolunteer}`); await sync(); }
+    else show(r.error || 'Błąd zatwierdzania', 'error');
+  }, [sync]);
+  const rejectSwap = useCallback(async (id) => {
+    const r = await api('/swaps', 'PUT', { id, action: 'reject' });
+    if (r.success) { show('Zamiana odrzucona'); await refreshSwaps(); }
+    else show(r.error || 'Błąd', 'error');
+  }, [refreshSwaps]);
+
+  return { shifts, roster, meta, months, planowanie, swaps, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap };
 };
 
 // ===================== MAIN =====================
@@ -758,15 +860,17 @@ export default function App() {
     schedule: <SchedulePage data={data} />,
     print: <PrintPage data={data} />,
     plan: <PlanPage data={data} />,
+    swaps: <AdminSwaps data={data} />,
     settings: <SettingsPage data={data} />
   };
   // Kierownik zmiany: strona domowa, grafik i wydruk. ASM: wszystko.
   const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'schedule', 'print'];
   const widok = dozwolone.includes(page) ? page : 'dashboard';
+  const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length;
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
-      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} />
+      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} />
       <div className="flex-1 flex flex-col overflow-hidden"><div className="flex-1 overflow-y-auto">{pages[widok] || pages.print}</div></div>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </div>
