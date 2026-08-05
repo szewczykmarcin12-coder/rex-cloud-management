@@ -49,6 +49,20 @@ const paraOpis = (s) => {
 };
 
 const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+const monthsGen = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
+const dniPelne = ['niedziela','poniedziałek','wtorek','środa','czwartek','piątek','sobota'];
+const ymd = (d) => (typeof d === 'string' ? d : d.toISOString().split('T')[0]);
+
+// ── Czas pracy (Working Time) — oś od 06:00 ──
+const WT_BASE = 360;
+const wtToMin = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
+const wtClock = (m) => { m = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+const wtRel = (t) => ((wtToMin(t) - WT_BASE) + 1440) % 1440;
+const wtDur = (a, b) => { let s = wtToMin(a), e = wtToMin(b); if (e <= s) e += 1440; return e - s; };
+const wtKey = (s) => `${s.name}|${s.date}|${s.station}|${s.start}|${s.end}`;
+const wtMonday = (ds) => { const d = new Date(ds); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return ymd(d); };
+const wtHours = (min) => (min / 60).toFixed(2).replace('.', ',');
+const WT_TICKS = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
 
 // ── Planowanie godzin (plan miesiąca + ręczne godziny MGR / MGR funkcyjne) ──
 const dniMiesiaca = (ym) => {
@@ -177,13 +191,13 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
   const pelne = [
     { id: 'dashboard', label: 'Strona domowa', icon: Home },
     { id: 'import', label: 'Import z Excel', icon: Upload },
-    { id: 'schedule', label: 'Grafik', icon: LayoutGrid },
+    { id: 'wt', label: 'Grafik', icon: LayoutGrid },
     { id: 'print', label: 'Drukuj grafik', icon: Printer },
     { id: 'plan', label: 'Plan godzin', icon: Clock },
     { id: 'swaps', label: 'Zamiany', icon: RefreshCw, badge: pendingSwaps },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
-  const menu = role === 'asm' ? pelne : pelne.filter(m => ['dashboard', 'schedule', 'print'].includes(m.id));
+  const menu = role === 'asm' ? pelne : pelne.filter(m => ['dashboard', 'wt', 'print'].includes(m.id));
   return (
     <div className="w-72 h-screen flex flex-col" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
       <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany · wydruk'}</p></div></div></div>
@@ -249,7 +263,7 @@ const Dashboard = ({ data, setPage }) => {
           <div className="flex flex-wrap gap-3">
             <Btn icon={Upload} onClick={() => setPage('import')}>Importuj grafik z Excel</Btn>
             <Btn variant="accent" icon={Printer} onClick={() => setPage('print')}>Drukuj grafik</Btn>
-            <Btn variant="secondary" icon={LayoutGrid} onClick={() => setPage('schedule')}>Podgląd grafiku</Btn>
+            <Btn variant="secondary" icon={LayoutGrid} onClick={() => setPage('wt')}>Podgląd grafiku</Btn>
             <Btn variant="secondary" icon={RefreshCw} onClick={data.sync} loading={data.loading}>Odśwież</Btn>
           </div>
         </div>
@@ -735,6 +749,207 @@ const AdminSwaps = ({ data }) => {
   );
 };
 
+// ===================== GRAFIK / CZAS PRACY (Working Time) =====================
+
+const WTBar = ({ start, end, color, breaks }) => {
+  const left = (wtRel(start) / 1440) * 100;
+  const width = (wtDur(start, end) / 1440) * 100;
+  return (
+    <div className="absolute top-0 h-full rounded" style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%`, backgroundColor: color }}>
+      {(breaks || []).map((b, i) => { const bl = ((wtRel(b.start) - wtRel(start) + 1440) % 1440) / wtDur(start, end) * 100; const bw = wtDur(b.start, b.end) / wtDur(start, end) * 100; return <div key={i} className="absolute top-0 h-full" style={{ left: `${bl}%`, width: `${Math.max(bw, 1)}%`, backgroundColor: b.platna === false ? '#E74C3C' : '#F5B000' }} title={`${b.type} ${b.start}-${b.end}`} />; })}
+    </div>
+  );
+};
+const WTGrid = () => (<>{WT_TICKS.map((h) => <div key={h} className="absolute top-0 bottom-0 border-l" style={{ left: `${((h - 6) * 60 / 1440) * 100}%`, borderColor: '#eef2f7' }} />)}</>);
+
+const WTBreaks = ({ actual, onSave, locked, onClose }) => {
+  const breaks = actual.breaks || [];
+  const upd = (list) => { if (locked) return; onSave(list); };
+  const add = () => upd([...breaks, { type: 'CivilBreak', platna: false, start: '16:00', end: '16:30' }]);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>Przerwy</h3><button onClick={onClose}><X size={20} className="text-slate-400" /></button></div>
+        <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Przerwy tylko dla UOP. Spóźnienie zmienia przerwę płatną na niepłatną.</p>
+        <div className="space-y-2 mb-4">
+          {breaks.length === 0 ? <p className="text-sm text-slate-400">Brak przerw.</p> : breaks.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-lg p-2" style={{ backgroundColor: colors.primary.bgLight }}>
+              <select disabled={locked} value={b.platna ? 'p' : 'n'} onChange={(e) => { const l = [...breaks]; l[i] = { ...b, platna: e.target.value === 'p' }; upd(l); }} className="px-2 py-1 rounded border text-xs" style={{ borderColor: colors.primary.bg }}><option value="n">Niepłatna</option><option value="p">Płatna</option></select>
+              <input disabled={locked} value={b.start} onChange={(e) => { const l = [...breaks]; l[i] = { ...b, start: e.target.value }; upd(l); }} className="w-16 px-2 py-1 rounded border text-xs text-center" style={{ borderColor: colors.primary.bg }} />
+              <span className="text-slate-400">–</span>
+              <input disabled={locked} value={b.end} onChange={(e) => { const l = [...breaks]; l[i] = { ...b, end: e.target.value }; upd(l); }} className="w-16 px-2 py-1 rounded border text-xs text-center" style={{ borderColor: colors.primary.bg }} />
+              <span className="text-xs text-slate-500">{wtDur(b.start, b.end)} min</span>
+              <button disabled={locked} onClick={() => upd(breaks.filter((_, j) => j !== i))} className="ml-auto text-xs text-red-500 disabled:opacity-40">Usuń</button>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between"><button onClick={add} disabled={locked} className="text-sm px-3 py-2 rounded-lg disabled:opacity-40" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>+ Dodaj przerwę</button><button onClick={onClose} className="text-sm px-4 py-2 rounded-lg text-white font-medium" style={{ backgroundColor: colors.primary.medium }}>Gotowe</button></div>
+      </div>
+    </div>
+  );
+};
+
+const WorkingTime = ({ data, canEdit }) => {
+  const ts = data.ts || { actuals: {}, completed: {}, weekStatus: {} };
+  const [view, setView] = useState('list');
+  const [weekStart, setWeekStart] = useState(null);
+  const [day, setDay] = useState(null);
+  const [fStation, setFStation] = useState('');
+  const [order, setOrder] = useState('entry');
+  const [brkFor, setBrkFor] = useState(null);
+
+  const wsOf = (ws) => ts.weekStatus[ws] || { reviewed: false, closed: false };
+  const locked = (weekStart ? wsOf(weekStart).closed : false) || !canEdit;
+
+  const weeks = useMemo(() => {
+    const map = {};
+    data.shifts.forEach((s) => { const m = wtMonday(s.date); (map[m] = map[m] || new Set()).add(s.date); });
+    return Object.keys(map).sort().map((m) => ({ start: m, days: [...map[m]].sort() }));
+  }, [data.shifts]);
+  const weekDone = (w) => w.days.length > 0 && w.days.every((d) => ts.completed[d]);
+  const curWeek = () => weeks.find((w) => w.start === weekStart) || { days: [] };
+
+  const act = (s) => ts.actuals[wtKey(s)] || { start: s.start, end: s.end, breaks: [] };
+  const setAct = (s, patch) => { if (locked) return data.show('Tydzień zamknięty — tylko podgląd', 'error'); data.tsPutActual(wtKey(s), { ...act(s), ...patch }); };
+  const unpaid = (a) => (a.breaks || []).filter((b) => b.platna === false).reduce((x, b) => x + wtDur(b.start, b.end), 0);
+  const actualNet = (s) => wtDur(act(s).start, act(s).end) - unpaid(act(s));
+  const dayShifts = (d) => data.shifts.filter((s) => s.date === d && !jestInstruktor(s));
+
+  const weekDays = weekStart ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return ymd(d); }) : [];
+  const openWeek = (w) => { setWeekStart(w.start); setDay(w.days[0]); setView('week'); };
+
+  const stacje = [...new Set(dayShifts(day || '').map((s) => s.station))];
+  let rows = dayShifts(day || '');
+  if (fStation) rows = rows.filter((s) => s.station === fStation);
+  rows = [...rows];
+  if (order === 'az') rows.sort((a, b) => a.name.localeCompare(b.name));
+  else if (order === 'diff') rows.sort((a, b) => Math.abs(actualNet(b) - wtDur(b.start, b.end)) - Math.abs(actualNet(a) - wtDur(a.start, a.end)));
+
+  const plannedMin = rows.reduce((x, s) => x + wtDur(s.start, s.end), 0);
+  const actualMin = rows.reduce((x, s) => x + actualNet(s), 0);
+  const eff = plannedMin ? Math.round((actualMin / plannedMin) * 100) : 0;
+
+  const simulate = () => {
+    if (locked) return;
+    const map = {};
+    dayShifts(day).forEach((s) => {
+      const seed = [...wtKey(s)].reduce((a, c) => a + c.charCodeAt(0), 0);
+      const ds = (seed % 13) - 4, de = ((seed >> 2) % 15) - 3;
+      map[wtKey(s)] = { start: wtClock(wtToMin(s.start) + ds), end: wtClock(wtToMin(s.end) + de), breaks: (ts.actuals[wtKey(s)]?.breaks) || [] };
+    });
+    data.tsPutActualsBulk(map);
+    data.show('Wbicia zasymulowane');
+  };
+
+  const dateLabel = (d) => { const dt = new Date(d); return `${dniPelne[dt.getDay()]}, ${dt.getDate()} ${monthsGen[dt.getMonth()]} ${dt.getFullYear()}`; };
+
+  if (view === 'list') {
+    const wcLabel = '107044 · PLK Kraków Galeria Krakowska';
+    const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
+    return (
+      <div className="flex-1 flex flex-col">
+        <Header title="Grafik" subtitle="Timesheety tygodniowe — plan vs wykonanie, przerwy, zamykanie tygodni" />
+        <div className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+          <div className="flex items-center gap-2 mb-3"><span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: colors.primary.light }}>Work Center</span><div className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{wcLabel}</div></div>
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden border" style={{ borderColor: colors.primary.bg }}>
+            <div className="grid grid-cols-[1fr_110px_110px_110px_56px] px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})`, color: 'white' }}><span>Week</span><span className="text-center">Completed</span><span className="text-center">Reviewed</span><span className="text-center">Closed</span><span /></div>
+            {weeks.length === 0 ? <div className="p-8 text-center text-slate-400">Brak grafiku. Zaimportuj miesiąc.</div> : weeks.map((w, idx) => {
+              const done = weekDone(w); const st = wsOf(w.start);
+              const toggleReviewed = (e) => { e.stopPropagation(); if (!canEdit) return; if (!done) return data.show('Najpierw zamknij wszystkie dni (Completed)', 'error'); data.tsSetWeek(w.start, { ...st, reviewed: !st.reviewed }); };
+              const toggleClosed = (e) => { e.stopPropagation(); if (!canEdit) return; if (st.closed) { data.tsSetWeek(w.start, { ...st, closed: false }); data.show('Tydzień otwarty ponownie'); return; } if (!done) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsSetWeek(w.start, { reviewed: true, closed: true }); data.show('Tydzień zamknięty'); };
+              return (
+                <div key={w.start} className="grid grid-cols-[1fr_110px_110px_110px_56px] px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#eef2f7', backgroundColor: idx % 2 ? '#f8fafc' : 'white' }}>
+                  <button onClick={() => openWeek(w)} className="text-left font-medium hover:underline" style={{ color: colors.primary.darkest }}>{range(w)}<span className="text-xs text-slate-400 ml-2">({w.days.length} dni)</span></button>
+                  <span className="flex justify-center">{done ? <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e9f7ef' }}><Check size={15} style={{ color: '#2E9E5B' }} /></span> : <span className="text-slate-300">…</span>}</span>
+                  <span className="flex justify-center"><button onClick={toggleReviewed} title="Reviewed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.reviewed ? '#2E9E5B' : colors.primary.bg, backgroundColor: st.reviewed ? '#e9f7ef' : 'white' }}>{st.reviewed && <Check size={14} style={{ color: '#2E9E5B' }} />}</button></span>
+                  <span className="flex justify-center"><button onClick={toggleClosed} title="Closed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.closed ? '#E74C3C' : colors.primary.bg, backgroundColor: st.closed ? '#fdecea' : 'white' }}>{st.closed && <Check size={14} style={{ color: '#E74C3C' }} />}</button></span>
+                  <span className="flex justify-center"><button onClick={() => openWeek(w)} className="w-7 h-7 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: colors.primary.medium }}><ChevronRight size={16} /></button></span>
+                </div>
+              );
+            })}
+            <div className="px-4 py-2 text-[11px] text-slate-400 flex items-center justify-between border-t" style={{ borderColor: '#eef2f7' }}><span>Rekordów: {weeks.length}</span><span>REX Cloud · Time &amp; Attendance</span></div>
+          </div>
+          {!canEdit && <p className="text-xs text-slate-400 mt-3">Widok kierownika zmiany — podgląd. Zamykanie i korekty wykonuje ASM.</p>}
+        </div>
+      </div>
+    );
+  }
+
+  const openStartRel = rows.length ? Math.min(...rows.map((s) => wtRel(s.start))) : 0;
+  const openEndRel = rows.length ? Math.max(...rows.map((s) => wtRel(s.start) + wtDur(s.start, s.end))) : 0;
+  const st = weekStart ? wsOf(weekStart) : { reviewed: false, closed: false };
+  const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#f1f5f9', color: on ? kol.fg : '#94a3b8' }}>{txt}</span>;
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header title="Grafik" subtitle={dateLabel(day)}>
+        {chip(weekDone(curWeek()), 'Completed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
+        {chip(st.reviewed, 'Reviewed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
+        {chip(st.closed, 'Closed', { bg: '#fdecea', fg: '#E74C3C' })}
+        <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: ts.completed[day] ? '#2E9E5B' : 'white', color: ts.completed[day] ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}><Check size={15} />{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>
+      </Header>
+      <div className="flex-1 p-8 space-y-4 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+        <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Wróć do tygodni</button>
+        {locked && <div className="rounded-lg px-4 py-2 text-sm font-medium" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>{canEdit ? 'Tydzień zamknięty (Closed) — widok tylko do podglądu. Odblokuj na liście tygodni, aby edytować.' : 'Widok tylko do podglądu (kierownik zmiany).'}</div>}
+        <div className="flex gap-1 flex-wrap">
+          {weekDays.map((d) => { const n = dayShifts(d).length; const dt = new Date(d); const nm = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]; const dc = ts.completed[d]; return (
+            <button key={d} onClick={() => n && setDay(d)} disabled={n === 0} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ backgroundColor: day === d ? colors.primary.medium : n ? 'white' : colors.primary.bgLight, color: day === d ? 'white' : n ? colors.primary.dark : '#cbd5e1', border: `1px solid ${day === d ? colors.primary.medium : colors.primary.bg}` }}>{dc && <Check size={12} style={{ color: day === d ? 'white' : '#2E9E5B' }} />}{nm} {dt.getDate()}<span className="text-xs opacity-70">({n})</span></button>
+          ); })}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(plannedMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Plan (h)</p></div>
+          <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(actualMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Wykonanie (h)</p></div>
+          <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: (actualMin - plannedMin) > 0 ? '#E74C3C' : '#2E9E5B' }}>{actualMin - plannedMin >= 0 ? '+' : ''}{wtHours(actualMin - plannedMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Różnica (h)</p></div>
+          <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: colors.primary.darkest }}><p className="text-2xl font-bold text-white">{eff}%</p><p className="text-xs text-white/70">Work Efficiency</p></div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl p-3 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
+          <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
+          <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
+          <select value={order} onChange={(e) => setOrder(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="entry">Kolejność wpisu</option><option value="az">Alfabetycznie</option><option value="diff">Wg różnicy</option></select>
+          <button disabled={locked} onClick={simulate} className="ml-auto text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Symuluj wbicia</button>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm overflow-x-auto border" style={{ borderColor: colors.primary.bg }}>
+          <div className="min-w-[820px]">
+            <div className="flex items-stretch" style={{ backgroundColor: '#f1f5f9', borderBottom: `1px solid ${colors.primary.bg}` }}>
+              <div className="w-64 shrink-0 px-3 py-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.primary.dark }}>Pracownik</div>
+              <div className="relative flex-1 h-8"><WTGrid />{WT_TICKS.map((h) => <span key={h} className="absolute top-1 text-[10px] font-medium text-slate-400" style={{ left: `calc(${((h - 6) * 60 / 1440) * 100}% + 2px)` }}>{String(h % 24).padStart(2, '0')}</span>)}{rows.length > 0 && <div className="absolute bottom-1 h-2 rounded" style={{ left: `${openStartRel / 1440 * 100}%`, width: `${(openEndRel - openStartRel) / 1440 * 100}%`, backgroundColor: '#2E9E5B' }} title="Public Opening Hours" />}</div>
+              <div className="w-24 shrink-0 px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-center" style={{ color: colors.primary.dark }}>Wykonanie</div>
+            </div>
+            <div className="flex items-center gap-4 px-3 py-1.5 text-[10px]" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#2E9E5B' }} />Public Opening Hours</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: colors.primary.bg }} />Plan (Shift)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: colors.primary.medium }} />Wykonanie (Actual)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#E74C3C' }} />Przerwa niepłatna</span>
+            </div>
+            {rows.length === 0 ? <p className="text-center text-slate-400 py-8">Brak zmian w tym dniu.</p> : rows.map((s, i) => {
+              const a = act(s); const dMin = actualNet(s) - wtDur(s.start, s.end); const tol = Math.abs(dMin) <= 5;
+              return (
+                <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#eef2f7' }}>
+                  <div className="w-64 shrink-0 px-3 py-2">
+                    <p className="text-sm font-semibold truncate" style={{ color: colors.primary.darkest }}>{s.name}</p>
+                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span><span className="text-[11px] font-medium" style={{ color: tol ? '#2E9E5B' : '#E74C3C' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span></div>
+                    <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{wtHours(actualNet(s))}</b></span></div>
+                  </div>
+                  <div className="relative flex-1 py-2"><WTGrid />
+                    <div className="relative h-3.5 mb-1 rounded" style={{ backgroundColor: '#f8fafc' }}><WTBar start={s.start} end={s.end} color={colors.primary.bg} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: colors.primary.dark }}>Shift {s.start}–{s.end}</div></div>
+                    <div className="relative h-3.5 rounded" style={{ backgroundColor: '#f8fafc' }}><WTBar start={a.start} end={a.end} color={colors.primary.medium} breaks={a.breaks} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium text-white/90">Actual {a.start}–{a.end}</div></div>
+                  </div>
+                  <div className="w-24 shrink-0 px-2 py-2 flex flex-col items-center justify-center gap-1">
+                    <div className="flex items-center gap-0.5"><input value={a.start} disabled={locked} onChange={(e) => setAct(s, { start: e.target.value })} className="w-11 px-1 py-0.5 rounded border text-[11px] text-center disabled:bg-slate-50" style={{ borderColor: colors.primary.bg }} /><input value={a.end} disabled={locked} onChange={(e) => setAct(s, { end: e.target.value })} className="w-11 px-1 py-0.5 rounded border text-[11px] text-center disabled:bg-slate-50" style={{ borderColor: colors.primary.bg }} /></div>
+                    <button disabled={locked} onClick={() => setBrkFor(s)} className="text-[11px] px-2 py-0.5 rounded-lg disabled:opacity-40" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Przerwy{a.breaks.length ? ` (${a.breaks.length})` : ''}</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <p className="text-xs text-slate-400">Górny pasek = plan (Shift), dolny = wykonanie (Actual); czerwony segment = przerwa niepłatna. Korekty nanoś po zakończeniu zmiany pracownika. Tolerancja 5 min (micros ↔ girnet).</p>
+      </div>
+      {brkFor && <WTBreaks actual={act(brkFor)} locked={locked} onSave={(breaks) => data.tsPutActual(wtKey(brkFor), { ...act(brkFor), breaks })} onClose={() => setBrkFor(null)} />}
+    </div>
+  );
+};
+
 // ===================== DATA HOOK =====================
 
 const useData = () => {
@@ -746,6 +961,9 @@ const useData = () => {
   const planRef = useRef({});
   useEffect(() => { planRef.current = planowanie; }, [planowanie]);
   const [swaps, setSwaps] = useState([]);
+  const [ts, setTs] = useState({ actuals: {}, completed: {}, weekStatus: {} });
+  const tsRef = useRef({ actuals: {}, completed: {}, weekStatus: {} });
+  useEffect(() => { tsRef.current = ts; }, [ts]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
@@ -759,6 +977,8 @@ const useData = () => {
       if (rp.success) setPlanowanie(rp.planowanie || {});
       const rs = await api('/swaps');
       if (rs.success) setSwaps(rs.swaps || []);
+      const rt = await api('/timesheets');
+      if (rt.success) setTs({ actuals: rt.actuals || {}, completed: rt.completed || {}, weekStatus: rt.weekStatus || {} });
     } catch { show('Błąd synchronizacji', 'error'); }
     setLoading(false);
   }, []);
@@ -838,7 +1058,16 @@ const useData = () => {
     else show(r.error || 'Błąd', 'error');
   }, [refreshSwaps]);
 
-  return { shifts, roster, meta, months, planowanie, swaps, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap };
+  const persistTs = useCallback(async (next) => {
+    tsRef.current = next; setTs(next);
+    try { await api('/timesheets', 'PUT', { data: next }); } catch { show('Błąd zapisu czasu pracy', 'error'); }
+  }, []);
+  const tsPutActual = useCallback((key, actualObj) => { const cur = tsRef.current; persistTs({ ...cur, actuals: { ...cur.actuals, [key]: actualObj } }); }, [persistTs]);
+  const tsPutActualsBulk = useCallback((map) => { const cur = tsRef.current; persistTs({ ...cur, actuals: { ...cur.actuals, ...map } }); }, [persistTs]);
+  const tsToggleCompleted = useCallback((date) => { const cur = tsRef.current; persistTs({ ...cur, completed: { ...cur.completed, [date]: !cur.completed[date] } }); }, [persistTs]);
+  const tsSetWeek = useCallback((ws, statusObj) => { const cur = tsRef.current; persistTs({ ...cur, weekStatus: { ...cur.weekStatus, [ws]: statusObj } }); }, [persistTs]);
+
+  return { shifts, roster, meta, months, planowanie, swaps, ts, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek };
 };
 
 // ===================== MAIN =====================
@@ -857,14 +1086,14 @@ export default function App() {
   const pages = {
     dashboard: <Dashboard data={data} setPage={setPage} />,
     import: <ImportPage data={data} />,
-    schedule: <SchedulePage data={data} />,
+    wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
     print: <PrintPage data={data} />,
     plan: <PlanPage data={data} />,
     swaps: <AdminSwaps data={data} />,
     settings: <SettingsPage data={data} />
   };
   // Kierownik zmiany: strona domowa, grafik i wydruk. ASM: wszystko.
-  const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'schedule', 'print'];
+  const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'wt', 'print'];
   const widok = dozwolone.includes(page) ? page : 'dashboard';
   const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length;
 
