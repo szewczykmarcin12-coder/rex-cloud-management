@@ -195,6 +195,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
     { id: 'wt', label: 'Grafik', icon: LayoutGrid },
     { id: 'print', label: 'Drukuj grafik', icon: Printer },
     { id: 'plan', label: 'Plan budżetu', icon: FileSpreadsheet },
+    { id: 'mgr', label: 'Godziny MGR', icon: Calendar },
     { id: 'forecast', label: 'Optymalizacja', icon: Clock },
     { id: 'emps', label: 'Pracownicy', icon: Users },
     { id: 'swaps', label: 'Zamiany', icon: RefreshCw, badge: pendingSwaps },
@@ -221,7 +222,10 @@ const Dashboard = ({ data, setPage }) => {
   // Instruktor (osoba szkoląca) liczony do CREW; uczeń do szkoleniowych. Obie osoby liczone.
   const gCrew = mShifts.filter(s => !jestMgr(s.station) && !jestSzkolenie(s)).reduce((a, s) => a + godzZ(s), 0);
   const gSzk = mShifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
-  const gMgr = mShifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
+  const gMgrSched = mShifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
+  const plMies = (data.planowanie || {})[mkey] || {};
+  const gManual = sumaDodatkow(plMies.mgr) + sumaDodatkow(plMies.mgrFunk);   // ręczne godziny MGR + funkcyjne (ten miesiąc)
+  const gMgr = gMgrSched + gManual;
 
   // Struktura załogi — z modułu Pracownicy (konta)
   const acc = data.accounts || [];
@@ -271,7 +275,7 @@ const Dashboard = ({ data, setPage }) => {
           <div className="grid grid-cols-4 gap-4">
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.dark }}>{gCrew.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny CREW</p></div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: '#e0f2f1' }}><p className="text-2xl font-bold" style={{ color: '#00796B' }}>{gSzk.toFixed(1)}</p><p className="text-sm" style={{ color: '#00897B' }}>Godziny szkoleniowe</p></div>
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER</p></div>
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER{gManual ? ` (+${gManual.toFixed(0)} ręcznie)` : ''}</p></div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{(gCrew + gSzk + gMgr).toFixed(1)}</p><p className="text-sm" style={{ color: colors.accent.dark }}>RAZEM</p></div>
           </div>
         </div>
@@ -2031,6 +2035,7 @@ export default function App() {
     wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
     print: <PrintPage data={data} />,
     plan: <BudgetPlan data={data} setPage={setPage} />,
+    mgr: <PlanPage data={data} />,
     forecast: <ForecastPlan data={data} />,
     emps: <AdminEmployees data={data} />,
     swaps: <AdminSwaps data={data} />,
