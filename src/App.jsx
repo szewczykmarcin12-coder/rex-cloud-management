@@ -213,16 +213,31 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
 // ===================== DASHBOARD =====================
 
 const Dashboard = ({ data, setPage }) => {
+  const [mkeyS, setMkeyS] = useState(null);
+  const msc = data.months || [];
+  const mkey = mkeyS || (msc.length ? msc[msc.length - 1].key : null);
+  const mShifts = mkey ? data.shifts.filter(s => (s.date || '').slice(0, 7) === mkey) : data.shifts;
+  const mLabel = (msc.find(m => m.key === mkey) || {}).label || '—';
   // Instruktor (osoba szkoląca) liczony do CREW; uczeń do szkoleniowych. Obie osoby liczone.
-  const gCrew = data.shifts.filter(s => !jestMgr(s.station) && !jestSzkolenie(s)).reduce((a, s) => a + godzZ(s), 0);
-  const gSzk = data.shifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
-  const gMgrSched = data.shifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
-  const gManual = sumaManualWszystkie(data.planowanie); // ręczne godziny MGR + funkcyjne (wszystkie miesiące)
-  const gMgr = gMgrSched + gManual;
+  const gCrew = mShifts.filter(s => !jestMgr(s.station) && !jestSzkolenie(s)).reduce((a, s) => a + godzZ(s), 0);
+  const gSzk = mShifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
+  const gMgr = mShifts.filter(s => jestMgr(s.station)).reduce((a, s) => a + godzZ(s), 0);
+
+  // Struktura załogi — z modułu Pracownicy (konta)
+  const acc = data.accounts || [];
+  const ile = (f) => acc.filter(a => a.funkcja === f).length;
+  const nCrew = ile('CREW'), nInstr = acc.filter(a => a.funkcja === 'CREW' && a.instruktor).length;
+  const zaloga = [
+    { label: 'Pracownicy restauracji', val: nCrew, sub: `w tym instruktorów: ${nInstr}`, color: '#3A6EA5' },
+    { label: 'Młodsi kierownicy zmiany', val: ile('JSM'), color: '#7A5FB0' },
+    { label: 'Kierownicy zmiany', val: ile('SM'), color: '#5C4B8A' },
+    { label: 'Zastępcy kierownika', val: ile('ASM'), color: '#2F6FB5' },
+    { label: 'Kierownik restauracji', val: ile('RGM'), color: '#082567' },
+  ];
   const stats = [
     { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
-    { label: 'Pracownicy', val: data.roster.length, icon: Users, color: '#9C27B0' },
-    { label: 'Załadowane miesiące', val: (data.months || []).length, icon: LayoutGrid, color: colors.accent.dark }
+    { label: 'Konta pracowników', val: acc.length, icon: Users, color: '#9C27B0' },
+    { label: 'Załadowane miesiące', val: msc.length, icon: LayoutGrid, color: colors.accent.dark }
   ];
   return (
     <div className="flex-1 flex flex-col">
@@ -230,12 +245,33 @@ const Dashboard = ({ data, setPage }) => {
       <div className="flex-1 p-8 space-y-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="grid grid-cols-3 gap-6">{stats.map((s, i) => <StatCard key={i} label={s.label} value={s.val} icon={s.icon} color={s.color} />)}</div>
 
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #3A6EA5' }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2"><Users className="w-5 h-5" style={{ color: '#3A6EA5' }} /><h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>Struktura załogi</h3></div>
+            <button onClick={() => setPage('emps')} className="text-sm px-3 py-1.5 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Zarządzaj</button>
+          </div>
+          {acc.length === 0 ? <p className="text-slate-400 text-sm">Brak kont. Dodaj pracowników w module „Pracownicy".</p> : (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {zaloga.map((z, i) => (
+                <div key={i} className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}>
+                  <p className="text-2xl font-bold" style={{ color: z.color }}>{z.val}</p>
+                  <p className="text-xs" style={{ color: colors.primary.dark }}>{z.label}</p>
+                  {z.sub && <p className="text-[11px] mt-0.5" style={{ color: '#B26A00' }}>{z.sub}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #26A69A' }}>
-          <div className="flex items-center gap-2 mb-4"><Clock className="w-5 h-5" style={{ color: '#26A69A' }} /><h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>Wyliczone godziny (wszystkie miesiące)</h3></div>
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2"><Clock className="w-5 h-5" style={{ color: '#26A69A' }} /><h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>Wyliczone godziny — {mLabel}</h3></div>
+            {msc.length > 0 && <select value={mkey || ''} onChange={(e) => setMkeyS(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{msc.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select>}
+          </div>
           <div className="grid grid-cols-4 gap-4">
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.dark }}>{gCrew.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny CREW</p></div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: '#e0f2f1' }}><p className="text-2xl font-bold" style={{ color: '#00796B' }}>{gSzk.toFixed(1)}</p><p className="text-sm" style={{ color: '#00897B' }}>Godziny szkoleniowe</p></div>
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER{gManual ? ` (+${gManual.toFixed(0)} ręcznie)` : ''}</p></div>
+            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER</p></div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{(gCrew + gSzk + gMgr).toFixed(1)}</p><p className="text-sm" style={{ color: colors.accent.dark }}>RAZEM</p></div>
           </div>
         </div>
@@ -700,6 +736,8 @@ const ForecastPlan = ({ data }) => {
   const [realSales, setRealSales] = useState({});
   const [realChecks, setRealChecks] = useState({});
   const [importInfo, setImportInfo] = useState(null);
+  const [korekta, setKorekta] = useState(0);      // ręczna korekta prognozy w %
+  const [oknoTyg, setOknoTyg] = useState(8);      // ile tygodni historii bierzemy pod uwagę
   const [limitMies, setLimitMies] = useState(4700);
   const [mgrDoba, setMgrDoba] = useState(32);
   const [szkol, setSzkol] = useState(162);
@@ -758,6 +796,48 @@ const ForecastPlan = ({ data }) => {
 
   const yrShifts = useMemo(() => { const ys = data.shifts.map((s) => +s.date.slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
   const year = yrSel || yrShifts;
+  // ── SILNIK ESTYMACJI: profil dnia tygodnia z okna historii + trend tygodniowy ──
+  const PRED = useMemo(() => {
+    const daty = Object.keys(realSales).sort();
+    if (!daty.length) return null;
+    const ostatnia = daty[daty.length - 1];
+    const granica = new Date(ostatnia); granica.setDate(granica.getDate() - oknoTyg * 7);
+    const okno = daty.filter((d) => new Date(d) >= granica);
+    const uzyte = okno.length ? okno : daty;
+
+    // średnie wg dnia tygodnia w oknie
+    const acc = Array.from({ length: 7 }, () => ({ s: 0, n: 0 }));
+    uzyte.forEach((d) => { const dw = new Date(d).getDay(); acc[dw].s += realSales[d]; acc[dw].n++; });
+    const wd = acc.map((a) => (a.n ? a.s / a.n : null));
+
+    // trend: regresja liniowa na tygodniowych sumach
+    const tyg = {};
+    uzyte.forEach((d) => { const x = new Date(d); const pon = new Date(x); pon.setDate(x.getDate() - ((x.getDay() + 6) % 7)); const k = ymd(pon); tyg[k] = (tyg[k] || 0) + realSales[d]; });
+    const klucze = Object.keys(tyg).sort();
+    const pelne = klucze.length > 2 ? klucze.slice(0, -1) : klucze;   // ostatni tydzień bywa niepełny
+    let trend = 0, pewnosc = 0;
+    if (pelne.length >= 3) {
+      const ys = pelne.map((k) => tyg[k]); const n = ys.length;
+      const sx = (n - 1) * n / 2, sxx = (n - 1) * n * (2 * n - 1) / 6;
+      const sy = ys.reduce((a, b) => a + b, 0), sxy = ys.reduce((a, y, i) => a + i * y, 0);
+      const m = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+      const sr = sy / n;
+      // Im mniej pełnych tygodni, tym ostrożniej ekstrapolujemy trend (tłumienie).
+      pewnosc = Math.max(0, Math.min(1, (n - 2) / 6));
+      if (sr > 0 && isFinite(m)) trend = Math.max(-0.03, Math.min(0.03, (m / sr) * pewnosc));
+    }
+    return { wd, trend, pewnosc, pelneTyg: pelne.length, ostatnia, tygodni: klucze.length, dni: uzyte.length, od: uzyte[0], do: ostatnia };
+  }, [realSales, oknoTyg]);
+
+  const estymuj = (ds) => {
+    if (!PRED) return null;
+    const dw = new Date(ds).getDay();
+    const baza = PRED.wd[dw] != null ? PRED.wd[dw] : PRED.wd.filter((x) => x != null).reduce((a, b, _, arr) => a + b / arr.length, 0);
+    if (!baza) return null;
+    const tygRoznica = (new Date(ds) - new Date(PRED.ostatnia)) / (7 * 864e5);
+    return baza * (1 + PRED.trend * tygRoznica) * (1 + korekta / 100);
+  };
+
   const wdAvg = useMemo(() => { const acc = Array.from({ length: 7 }, () => ({ s: 0, n: 0 })); Object.entries(realSales).forEach(([ds, v]) => { const dw = new Date(ds).getDay(); acc[dw].s += v; acc[dw].n++; }); return acc.map((a) => (a.n ? a.s / a.n : null)); }, [realSales]);
   const hasReal = wdAvg.some((x) => x != null);
 
@@ -766,14 +846,17 @@ const ForecastPlan = ({ data }) => {
     const dni = Array.from({ length: dim }, (_, k) => {
       const d = k + 1, ds = ymd(new Date(year, mIdx, d));
       const js = new Date(ds).getDay(), dow = (js + 6) % 7; // 0=Pon
-      const sprzedaz = realSales[ds] != null ? realSales[ds] : (wdAvg[js] != null ? wdAvg[js] : 35000);
+      const realna = realSales[ds];
+      const est = realna == null ? estymuj(ds) : null;
+      const sprzedaz = realna != null ? realna : (est != null ? est : 35000);
+      const jestEst = realna == null;
       const checks = realChecks[ds] || 0;
       const akt = data.shifts.filter((s) => s.date === ds && !jestInstruktor(s)).reduce((a, s) => a + godzZ(s), 0);
       const dem = optZapotrzebowanie(sprzedaz, splh, podloga, tryb, dow);
       const kc = optZapotrzebowanie(sprzedaz, splh, podloga, "krzywa", dow);
       const { out, cover } = optKsztaltuj(dem, wl);
       const he = out.reduce((a, c) => a + c.len, 0) / 2;
-      return { d, ds, dow, sprzedaz, checks, akt, dem, kc, cover, shifts: out, he,
+      return { d, ds, dow, sprzedaz, jestEst, checks, akt, dem, kc, cover, shifts: out, he,
         splhA: akt ? sprzedaz / akt : 0, splhE: he ? sprzedaz / he : 0,
         mptA: checks ? (akt * 60) / checks : 0, mptE: checks ? (he * 60) / checks : 0 };
     });
@@ -781,14 +864,16 @@ const ForecastPlan = ({ data }) => {
     const sumE = dni.reduce((a, x) => a + x.he, 0), sumC = dni.reduce((a, x) => a + x.checks, 0);
     const byDow = [...Array(7)].map((_, i) => { const g = dni.filter((x) => x.dow === i); return { dow: i, n: g.length, s: g.length ? g.reduce((a, x) => a + x.sprzedaz, 0) / g.length : 0, a: g.length ? g.reduce((a, x) => a + x.akt, 0) / g.length : 0, e: g.length ? g.reduce((a, x) => a + x.he, 0) / g.length : 0 }; });
     return { dni, dim, sumS, sumA, sumE, sumC, byDow, splhA: sumA ? sumS / sumA : 0, splhE: sumE ? sumS / sumE : 0, mgr: mgrDoba * dim };
-  }, [year, mIdx, realSales, realChecks, wdAvg, splh, podloga, tryb, wl, data.shifts, mgrDoba]);
+  }, [year, mIdx, realSales, realChecks, wdAvg, PRED, korekta, splh, podloga, tryb, wl, data.shifts, mgrDoba]);
 
   const D = R.dni[Math.min(dzien, R.dim) - 1] || R.dni[0];
   const roz = R.sumE - R.sumA;
   const przesun = R.dni.reduce((a, x) => a + Math.abs(x.he - x.akt), 0);
   const razem = R.sumE + R.mgr + szkol;
 
-  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
+  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
+  const dniEst = R.dni.filter((x) => x.jestEst).length;
+  const sumaEst = R.dni.filter((x) => x.jestEst).reduce((a, x) => a + x.sprzedaz, 0);
 
   return (
     <div>
@@ -806,6 +891,12 @@ const ForecastPlan = ({ data }) => {
           {hasReal && <button onClick={() => { setRealSales({}); setRealChecks({}); setImportInfo(null); data.clearSales(); }} className="ml-auto text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: "white", color: colors.primary.dark }}>Wyczyść</button>}
         </div>
 
+        {dniEst > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#fff4e0", color: "#8a6d1a" }}>
+            <span className="text-sm"><b>Prognoza</b> — {dniEst} z {R.dim} dni tego miesiąca nie ma jeszcze danych sprzedaży, więc są <b>estymowane</b>{PRED ? ` na podstawie ${PRED.dni} dni historii (${PRED.od} → ${PRED.do})` : ""}.</span>
+            <button onClick={() => setTab("prognoza")} className="ml-auto text-xs px-3 py-1.5 rounded-lg font-medium text-white" style={{ backgroundColor: colors.primary.medium }}>Ustawienia prognozy</button>
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <OptKpi label="Godziny crew — grafik" value={f0(R.sumA) + " h"} sub={`SPLH ${f0(R.splhA)} zł/rbh`} />
           <OptKpi label="Godziny crew — silnik" value={f0(R.sumE) + " h"} sub={`SPLH ${f0(R.splhE)} zł/rbh`} tone={roz < 0 ? OC.ok : OC.warn} />
@@ -853,6 +944,51 @@ const ForecastPlan = ({ data }) => {
           <Sekcja kolor={OC.obsada} tytul={`Proponowane zmiany (${D.shifts.length}) — ${fH1(D.he)}`}>
             <div className="flex flex-wrap gap-2">{D.shifts.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-lg text-white font-medium" style={{ backgroundColor: c.t.kol }}>{c.t.n}</span>)}</div>
           </Sekcja>
+        </>)}
+
+        {tab === "prognoza" && (<>
+          {!PRED ? (
+            <Sekcja kolor="#D08700" tytul="Brak historii sprzedaży">
+              <p className="text-sm" style={{ color: colors.primary.dark }}>Aby prognozować kolejny miesiąc, zaimportuj najpierw raport „Sales Day by Day" z co najmniej kilku tygodni. Im dłuższa historia, tym stabilniejszy profil dni tygodnia i trend.</p>
+            </Sekcja>
+          ) : (<>
+            <Sekcja kolor={colors.primary.medium} tytul="Podstawa prognozy">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <OptKpi label="Dni historii" value={f0(PRED.dni)} sub={`${PRED.od} → ${PRED.do}`} />
+                <OptKpi label="Tygodnie w próbie" value={f0(PRED.tygodni)} />
+                <OptKpi label="Trend tygodniowy" value={`${PRED.trend >= 0 ? "+" : ""}${(PRED.trend * 100).toFixed(2).replace(".", ",")}%`} tone={PRED.trend >= 0 ? OC.ok : OC.warn} sub={`pewność ${Math.round(PRED.pewnosc * 100)}% · ${PRED.pelneTyg} pełnych tyg.`} />
+                <OptKpi label="Dni estymowane" value={`${f0(dniEst)} / ${R.dim}`} sub={dniEst ? `${f0(sumaEst)} zł prognozy` : "miesiąc ma pełne dane"} />
+              </div>
+            </Sekcja>
+
+            <Sekcja kolor="#082567" tytul="Sterowanie prognozą">
+              <div className="grid md:grid-cols-2 gap-6">
+                <OptSuw label="Okno historii" value={oknoTyg} min={2} max={26} step={1} unit="tyg." onChange={setOknoTyg} />
+                <OptSuw label="Ręczna korekta (np. wydarzenie, remont)" value={korekta} min={-30} max={30} step={1} unit="%" onChange={setKorekta} />
+              </div>
+              <p className="text-xs text-slate-400 mt-3">Krótsze okno szybciej reaguje na zmiany (nowe menu, sezon), dłuższe jest stabilniejsze. Korekta przesuwa całą prognozę w górę lub w dół.</p>
+            </Sekcja>
+
+            <Sekcja kolor="#455A64" tytul="Średnia sprzedaż wg dnia tygodnia (z okna historii)">
+              <BPBars unit="zł" items={[1, 2, 3, 4, 5, 6, 0].map((js) => ({ label: D3[(js + 6) % 7], value: PRED.wd[js] || 0, n: 0, color: (js === 0 || js === 5 || js === 6) ? OC.silnik : colors.primary.medium }))} />
+            </Sekcja>
+
+            <Sekcja kolor={OC.silnik} tytul={`Prognoza dzienna — ${months[mIdx]} ${year}`}>
+              <BPLine labels={R.dni.map((x) => String(x.d))} unit="" series={[{ name: "Sprzedaż (dane + prognoza)", color: OC.silnik, data: R.dni.map((x) => x.sprzedaz), fill: true }]} />
+              <div className="overflow-x-auto mt-3"><div className="min-w-[560px]">
+                <div className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Dzień</span><span className="text-right">Sprzedaż zł</span><span className="text-right">Rekom. h</span><span className="text-right">Plan h</span><span className="text-center">Źródło</span></div>
+                {R.dni.map((x) => (
+                  <div key={x.d} className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-sm items-center border-b" style={{ borderColor: "#f1f5f9" }}>
+                    <span style={{ color: colors.primary.dark }}>{D3[x.dow]} {x.d}</span>
+                    <span className="text-right" style={{ color: colors.primary.darkest }}>{f0(x.sprzedaz)}</span>
+                    <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
+                    <span className="text-right" style={{ color: colors.primary.dark }}>{fH1(x.akt)}</span>
+                    <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: x.jestEst ? "#fff4e0" : "#e9f7ef", color: x.jestEst ? "#B26A00" : "#12655B" }}>{x.jestEst ? "prognoza" : "dane"}</span></span>
+                  </div>
+                ))}
+              </div></div>
+            </Sekcja>
+          </>)}
         </>)}
 
         {tab === "zaloga" && (
@@ -924,12 +1060,7 @@ const bpKat = (e) => (e.pozycja === 'RGM' || e.pozycja === 'ASM') ? 'kier' : (e.
 const BP_KAT = { prac: { label: 'Pracownicy', color: '#3A6EA5' }, instr: { label: 'Instruktorzy', color: '#F5B000' }, mgr: { label: 'Mgr (SM/JSM)', color: '#7A5FB0' }, kier: { label: 'Kierownictwo (RGM/ASM)', color: '#082567' } };
 const zl = (n) => (Math.round((n || 0) * 100) / 100).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const bpDefSettings = { zusRate: 0.1948, zusPPK: 0.2098, nocnyBonus: 0.2, minWage: 4806, normy: [...BP_NORMY] };
-const bpSeed = [
-  { id: 'e1', name: 'Piotr Reszka', pozycja: 'RGM', umowa: 'UOP', stawka: 9000, godziny: 160, premia: 0, bhp: 180, urlopH: 40, dniZLA: 0, nocneH: 50, ppk: true, pfron: 150.79, zusUZ: false, instruktor: false },
-  { id: 'e2', name: 'Anna Piekarska', pozycja: 'CREW', umowa: 'UOP', stawka: 5100, godziny: 160, premia: 300, bhp: 320, urlopH: 0, dniZLA: 0, nocneH: 20, ppk: false, pfron: 150.79, zusUZ: false, instruktor: true },
-  { id: 'e3', name: 'Marcin Szewczyk', pozycja: 'ASM', umowa: 'UZ', stawka: 38, godziny: 160, premia: 1125, bhp: 0, urlopH: 0, dniZLA: 0, nocneH: 0, ppk: false, pfron: 0, zusUZ: false, instruktor: false },
-  { id: 'e4', name: 'Kacper Zieliński', pozycja: 'CREW', umowa: 'UZ', stawka: 30.5, godziny: 130, premia: 0, bhp: 0, urlopH: 0, dniZLA: 0, nocneH: 0, ppk: false, pfron: 0, zusUZ: true, instruktor: false },
-];
+
 const bpKoszt = (e, nom, s) => {
   if (e.umowa === 'UZ') {
     const base = (e.stawka || 0) * (e.godziny || 0);
@@ -977,10 +1108,12 @@ const BPBars = ({ items, unit = 'zł' }) => {
   return (<div className="space-y-2">{items.map((it, i) => (<div key={i}><div className="flex justify-between text-xs mb-0.5"><span style={{ color: colors.primary.dark }}>{it.label} <span className="text-slate-400">· {it.n} os.</span></span><b style={{ color: colors.primary.darkest }}>{zl(it.value)} {unit}</b></div><div className="h-3 rounded" style={{ backgroundColor: colors.primary.bgLight }}><div className="h-3 rounded" style={{ width: `${it.value / max * 100}%`, backgroundColor: it.color }} /></div></div>))}</div>);
 };
 
-const BudgetPlan = ({ data }) => {
+const BP_KOSZT_DOMYSLNE = { godziny: 160, premia: 0, bhp: 0, urlopH: 0, dniZLA: 0, nocneH: 0, ppk: false, pfron: 0, godzBy: {} };
+
+const BudgetPlan = ({ data, setPage }) => {
   const b = data.budget;
   const [tab, setTab] = useState('budzet');
-  const [emps, setEmps] = useState(bpSeed);
+  const [koszParam, setKoszParam] = useState({});      // parametry kosztowe per id konta
   const [settings, setSettings] = useState(bpDefSettings);
   const [mIdx, setMIdx] = useState(new Date().getMonth());
   const [sprzedaz, setSprzedaz] = useState({});
@@ -990,10 +1123,19 @@ const BudgetPlan = ({ data }) => {
   const hydrated = useRef(false);
   useEffect(() => {
     if (hydrated.current || !b) return;
-    if (b.employees && b.employees.length) { setEmps(b.employees); if (b.settings) setSettings(b.settings); setSprzedaz(b.sprzedaz || {}); setTransakcje(b.transakcje || {}); setDniS(b.dniS || {}); }
+    setKoszParam(b.koszParam || {});
+    if (b.settings) setSettings(b.settings);
+    setSprzedaz(b.sprzedaz || {}); setTransakcje(b.transakcje || {}); setDniS(b.dniS || {});
     hydrated.current = true;
   }, [b]);
-  useEffect(() => { if (!hydrated.current) return; data.saveBudget({ employees: emps, settings, sprzedaz, transakcje, dniS }); }, [emps, settings, sprzedaz, transakcje, dniS]);
+  useEffect(() => { if (!hydrated.current) return; data.saveBudget({ koszParam, settings, sprzedaz, transakcje, dniS }); }, [koszParam, settings, sprzedaz, transakcje, dniS]);
+
+  // Pracownicy pochodzą z modułu „Pracownicy" (konta). Tutaj dokładamy tylko parametry kosztowe.
+  const emps = useMemo(() => (data.accounts || []).map((a) => ({
+    ...BP_KOSZT_DOMYSLNE, ...(koszParam[a.id] || {}),
+    id: a.id, name: a.name, pozycja: a.funkcja, umowa: a.umowa, stawka: a.stawka,
+    zusUZ: !!a.zus, instruktor: !!a.instruktor,
+  })), [data.accounts, koszParam]);
 
   const nom = settings.normy[mIdx] || 160;
   const getGodz = (e) => (e.godzBy && e.godzBy[mIdx] != null) ? e.godzBy[mIdx] : e.godziny;
@@ -1007,10 +1149,8 @@ const BudgetPlan = ({ data }) => {
   const linia = (f) => sum(koszty, (x) => f(x.k));
   const kats = ['prac', 'instr', 'mgr', 'kier'].map((key) => { const g = koszty.filter((x) => bpKat(x.e) === key); return { key, label: BP_KAT[key].label, color: BP_KAT[key].color, value: sum(g, (x) => x.k.total), n: g.length }; });
 
-  const setE = (id, patch) => setEmps((arr) => arr.map((e) => e.id === id ? { ...e, ...patch } : e));
+  const setE = (id, patch) => setKoszParam((p) => ({ ...p, [id]: { ...BP_KOSZT_DOMYSLNE, ...(p[id] || {}), ...patch } }));
   const setGodz = (e, v) => setE(e.id, { godzBy: { ...(e.godzBy || {}), [mIdx]: Number(v) || 0 } });
-  const addE = () => { const id = 'e' + Date.now(); setEmps((arr) => [...arr, { id, name: 'Nowy pracownik', pozycja: 'CREW', umowa: 'UZ', stawka: 30, godziny: 160, premia: 0, bhp: 0, urlopH: 0, dniZLA: 0, nocneH: 0, ppk: false, pfron: 0, zusUZ: false, instruktor: false }]); setOpenRow(id); };
-  const delE = (id) => setEmps((arr) => arr.filter((e) => e.id !== id));
   const setNorma = (i, v) => setSettings((s) => { const n = [...s.normy]; n[i] = Number(v) || 0; return { ...s, normy: n }; });
 
   const year = useMemo(() => { const ys = data.shifts.map((s) => +s.date.slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
@@ -1020,6 +1160,32 @@ const BudgetPlan = ({ data }) => {
   const avgHourly = godzTotal ? col / godzTotal : 0;
   const colDaily = planDaily.map((h) => +(h * avgHourly).toFixed(0));
   const dayLabels = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
+
+  // ── Wskaźniki w stylu GIRnet Workforce ──
+  const mKey = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
+  const sprzedazMies = (y, m) => { const sd = (data.salesData && data.salesData.sales) || {}; const pre = mKey(y, m); return Object.entries(sd).filter(([d]) => d.startsWith(pre)).reduce((a, [, v]) => a + v, 0); };
+  const godzinyMies = (y, m) => { const pre = mKey(y, m); return data.shifts.filter((x) => (x.date || '').startsWith(pre) && !jestInstruktor(x)).reduce((a, x) => a + godzZ(x), 0); };
+  const poprz = mIdx === 0 ? { y: year - 1, m: 11 } : { y: year, m: mIdx - 1 };
+  const sBiez = sprzedazMies(year, mIdx), sPoprz = sprzedazMies(poprz.y, poprz.m);
+  const hBiez = godzinyMies(year, mIdx), hPoprz = godzinyMies(poprz.y, poprz.m);
+  const splhBiez = hBiez ? sBiez / hBiez : 0, splhPoprz = hPoprz ? sPoprz / hPoprz : 0;
+  const varPct = splhPoprz ? ((splhBiez - splhPoprz) / splhPoprz) * 100 : 0;
+
+  // godziny kontraktowe: stałe (UOP) vs zmienne (UZ)
+  const hStale = koszty.filter((x) => x.e.umowa === 'UOP').reduce((a, x) => a + x.k.worked, 0);
+  const hZmienne = koszty.filter((x) => x.e.umowa === 'UZ').reduce((a, x) => a + x.k.worked, 0);
+  const hRazem = hStale + hZmienne;
+
+  // zgodność kontraktowa: teoretyczne vs zaplanowane + nadmiar/niedobór
+  const teorII = (e) => e.umowa === 'UOP' ? Math.max(0, nom - (e.urlopH || 0) - (e.dniZLA || 0) * 8) : getGodz(e);
+  const zgodnosc = emps.map((e) => { const teor = teorII(e); const plan = getGodz(e); const d = plan - teor; return { name: e.name, umowa: e.umowa, teor, plan, nadmiar: Math.max(0, d), niedobor: Math.max(0, -d) }; });
+  const sumNadmiar = zgodnosc.reduce((a, x) => a + x.nadmiar, 0);
+  const sumNiedobor = zgodnosc.reduce((a, x) => a + x.niedobor, 0);
+
+  // absencja (urlop + ZLA) w godzinach
+  const hUrlop = emps.reduce((a, e) => a + (e.urlopH || 0), 0);
+  const hZLA = emps.reduce((a, e) => a + (e.dniZLA || 0) * 8, 0);
+  const absPct = hRazem + hUrlop + hZLA ? ((hUrlop + hZLA) / (hRazem + hUrlop + hZLA)) * 100 : 0;
 
   const Stat = ({ v, l, sub, dark }) => (<div className="rounded-xl p-3 text-center shadow-sm border" style={{ backgroundColor: dark ? colors.primary.darkest : 'white', borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: dark ? 'white' : colors.primary.darkest }}>{v}</p><p className="text-[11px]" style={{ color: dark ? 'rgba(255,255,255,.7)' : colors.primary.light }}>{l}</p>{sub && <p className="text-[10px]" style={{ color: dark ? 'rgba(255,255,255,.5)' : '#94a3b8' }}>{sub}</p>}</div>);
   const numIn = (val, on, w = 'w-full') => <input type="number" value={val} onChange={(e) => on(e.target.value)} className={`${w} px-2 py-1 rounded border text-sm`} style={{ borderColor: colors.primary.bg }} />;
@@ -1076,17 +1242,17 @@ const BudgetPlan = ({ data }) => {
               <div key={e.id} className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
                 <div className="flex items-center gap-3 px-4 py-3">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BP_KAT[kat].color }} title={BP_KAT[kat].label} />
-                  <div className="flex-1 min-w-0"><input value={e.name} onChange={(ev) => setE(e.id, { name: ev.target.value })} className="font-semibold text-sm w-full bg-transparent focus:outline-none" style={{ color: colors.primary.darkest }} /><p className="text-[11px]" style={{ color: colors.primary.light }}>{e.pozycja} · {e.umowa} · {getGodz(e)} h{e.instruktor ? ' · instruktor' : ''}</p></div>
+                  <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate" style={{ color: colors.primary.darkest }}>{e.name}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{e.pozycja} · {e.umowa} · {getGodz(e)} h{e.instruktor ? ' · instruktor' : ''}</p></div>
                   <div className="text-right shrink-0"><p className="text-[10px]" style={{ color: colors.primary.light }}>Koszt {months[mIdx]}</p><p className="font-bold" style={{ color: colors.primary.darkest }}>{zl(k.total)} zł</p></div>
                   <button onClick={() => setOpenRow(open ? null : e.id)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Szczegóły <ChevronRight size={13} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} /></button>
-                  <button onClick={() => delE(e.id)} className="text-red-400 shrink-0"><Trash2 size={15} /></button>
+
                 </div>
                 {open && (
                   <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: colors.primary.bg, backgroundColor: '#fbfcfe' }}>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                      <Fld label="Stanowisko"><select value={e.pozycja} onChange={(ev) => setE(e.id, { pozycja: ev.target.value })} className="w-full px-2 py-1 rounded border text-sm" style={{ borderColor: colors.primary.bg }}>{BP_POZ.map((p) => <option key={p}>{p}</option>)}</select></Fld>
-                      <Fld label="Typ umowy"><select value={e.umowa} onChange={(ev) => setE(e.id, { umowa: ev.target.value })} className="w-full px-2 py-1 rounded border text-sm" style={{ borderColor: colors.primary.bg }}><option>UOP</option><option>UZ</option></select></Fld>
-                      <Fld label={e.umowa === 'UOP' ? 'Wynagr. mies. (zł)' : 'Stawka (zł/h)'}>{numIn(e.stawka, (v) => setE(e.id, { stawka: Number(v) || 0 }))}</Fld>
+                      <Fld label="Stanowisko"><div className="px-2 py-1 rounded text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.pozycja}{e.instruktor ? ' · instruktor' : ''}</div></Fld>
+                      <Fld label="Typ umowy"><div className="px-2 py-1 rounded text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.umowa}</div></Fld>
+                      <Fld label={e.umowa === 'UOP' ? 'Wynagr. mies. (zł)' : 'Stawka (zł/h)'}><div className="px-2 py-1 rounded text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{zl(e.stawka)}</div></Fld>
                       <Fld label={`Godziny (${months[mIdx]})`}>{numIn(getGodz(e), (v) => setGodz(e, v))}</Fld>
                       <Fld label="Premia (zł)">{numIn(e.premia, (v) => setE(e.id, { premia: Number(v) || 0 }))}</Fld>
                       {e.umowa === 'UOP' && <Fld label="Ekwiwalent BHP (zł)">{numIn(e.bhp, (v) => setE(e.id, { bhp: Number(v) || 0 }))}</Fld>}
@@ -1097,8 +1263,7 @@ const BudgetPlan = ({ data }) => {
                     </div>
                     <div className="flex flex-wrap gap-4 mt-3">
                       {e.umowa === 'UOP' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={e.ppk} onChange={(ev) => setE(e.id, { ppk: ev.target.checked })} />PPK (+1,5%, ZUS 20,98%)</label>}
-                      {e.umowa === 'UZ' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={e.zusUZ} onChange={(ev) => setE(e.id, { zusUZ: ev.target.checked })} />ZUS od zlecenia (19,48%)</label>}
-                      {e.pozycja === 'CREW' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={e.instruktor} onChange={(ev) => setE(e.id, { instruktor: ev.target.checked })} />Instruktor</label>}
+                      {e.umowa === 'UZ' && <span className="text-sm" style={{ color: colors.primary.light }}>ZUS od zlecenia: <b style={{ color: colors.primary.dark }}>{e.zusUZ ? 'tak' : 'nie'}</b> <span className="text-xs">(ustawiane w module Pracownicy)</span></span>}
                     </div>
                     <div className="mt-3 rounded-lg p-3" style={{ backgroundColor: colors.primary.bgLight }}>
                       <p className="text-[11px] font-semibold uppercase mb-2" style={{ color: colors.primary.light }}>Rozbicie kosztu pracodawcy</p>
@@ -1112,7 +1277,8 @@ const BudgetPlan = ({ data }) => {
               </div>
             ); })}
           </div>
-          <Btn variant="secondary" onClick={addE}>+ Dodaj pozycję</Btn>
+          {emps.length === 0 && <div className="bg-white rounded-xl p-6 text-center border" style={{ borderColor: colors.primary.bg }}><p className="text-slate-500 mb-3">Brak pracowników. Konta zakładasz w module „Pracownicy" — trafiają tu automatycznie.</p><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Przejdź do modułu Pracownicy</Btn></div>}
+          <div className="flex items-center gap-3"><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Zarządzaj pracownikami</Btn><span className="text-xs text-slate-400">Imię, stanowisko, umowa, stawka i ZUS pochodzą z modułu Pracownicy. Tutaj ustawiasz tylko dane kosztowe (godziny, premia, BHP, urlop, ZLA, nocne, PPK, PFRON).</span></div>
         </>)}
 
         {tab === 'analiza' && (<>
@@ -1120,6 +1286,53 @@ const BudgetPlan = ({ data }) => {
           <Sekcja kolor={colors.primary.medium} tytul="Grafik: godziny plan vs wykonanie (dni miesiąca)"><BPLine labels={dayLabels} unit="h" series={[{ name: 'Plan', color: colors.primary.bg, data: planDaily, fill: true }, { name: 'Wykonanie', color: colors.primary.medium, data: actualDaily }]} /></Sekcja>
           <Sekcja kolor="#082567" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#082567', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
           <Sekcja kolor="#455A64" tytul="Cost of Labour — udział kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
+
+          <Sekcja kolor="#12655B" tytul="Produktywność (SPLH) — okres vs poprzedni">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Stat v={`${f0(splhBiez)}`} l={`SPLH — ${months[mIdx]}`} sub={`${f0(sBiez)} zł / ${f0(hBiez)} h`} />
+              <Stat v={`${f0(splhPoprz)}`} l={`SPLH — ${months[poprz.m]}`} sub={`${f0(sPoprz)} zł / ${f0(hPoprz)} h`} />
+              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: varPct >= 0 ? '#12655B' : '#B7362A' }}><p className="text-xl font-bold text-white">{varPct >= 0 ? '+' : ''}{varPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Zmiana r/r okresu</p></div>
+              <Stat v={`${f0(hRazem ? sBiez / hRazem : 0)}`} l="SPLH wg planu budżetu" sub={`${f0(hRazem)} h w planie`} />
+            </div>
+            {!sBiez && <p className="text-xs text-slate-400 mt-2">Brak danych sprzedaży dla tego miesiąca — zaimportuj raport w module Optymalizacja.</p>}
+          </Sekcja>
+
+          <Sekcja kolor="#2F6FB5" tytul="Godziny kontraktowe — stałe vs zmienne">
+            <BPBars unit="h" items={[
+              { label: 'Stałe (UOP)', value: hStale, n: koszty.filter((x) => x.e.umowa === 'UOP').length, color: '#2F6FB5' },
+              { label: 'Zmienne (UZ)', value: hZmienne, n: koszty.filter((x) => x.e.umowa === 'UZ').length, color: '#E2571E' },
+            ]} />
+            <p className="text-xs text-slate-400 mt-2">Udział godzin stałych: <b style={{ color: colors.primary.dark }}>{hRazem ? (hStale / hRazem * 100).toFixed(1).replace('.', ',') : 0}%</b> — wyższy udział to mniejsza elastyczność obsady, ale i niższy koszt krańcowy godziny.</p>
+          </Sekcja>
+
+          <Sekcja kolor="#D08700" tytul="Zgodność kontraktowa — godziny teoretyczne vs zaplanowane">
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <Stat v={`${f0(zgodnosc.reduce((a, x) => a + x.teor, 0))} h`} l="Teoretyczne (z umów)" />
+              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#D08700' }}>{f0(sumNadmiar)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Nadmiar (Exceso)</p></div>
+              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#B7362A' }}>{f0(sumNiedobor)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Niedobór (Defecto)</p></div>
+            </div>
+            <div className="overflow-x-auto"><div className="min-w-[560px]">
+              <div className="grid grid-cols-[1.6fr_70px_1fr_1fr_1fr_1fr] gap-2 px-2 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Pracownik</span><span>Umowa</span><span className="text-right">Teoret.</span><span className="text-right">Plan</span><span className="text-right">Nadmiar</span><span className="text-right">Niedobór</span></div>
+              {zgodnosc.map((z, i) => (
+                <div key={i} className="grid grid-cols-[1.6fr_70px_1fr_1fr_1fr_1fr] gap-2 px-2 py-1.5 text-sm border-b" style={{ borderColor: '#f1f5f9' }}>
+                  <span className="truncate" style={{ color: colors.primary.dark }}>{z.name}</span>
+                  <span className="text-xs" style={{ color: colors.primary.light }}>{z.umowa}</span>
+                  <span className="text-right">{z.teor.toFixed(0)}</span>
+                  <span className="text-right">{z.plan.toFixed(0)}</span>
+                  <span className="text-right font-medium" style={{ color: z.nadmiar ? '#D08700' : '#cbd5e1' }}>{z.nadmiar ? z.nadmiar.toFixed(0) : '—'}</span>
+                  <span className="text-right font-medium" style={{ color: z.niedobor ? '#B7362A' : '#cbd5e1' }}>{z.niedobor ? z.niedobor.toFixed(0) : '—'}</span>
+                </div>
+              ))}
+            </div></div>
+          </Sekcja>
+
+          <Sekcja kolor="#7A5FB0" tytul="Absencja">
+            <div className="grid grid-cols-3 gap-3">
+              <Stat v={`${f0(hUrlop)} h`} l="Urlopy" />
+              <Stat v={`${f0(hZLA)} h`} l="Chorobowe (ZLA)" sub={`${emps.reduce((a, e) => a + (e.dniZLA || 0), 0)} dni`} />
+              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: absPct > 8 ? '#B7362A' : '#7A5FB0' }}><p className="text-xl font-bold text-white">{absPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Wskaźnik absencji</p></div>
+            </div>
+          </Sekcja>
         </>)}
 
         {tab === 'ust' && (
@@ -1151,7 +1364,7 @@ const FUNKCJE = [
   { id: 'RGM', label: 'Kierownik restauracji' },
 ];
 const funkcjaLabel = (id) => (FUNKCJE.find((f) => f.id === id) || {}).label || id;
-const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false };
+const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false };
 
 const CopyField = ({ label, value }) => {
   const [ok, setOk] = useState(false);
@@ -1176,6 +1389,7 @@ const EmpForm = ({ init, onSave, onClose }) => {
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>{f.umowa === 'UOP' ? 'Wynagr. mies. (zł)' : 'Stawka (zł/h)'}</label><input type="number" value={f.stawka} onChange={(e) => set({ stawka: Number(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
           </div>
           <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={f.zus} onChange={(e) => set({ zus: e.target.checked })} />Pracownik oskładkowany (ZUS){f.umowa === 'UOP' ? ' — dla UOP zawsze' : ''}</label>
+          {f.funkcja === 'CREW' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={!!f.instruktor} onChange={(e) => set({ instruktor: e.target.checked })} />Instruktor (szkoli innych pracowników)</label>}
         </div>
         <div className="flex justify-end gap-2 mt-5"><button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button><button disabled={!valid} onClick={() => onSave(f)} className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{init.id ? 'Zapisz' : 'Dodaj i utwórz konto'}</button></div>
       </div>
@@ -1210,13 +1424,13 @@ const AdminEmployees = ({ data }) => {
           {filtered.length === 0 ? <div className="p-8 text-center text-slate-400">Brak kont. Kliknij „Dodaj pracownika".</div> : filtered.map((e, i) => (
             <div key={e.id} className="grid grid-cols-[1.4fr_1.4fr_90px_90px_80px_1fr_150px] gap-2 px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#eef2f7', backgroundColor: i % 2 ? '#f8fafc' : 'white' }}>
               <span className="font-semibold truncate" style={{ color: colors.primary.darkest }}>{e.name}</span>
-              <span style={{ color: colors.primary.dark }}>{funkcjaLabel(e.funkcja)}</span>
+              <span style={{ color: colors.primary.dark }}>{funkcjaLabel(e.funkcja)}{e.instruktor && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>instruktor</span>}</span>
               <span><span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.umowa}</span></span>
               <span className="text-right font-medium" style={{ color: colors.primary.darkest }}>{e.umowa === 'UOP' ? `${zl(e.stawka)}` : `${zl(e.stawka)}/h`}</span>
               <span className="text-center">{e.zus ? <Check size={16} style={{ color: '#2E9E5B' }} className="inline" /> : <span className="text-slate-300">—</span>}</span>
               <span className="font-mono font-semibold" style={{ color: colors.primary.dark }}>{e.login}</span>
               <span className="flex items-center justify-end gap-1">
-                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
+                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
                 <button onClick={() => reset(e)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}><Lock size={12} />PIN</button>
                 <button onClick={() => del(e)} className="text-red-400 p-1"><Trash2 size={15} /></button>
               </span>
@@ -1783,7 +1997,7 @@ export default function App() {
     import: <ImportPage data={data} />,
     wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
     print: <PrintPage data={data} />,
-    plan: <BudgetPlan data={data} />,
+    plan: <BudgetPlan data={data} setPage={setPage} />,
     forecast: <ForecastPlan data={data} />,
     emps: <AdminEmployees data={data} />,
     swaps: <AdminSwaps data={data} />,
