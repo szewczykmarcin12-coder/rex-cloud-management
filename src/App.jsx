@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, Home, Settings, Download, Clock } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock } from 'lucide-react';
 import { parseGrafik } from './parseGrafik.js';
 import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
@@ -739,8 +739,8 @@ const OptWidokDnia = ({ dem, kc, cover, shifts }) => {
 const ForecastPlan = ({ data }) => {
   const [tab, setTab] = useState("miesiac");
   const hydrated = useRef(false);
-  const [mIdx, setMIdx] = useState(6);
-  const [yrSel, setYrSel] = useState(null);
+  const [mIdx, setMIdx] = useState(new Date().getMonth());   // zawsze bieżący miesiąc na start
+  const [yrSel, setYrSel] = useState(new Date().getFullYear());
   const [splh, setSplh] = useState(420);
   const [podloga, setPodloga] = useState(3);
   const [tryb, setTryb] = useState("silnik");
@@ -749,14 +749,6 @@ const ForecastPlan = ({ data }) => {
   const [realSales, setRealSales] = useState({});
   const [realChecks, setRealChecks] = useState({});
   const [importInfo, setImportInfo] = useState(null);
-  const [nowaOsoba, setNowaOsoba] = useState('');
-  const [nowaStacja, setNowaStacja] = useState('MANAGER');
-  const [nowaOd, setNowaOd] = useState('08:00');
-  const [nowaDo, setNowaDo] = useState('16:00');
-  const [nowaData, setNowaData] = useState('');
-  const [nowyZakres, setNowyZakres] = useState('dzien');
-  const [nowyWd, setNowyWd] = useState([1, 2, 3, 4, 5]);
-  const [zapisuje, setZapisuje] = useState(false);
   const [korekta, setKorekta] = useState(0);      // ręczna korekta prognozy w %
   const [oknoTyg, setOknoTyg] = useState(8);      // ile tygodni historii bierzemy pod uwagę
   const [limitMies, setLimitMies] = useState(4700);
@@ -769,8 +761,7 @@ const ForecastPlan = ({ data }) => {
     const sd = data.salesData;
     if (sd.sales && Object.keys(sd.sales).length) {
       setRealSales(sd.sales); setRealChecks(sd.checks || {});
-      const ks = Object.keys(sd.sales).sort(); const last = new Date(ks[ks.length - 1]);
-      setMIdx(last.getMonth()); setYrSel(last.getFullYear());
+      const ks = Object.keys(sd.sales).sort();
       setImportInfo({ n: ks.length, from: ks[0], to: ks[ks.length - 1], checks: Object.keys(sd.checks || {}).length });
     }
     if (sd.params) { const p = sd.params; if (p.splh) setSplh(p.splh); if (p.podloga) setPodloga(p.podloga); if (p.tryb) setTryb(p.tryb); if (p.limitMies) setLimitMies(p.limitMies); if (p.mgrDoba) setMgrDoba(p.mgrDoba); if (p.szkol != null) setSzkol(p.szkol); if (p.wl) setWl((w) => ({ ...w, ...p.wl })); }
@@ -808,7 +799,6 @@ const ForecastPlan = ({ data }) => {
       if (!keys.length) { data.show("Nie znaleziono danych sprzedaży w pliku", "error"); return; }
       setRealSales((p) => ({ ...p, ...sales })); setRealChecks((p) => ({ ...p, ...checks }));
       keys.sort(); const last = new Date(keys[keys.length - 1]);
-      setMIdx(last.getMonth()); setYrSel(last.getFullYear());
       setImportInfo({ n: keys.length, from: secFrom, to: secTo, checks: Object.keys(checks).length });
       data.saveSales({ sales, checks });
       data.show(`Zaimportowano ${keys.length} dni sprzedaży${Object.keys(checks).length ? " + paragony" : ""}`);
@@ -914,7 +904,7 @@ const ForecastPlan = ({ data }) => {
   const przesun = R.dni.reduce((a, x) => a + Math.abs(x.he - x.akt), 0);
   const razem = R.sumE + R.mgr + szkol;
 
-  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["pulpit", "Pulpit"], ["obsada", "Obsada"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
+  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["pulpit", "Pulpit"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
   const dniEst = R.dni.filter((x) => x.jestEst).length;
   const sumaEst = R.dni.filter((x) => x.jestEst).reduce((a, x) => a + x.sprzedaz, 0);
 
@@ -1062,73 +1052,6 @@ const ForecastPlan = ({ data }) => {
               { l: '160–200', n: h.filter((x) => x >= 160 && x < 200).length },
               { l: '200+', n: h.filter((x) => x >= 200).length }]; })()} />
           </Karta>
-        </>)}
-
-        {tab === "obsada" && (<>
-          <Sekcja kolor={colors.primary.medium} tytul="Dodaj osobę do grafiku">
-            <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Dodane zmiany trafiają do grafiku <b>i od razu do wykonania</b> (Actual), więc estymacje i wskaźniki liczą się na komplecie obsady — również managerów, których nie ma w matrycy CREW.</p>
-            <div className="grid md:grid-cols-5 gap-3">
-              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Osoba</label>
-                <input list="lista-kont" value={nowaOsoba} onChange={(e) => setNowaOsoba(e.target.value)} placeholder="nazwisko" className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }} />
-                <datalist id="lista-kont">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name} />)}</datalist>
-              </div>
-              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Stanowisko</label>
-                <select value={nowaStacja} onChange={(e) => setNowaStacja(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }}>
-                  <option value="MANAGER">MANAGER</option><option value="MGR FUNKCYJNE">MGR FUNKCYJNE</option><option value="KASA">KASA</option><option value="KUCHNIA">KUCHNIA</option><option value="KANAPKI">KANAPKI</option><option value="SERWIS">SERWIS</option>
-                </select>
-              </div>
-              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Od</label><input type="time" value={nowaOd} onChange={(e) => setNowaOd(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Do</label><input type="time" value={nowaDo} onChange={(e) => setNowaDo(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Zakres</label>
-                <select value={nowyZakres} onChange={(e) => setNowyZakres(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }}>
-                  <option value="dzien">jeden dzień</option><option value="schemat">wg dni tygodnia</option><option value="miesiac">cały miesiąc</option>
-                </select>
-              </div>
-            </div>
-            {nowyZakres === 'dzien' && (
-              <div className="mt-3 flex flex-wrap gap-1">
-                {R.dni.map((x) => <button key={x.d} onClick={() => setNowaData(x.ds)} className="px-2 py-1 rounded text-xs font-mono" style={{ backgroundColor: nowaData === x.ds ? colors.primary.medium : 'white', color: nowaData === x.ds ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{D3[x.dow]} {x.d}</button>)}
-              </div>
-            )}
-            {nowyZakres === 'schemat' && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {D3.map((n, i) => { const on = nowyWd.includes(i); return <button key={i} onClick={() => setNowyWd((p) => on ? p.filter((x) => x !== i) : [...p, i])} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{n}</button>; })}
-              </div>
-            )}
-            <div className="mt-4 flex items-center gap-3">
-              <Btn disabled={zapisuje} onClick={async () => {
-                if (!nowaOsoba.trim()) return data.show('Podaj osobę', 'error');
-                const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === nowaOsoba.trim().toUpperCase()));
-                let cele = [];
-                if (nowyZakres === 'dzien') { if (!nowaData) return data.show('Wybierz dzień', 'error'); cele = [nowaData]; }
-                else if (nowyZakres === 'miesiac') cele = R.dni.map((x) => x.ds);
-                else cele = R.dni.filter((x) => nowyWd.includes(x.dow)).map((x) => x.ds);
-                setZapisuje(true);
-                for (const ds of cele) await data.addShiftManual({ date: ds, name: nowaOsoba.trim(), station: nowaStacja, start: nowaOd, end: nowaDo, accountId: konto ? konto.id : undefined });
-                setZapisuje(false);
-              }}>{zapisuje ? 'Dodaję…' : `Dodaj do grafiku${nowyZakres === 'dzien' ? '' : ` (${nowyZakres === 'miesiac' ? R.dim : R.dni.filter((x) => nowyWd.includes(x.dow)).length} dni)`}`}</Btn>
-              <span className="text-xs text-slate-400">{nowaOsoba ? `${nowaOsoba.toUpperCase()} · ${nowaStacja} · ${nowaOd}–${nowaDo}` : ''}</span>
-            </div>
-          </Sekcja>
-
-          <Sekcja kolor="#455A64" tytul="Zmiany dodane ręcznie w tym miesiącu">
-            {(() => {
-              const dod = data.shifts.filter((x) => String(x.date || '').startsWith(`${year}-${String(mIdx + 1).padStart(2, '0')}`) && x.dodana);
-              if (!dod.length) return <p className="text-sm text-slate-400">Brak ręcznie dodanych zmian.</p>;
-              return (<div className="space-y-1">
-                {dod.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)).map((x, i) => (
-                  <div key={i} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight }}>
-                    <span className="font-mono text-xs" style={{ color: colors.primary.light }}>{x.date.slice(8)}.{x.date.slice(5, 7)}</span>
-                    <span className="font-semibold" style={{ color: colors.primary.darkest }}>{x.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'white', color: colors.primary.dark }}>{x.station}</span>
-                    <span style={{ color: colors.primary.dark }}>{x.start}–{x.end}</span>
-                    <span className="text-xs text-slate-400">{Number(x.hours || 0).toFixed(1)} h</span>
-                    <button onClick={() => data.removeShiftManual({ date: x.date, name: x.name, start: x.start, end: x.end })} className="ml-auto text-red-400"><Trash2 size={15} /></button>
-                  </div>))}
-                <p className="text-xs text-slate-400 mt-2">Razem dodane: {dod.reduce((a, x) => a + Number(x.hours || 0), 0).toFixed(1)} h</p>
-              </div>);
-            })()}
-          </Sekcja>
         </>)}
 
         {tab === "prognoza" && (<>
@@ -2157,6 +2080,12 @@ const WorkingTime = ({ data, canEdit }) => {
   const [fStation, setFStation] = useState('');
   const [order, setOrder] = useState('entry');
   const [brkFor, setBrkFor] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addOsoba, setAddOsoba] = useState('');
+  const [addStacja, setAddStacja] = useState('MANAGER');
+  const [addOd, setAddOd] = useState('08:00');
+  const [addDo, setAddDo] = useState('16:00');
+  const [addSaving, setAddSaving] = useState(false);
 
   const wsOf = (ws) => ts.weekStatus[ws] || { reviewed: false, closed: false };
   const locked = (weekStart ? wsOf(weekStart).closed : false) || !canEdit;
@@ -2229,12 +2158,23 @@ const WorkingTime = ({ data, canEdit }) => {
             })}
             <div className="px-4 py-2 text-[11px] text-slate-400 flex items-center justify-between border-t" style={{ borderColor: '#eef2f7' }}><span>Rekordów: {weeks.length}</span><span>REX Cloud · Time &amp; Attendance</span></div>
           </div>
+          {canEdit && (
+            <div className="mt-3 bg-white rounded-xl shadow-sm border p-4 flex flex-wrap items-center gap-3" style={{ borderColor: colors.primary.bg }}>
+              <span className="text-sm font-medium" style={{ color: colors.primary.darkest }}>Otwórz dowolny dzień:</span>
+              <input type="date" id="wt-nowa-data" className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} defaultValue={ymd(new Date())} />
+              <button onClick={() => { const v = document.getElementById('wt-nowa-data').value; if (!v) return; setWeekStart(wtMonday(v)); setDay(v); setView('week'); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Otwórz</button>
+              <span className="text-xs text-slate-400">Także dzień bez zmian — możesz od razu dodać tam pierwszą zmianę (np. managera na nowy miesiąc).</span>
+            </div>
+          )}
           {!canEdit && <p className="text-xs text-slate-400 mt-3">Widok kierownika zmiany — podgląd. Zamykanie i korekty wykonuje ASM.</p>}
         </div>
       </div>
     );
   }
 
+  const sprzDnia = ((data.salesData || {}).sales || {})[day];
+  const parDnia = ((data.salesData || {}).checks || {})[day];
+  const wszystkieStacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
   const openStartRel = rows.length ? Math.min(...rows.map((s) => wtRel(s.start))) : 0;
   const openEndRel = rows.length ? Math.max(...rows.map((s) => wtRel(s.start) + wtDur(s.start, s.end))) : 0;
   const st = weekStart ? wsOf(weekStart) : { reviewed: false, closed: false };
@@ -2252,7 +2192,7 @@ const WorkingTime = ({ data, canEdit }) => {
         {locked && <div className="rounded-lg px-4 py-2 text-sm font-medium" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>{canEdit ? 'Tydzień zamknięty (Closed) — widok tylko do podglądu. Odblokuj na liście tygodni, aby edytować.' : 'Widok tylko do podglądu (kierownik zmiany).'}</div>}
         <div className="flex gap-1 flex-wrap">
           {weekDays.map((d) => { const n = dayShifts(d).length; const dt = new Date(d); const nm = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]; const dc = ts.completed[d]; return (
-            <button key={d} onClick={() => n && setDay(d)} disabled={n === 0} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ backgroundColor: day === d ? colors.primary.medium : n ? 'white' : colors.primary.bgLight, color: day === d ? 'white' : n ? colors.primary.dark : '#cbd5e1', border: `1px solid ${day === d ? colors.primary.medium : colors.primary.bg}` }}>{dc && <Check size={12} style={{ color: day === d ? 'white' : '#2E9E5B' }} />}{nm} {dt.getDate()}<span className="text-xs opacity-70">({n})</span></button>
+            <button key={d} onClick={() => setDay(d)} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ backgroundColor: day === d ? colors.primary.medium : 'white', color: day === d ? 'white' : n ? colors.primary.dark : '#94a3b8', border: `1px solid ${day === d ? colors.primary.medium : colors.primary.bg}` }}>{dc && <Check size={12} style={{ color: day === d ? 'white' : '#2E9E5B' }} />}{nm} {dt.getDate()}<span className="text-xs opacity-70">({n})</span></button>
           ); })}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2260,7 +2200,56 @@ const WorkingTime = ({ data, canEdit }) => {
           <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(actualMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Wykonanie (h)</p></div>
           <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: (actualMin - plannedMin) > 0 ? '#E74C3C' : '#2E9E5B' }}>{actualMin - plannedMin >= 0 ? '+' : ''}{wtHours(actualMin - plannedMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Różnica (h)</p></div>
           <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: colors.primary.darkest }}><p className="text-2xl font-bold text-white">{eff}%</p><p className="text-xs text-white/70">Work Efficiency</p></div>
+          {sprzDnia != null && (<>
+            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{f0(sprzDnia)} zł</p><p className="text-xs" style={{ color: colors.primary.light }}>Sprzedaż dnia</p></div>
+            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{plannedMin ? f0(sprzDnia / (plannedMin / 60)) : '—'}</p><p className="text-xs" style={{ color: colors.primary.light }}>SPLH plan (zł/rbh)</p></div>
+            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: actualMin && sprzDnia / (actualMin / 60) >= 420 ? '#2E9E5B' : colors.primary.darkest }}>{actualMin ? f0(sprzDnia / (actualMin / 60)) : '—'}</p><p className="text-xs" style={{ color: colors.primary.light }}>SPLH wykonanie</p></div>
+            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{parDnia && actualMin ? (actualMin / parDnia).toFixed(1).replace('.', ',') : '—'}</p><p className="text-xs" style={{ color: colors.primary.light }}>Min. na transakcję</p></div>
+          </>)}
         </div>
+
+        {canEdit && !locked && (
+          <div className="bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
+            <button onClick={() => setAddOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style={{ color: colors.primary.darkest }}>
+              <span className="flex items-center gap-2"><Plus size={16} style={{ color: colors.primary.medium }} />Dodaj zmianę — {dateLabel(day)}</span>
+              {addOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {addOpen && (
+              <div className="px-4 pb-4 space-y-3 border-t" style={{ borderColor: '#eef2f7' }}>
+                <div className="grid md:grid-cols-4 gap-3 pt-3">
+                  <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Pracownik</label>
+                    <input list="wt-lista-kont" value={addOsoba} onChange={(e) => setAddOsoba(e.target.value)} placeholder="wpisz nazwisko…" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
+                    <datalist id="wt-lista-kont">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist>
+                  </div>
+                  <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Stanowisko</label>
+                    <select value={addStacja} onChange={(e) => setAddStacja(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>{wszystkieStacje.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+                  </div>
+                  <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Od</label><input type="time" value={addOd} onChange={(e) => setAddOd(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+                  <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Do</label><input type="time" value={addDo} onChange={(e) => setAddDo(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+                </div>
+                <div>
+                  <p className="text-[11px] mb-1.5" style={{ color: colors.primary.light }}>Szablony zmian (z arkusza SZABLONY):</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SZAB.map(([a, b], i) => { const g = (h) => `${String(h % 24).padStart(2, '0')}:00`; const on = addOd === g(a) && addDo === g(b); return (
+                      <button key={i} onClick={() => { setAddOd(g(a)); setAddDo(g(b)); }} className="px-2.5 py-1 rounded-lg text-xs font-mono" style={{ backgroundColor: on ? colors.primary.medium : colors.primary.bgLight, color: on ? 'white' : colors.primary.dark }}>{g(a)}–{g(b)}{b > 24 ? ' 🌙' : ''}</button>
+                    ); })}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button disabled={addSaving} onClick={async () => {
+                    if (!addOsoba.trim()) return data.show('Podaj pracownika', 'error');
+                    const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase()));
+                    setAddSaving(true);
+                    const ok = await data.addShiftManual({ date: day, name: addOsoba.trim(), station: addStacja, start: addOd, end: addDo, accountId: konto ? konto.id : undefined });
+                    setAddSaving(false);
+                    if (ok) setAddOsoba('');
+                  }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{addSaving ? 'Dodaję…' : 'Dodaj do grafiku'}</button>
+                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku i od razu do wykonania (Actual). {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl p-3 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
           <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
           <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
@@ -2285,7 +2274,7 @@ const WorkingTime = ({ data, canEdit }) => {
               return (
                 <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#eef2f7' }}>
                   <div className="w-64 shrink-0 px-3 py-2">
-                    <p className="text-sm font-semibold truncate" style={{ color: colors.primary.darkest }}>{s.name}</p>
+                    <p className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{s.name}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
                     <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span><span className="text-[11px] font-medium" style={{ color: tol ? '#2E9E5B' : '#E74C3C' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span></div>
                     <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{wtHours(actualNet(s))}</b></span></div>
                   </div>
