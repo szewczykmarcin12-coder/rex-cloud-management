@@ -195,7 +195,6 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
     { id: 'wt', label: 'Grafik', icon: LayoutGrid },
     { id: 'print', label: 'Drukuj grafik', icon: Printer },
     { id: 'plan', label: 'Plan budżetu', icon: FileSpreadsheet },
-    { id: 'mgr', label: 'Godziny MGR', icon: Calendar },
     { id: 'forecast', label: 'Optymalizacja', icon: Clock },
     { id: 'emps', label: 'Pracownicy', icon: Users },
     { id: 'swaps', label: 'Zamiany', icon: RefreshCw, badge: pendingSwaps },
@@ -659,6 +658,16 @@ function optZapotrzebowanie(sprzedaz, splh, podloga, tryb, dow) {
   }
   return dem;
 }
+function optRozbicie(sprzedaz, splh, podloga, tryb, dow) {
+  const dir = new Array(NS).fill(0), ind = new Array(NS).fill(0);
+  [[6, 7], [24, 25], [25, 26]].forEach(([a, b]) => { const n = KC[a] ? KC[a][dow] : 1; for (let i = sl(a); i < sl(b); i++) ind[i] = Math.max(ind[i], n); });
+  for (let h = 7; h <= 23; h++) {
+    const n = tryb === 'krzywa' ? KC[h][dow] : Math.max(podloga, Math.round((sprzedaz * PROF[h]) / splh));
+    for (const i of [sl(h), sl(h) + 1]) dir[i] = n;
+  }
+  return { dir, ind };
+}
+
 function optKsztaltuj(dem, wlaczone) {
   const cand = SZAB.filter((t) => wlaczone[t.n]).map((t) => ({ t, s: sl(t.od), len: sl(t.do) - sl(t.od) })).filter((c) => c.s >= 0 && c.s + c.len <= NS);
   const cover = new Array(NS).fill(0), out = [];
@@ -740,6 +749,14 @@ const ForecastPlan = ({ data }) => {
   const [realSales, setRealSales] = useState({});
   const [realChecks, setRealChecks] = useState({});
   const [importInfo, setImportInfo] = useState(null);
+  const [nowaOsoba, setNowaOsoba] = useState('');
+  const [nowaStacja, setNowaStacja] = useState('MANAGER');
+  const [nowaOd, setNowaOd] = useState('08:00');
+  const [nowaDo, setNowaDo] = useState('16:00');
+  const [nowaData, setNowaData] = useState('');
+  const [nowyZakres, setNowyZakres] = useState('dzien');
+  const [nowyWd, setNowyWd] = useState([1, 2, 3, 4, 5]);
+  const [zapisuje, setZapisuje] = useState(false);
   const [korekta, setKorekta] = useState(0);      // ręczna korekta prognozy w %
   const [oknoTyg, setOknoTyg] = useState(8);      // ile tygodni historii bierzemy pod uwagę
   const [limitMies, setLimitMies] = useState(4700);
@@ -860,14 +877,36 @@ const ForecastPlan = ({ data }) => {
       const kc = optZapotrzebowanie(sprzedaz, splh, podloga, "krzywa", dow);
       const { out, cover } = optKsztaltuj(dem, wl);
       const he = out.reduce((a, c) => a + c.len, 0) / 2;
-      return { d, ds, dow, sprzedaz, jestEst, checks, akt, dem, kc, cover, shifts: out, he,
+      const { dir, ind } = optRozbicie(sprzedaz, splh, podloga, tryb, dow);
+      // pokrycie wynikające z REALNEGO grafiku (do porównania z obsadą idealną — jak Defecto/Exceso w MAPAL)
+      const coverAkt = new Array(NS).fill(0);
+      data.shifts.filter((x) => x.date === ds && !jestInstruktor(x)).forEach((x) => {
+        const a = wtRel(x.start); const dl = Math.round(wtDur(x.start, x.end) / 30);
+        for (let i = 0; i < dl; i++) { const p = Math.floor(a / 30) + i; if (p >= 0 && p < NS) coverAkt[p]++; }
+      });
+      let excA = 0, dDirA = 0, dIndA = 0;
+      for (let i = 0; i < NS; i++) {
+        const r = coverAkt[i] - dem[i];
+        if (r > 0) excA += r;
+        else if (r < 0) { const t = dir[i] + ind[i] || 1; dDirA += (-r) * (dir[i] / t); dIndA += (-r) * (ind[i] / t); }
+      }
+      let exc = 0, dDir = 0, dInd = 0;
+      for (let i = 0; i < NS; i++) {
+        const r = cover[i] - dem[i];
+        if (r > 0) exc += r;
+        else if (r < 0) { const t = dir[i] + ind[i] || 1; dDir += (-r) * (dir[i] / t); dInd += (-r) * (ind[i] / t); }
+      }
+      const ideal = dem.reduce((a, b) => a + b, 0) / 2;
+      return { d, ds, dow, sprzedaz, jestEst, checks, akt, dem, kc, cover, dir, ind, shifts: out, he, ideal, coverAkt, exc: exc / 2, dDir: dDir / 2, dInd: dInd / 2, excA: excA / 2, dDirA: dDirA / 2, dIndA: dIndA / 2,
         splhA: akt ? sprzedaz / akt : 0, splhE: he ? sprzedaz / he : 0,
         mptA: checks ? (akt * 60) / checks : 0, mptE: checks ? (he * 60) / checks : 0 };
     });
     const sumS = dni.reduce((a, x) => a + x.sprzedaz, 0), sumA = dni.reduce((a, x) => a + x.akt, 0);
     const sumE = dni.reduce((a, x) => a + x.he, 0), sumC = dni.reduce((a, x) => a + x.checks, 0);
+    const zalogaMap = {};
+    data.shifts.filter((x) => String(x.date || '').startsWith(`${year}-${String(mIdx + 1).padStart(2, '0')}`) && !jestInstruktor(x)).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); zalogaMap[k] = (zalogaMap[k] || 0) + godzZ(x); });
     const byDow = [...Array(7)].map((_, i) => { const g = dni.filter((x) => x.dow === i); return { dow: i, n: g.length, s: g.length ? g.reduce((a, x) => a + x.sprzedaz, 0) / g.length : 0, a: g.length ? g.reduce((a, x) => a + x.akt, 0) / g.length : 0, e: g.length ? g.reduce((a, x) => a + x.he, 0) / g.length : 0 }; });
-    return { dni, dim, sumS, sumA, sumE, sumC, byDow, splhA: sumA ? sumS / sumA : 0, splhE: sumE ? sumS / sumE : 0, mgr: mgrDoba * dim };
+    return { dni, dim, sumS, sumA, sumE, sumC, byDow, zalogaMap, splhA: sumA ? sumS / sumA : 0, splhE: sumE ? sumS / sumE : 0, mgr: mgrDoba * dim };
   }, [year, mIdx, realSales, realChecks, wdAvg, PRED, korekta, splh, podloga, tryb, wl, data.shifts, mgrDoba]);
 
   const D = R.dni[Math.min(dzien, R.dim) - 1] || R.dni[0];
@@ -875,7 +914,7 @@ const ForecastPlan = ({ data }) => {
   const przesun = R.dni.reduce((a, x) => a + Math.abs(x.he - x.akt), 0);
   const razem = R.sumE + R.mgr + szkol;
 
-  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
+  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["pulpit", "Pulpit"], ["obsada", "Obsada"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
   const dniEst = R.dni.filter((x) => x.jestEst).length;
   const sumaEst = R.dni.filter((x) => x.jestEst).reduce((a, x) => a + x.sprzedaz, 0);
 
@@ -947,6 +986,147 @@ const ForecastPlan = ({ data }) => {
           <Sekcja kolor={OC.silnik} tytul="Zapotrzebowanie vs obsada (sloty 30 min)"><OptWidokDnia dem={D.dem} kc={D.kc} cover={D.cover} shifts={D.shifts} /></Sekcja>
           <Sekcja kolor={OC.obsada} tytul={`Proponowane zmiany (${D.shifts.length}) — ${fH1(D.he)}`}>
             <div className="flex flex-wrap gap-2">{D.shifts.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-lg text-white font-medium" style={{ backgroundColor: c.t.kol }}>{c.t.n}</span>)}</div>
+          </Sekcja>
+        </>)}
+
+        {tab === "pulpit" && (<>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <OptKpi label="Niedobór pracy bezpośredniej" value={`${f1(R.dni.reduce((a, x) => a + x.dDirA, 0))} h`} tone={PC.dir} sub="grafik vs obsada idealna" />
+            <OptKpi label="Niedobór pracy pośredniej" value={`${f1(R.dni.reduce((a, x) => a + x.dIndA, 0))} h`} tone={PC.ind} sub="prep i sprzątanie" />
+            <OptKpi label="Nadmiar obsady" value={`${f1(R.dni.reduce((a, x) => a + x.excA, 0))} h`} tone={PC.plan} sub="godziny ponad krzywą" />
+            <OptKpi label="Obsada idealna" value={`${f0(R.dni.reduce((a, x) => a + x.ideal, 0))} h`} sub="suma zapotrzebowania" />
+          </div>
+
+          <Karta tytul="Rozbieżność miesiąca" podtytul="grafik vs obsada idealna">
+            <div className="flex flex-wrap justify-around gap-2">
+              <Zegar label="Niedobór pracy bezpośredniej" wartosc={R.dni.reduce((a, x) => a + x.dDirA, 0)} max={300} kolor={PC.dir} />
+              <Zegar label="Niedobór pracy pośredniej" wartosc={R.dni.reduce((a, x) => a + x.dIndA, 0)} max={300} kolor={PC.ind} />
+              <Zegar label="Nadmiar obsady" wartosc={R.dni.reduce((a, x) => a + x.excA, 0)} max={600} kolor={PC.plan} />
+            </div>
+            <div className="text-xs text-center mt-1" style={{ color: PC.mute }}>Zsumowane w jedną liczbę te trzy wskaźniki znoszą się nawzajem — dlatego trzymamy je osobno.</div>
+          </Karta>
+
+          <Karta tytul="Niedobór i nadmiar" podtytul="wg dni tygodnia, w godzinach"
+            prawo={<span style={{ color: PC.mute }}><span style={{ color: PC.dir }}>■</span> bezpośrednia <span style={{ color: PC.ind }}>■</span> pośrednia <span style={{ color: PC.plan }}>■</span> nadmiar</span>}>
+            <Rozbieznosc procent={false} grupy={[...Array(7)].map((_, i) => {
+              const g = R.dni.filter((x) => x.dow === i);
+              const dDir = g.reduce((a, x) => a + x.dDirA, 0), dInd = g.reduce((a, x) => a + x.dIndA, 0);
+              const exc = g.reduce((a, x) => a + x.excA, 0), ideal = g.reduce((a, x) => a + x.ideal, 0) || 1;
+              return { nazwa: D3[i], def: dDir + dInd, dDir, dInd, exc, pDef: (dDir + dInd) / ideal * 100, pDir: dDir / ideal * 100, pInd: dInd / ideal * 100, pExc: exc / ideal * 100 };
+            })} />
+          </Karta>
+
+          <Karta tytul="Ewolucja sprzedaży narastająco" podtytul="odchylenie od średniej dziennej, skumulowane"
+            prawo={<span style={{ color: PC.mute }}>{months[mIdx]} {year} · {f0(R.sumS)} zł</span>}>
+            <Ewolucja dni={R.dni} />
+          </Karta>
+
+          <Karta tytul={`Przebieg dnia — ${DNI_PELNE[D.dow]} ${D.d}`} podtytul={`${f0(D.sprzedaz)} zł${D.checks ? ` · ${f0(D.checks)} transakcji` : ''}`}>
+            <div className="flex gap-1 flex-wrap mb-2">
+              {R.dni.map((x) => (
+                <button key={x.d} onClick={() => setDzien(x.d)} className="px-1.5 py-0.5 rounded font-mono" style={{ fontSize: 10, background: x.d === dzien ? PC.ink : PC.bg, color: x.d === dzien ? '#fff' : x.dow >= 5 ? PC.bad : PC.mute, border: `1px solid ${x.d === dzien ? PC.ink : PC.line}` }}>{x.d}</button>))}
+            </div>
+            <Sroddzienny D={D} nakladka="brak" />
+            <div className="flex gap-4 text-xs mt-1" style={{ color: PC.mute }}>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 inline-block" style={{ background: PC.ind }} />praca pośrednia</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 inline-block" style={{ background: PC.dir }} />praca bezpośrednia</span>
+              <span className="flex items-center gap-1"><span className="w-3 inline-block" style={{ height: 2, background: PC.plan }} />obsada zaplanowana</span>
+            </div>
+          </Karta>
+
+          <div className="grid md:grid-cols-2 gap-2">
+            <Karta tytul="Ranking dni tygodnia" podtytul="SPLH z grafiku">
+              <Ranking jednostka="zł/rbh" dane={[...Array(7)].map((_, i) => { const g = R.dni.filter((x) => x.dow === i); const sh = g.reduce((a, x) => a + x.akt, 0); return { n: D3[i], v: sh ? g.reduce((a, x) => a + x.sprzedaz, 0) / sh : 0 }; })} />
+            </Karta>
+            <Karta tytul="Struktura sprzedaży wg pory dnia" podtytul="z profilu godzinowego">
+              <Piers czesci={[
+                { n: 'Poranek 07–11', v: [7, 8, 9, 10].reduce((a, h) => a + ZLH[h], 0), kol: '#A8CBA0' },
+                { n: 'Lunch 11–15', v: [11, 12, 13, 14].reduce((a, h) => a + ZLH[h], 0), kol: PC.accent },
+                { n: 'Popołudnie 15–19', v: [15, 16, 17, 18].reduce((a, h) => a + ZLH[h], 0), kol: PC.plan },
+                { n: 'Wieczór 19–23', v: [19, 20, 21, 22, 23].reduce((a, h) => a + ZLH[h], 0), kol: PC.cel },
+              ]} />
+            </Karta>
+          </div>
+
+          <Karta tytul="Godziny idealne vs zaplanowane" podtytul="średnia na dzień tygodnia, linia = wykonanie w %"
+            prawo={<span style={{ color: PC.mute }}><span style={{ color: PC.cel }}>■</span> idealne <span style={{ color: PC.plan }}>■</span> w grafiku <span style={{ color: PC.bad }}>—</span> %</span>}>
+            <SlupkiLinia dane={[...Array(7)].map((_, i) => { const g = R.dni.filter((x) => x.dow === i) ; const n = g.length || 1; return { n: D3[i], a: g.reduce((x, y) => x + y.ideal, 0) / n, b: g.reduce((x, y) => x + y.akt, 0) / n }; })} />
+          </Karta>
+
+          <Karta tytul="Rozkład załogi wg godzin miesiąca" podtytul={`${Object.keys(R.zalogaMap).length} osób`}>
+            <Histogram kubelki={(() => { const h = Object.values(R.zalogaMap); return [
+              { l: '<40 h', n: h.filter((x) => x < 40).length },
+              { l: '40–80', n: h.filter((x) => x >= 40 && x < 80).length },
+              { l: '80–120', n: h.filter((x) => x >= 80 && x < 120).length },
+              { l: '120–160', n: h.filter((x) => x >= 120 && x < 160).length },
+              { l: '160–200', n: h.filter((x) => x >= 160 && x < 200).length },
+              { l: '200+', n: h.filter((x) => x >= 200).length }]; })()} />
+          </Karta>
+        </>)}
+
+        {tab === "obsada" && (<>
+          <Sekcja kolor={colors.primary.medium} tytul="Dodaj osobę do grafiku">
+            <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Dodane zmiany trafiają do grafiku <b>i od razu do wykonania</b> (Actual), więc estymacje i wskaźniki liczą się na komplecie obsady — również managerów, których nie ma w matrycy CREW.</p>
+            <div className="grid md:grid-cols-5 gap-3">
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Osoba</label>
+                <input list="lista-kont" value={nowaOsoba} onChange={(e) => setNowaOsoba(e.target.value)} placeholder="nazwisko" className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }} />
+                <datalist id="lista-kont">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name} />)}</datalist>
+              </div>
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Stanowisko</label>
+                <select value={nowaStacja} onChange={(e) => setNowaStacja(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }}>
+                  <option value="MANAGER">MANAGER</option><option value="MGR FUNKCYJNE">MGR FUNKCYJNE</option><option value="KASA">KASA</option><option value="KUCHNIA">KUCHNIA</option><option value="KANAPKI">KANAPKI</option><option value="SERWIS">SERWIS</option>
+                </select>
+              </div>
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Od</label><input type="time" value={nowaOd} onChange={(e) => setNowaOd(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Do</label><input type="time" value={nowaDo} onChange={(e) => setNowaDo(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Zakres</label>
+                <select value={nowyZakres} onChange={(e) => setNowyZakres(e.target.value)} className="w-full px-2 py-1.5 rounded border text-sm" style={{ borderColor: colors.primary.bg }}>
+                  <option value="dzien">jeden dzień</option><option value="schemat">wg dni tygodnia</option><option value="miesiac">cały miesiąc</option>
+                </select>
+              </div>
+            </div>
+            {nowyZakres === 'dzien' && (
+              <div className="mt-3 flex flex-wrap gap-1">
+                {R.dni.map((x) => <button key={x.d} onClick={() => setNowaData(x.ds)} className="px-2 py-1 rounded text-xs font-mono" style={{ backgroundColor: nowaData === x.ds ? colors.primary.medium : 'white', color: nowaData === x.ds ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{D3[x.dow]} {x.d}</button>)}
+              </div>
+            )}
+            {nowyZakres === 'schemat' && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {D3.map((n, i) => { const on = nowyWd.includes(i); return <button key={i} onClick={() => setNowyWd((p) => on ? p.filter((x) => x !== i) : [...p, i])} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{n}</button>; })}
+              </div>
+            )}
+            <div className="mt-4 flex items-center gap-3">
+              <Btn disabled={zapisuje} onClick={async () => {
+                if (!nowaOsoba.trim()) return data.show('Podaj osobę', 'error');
+                let cele = [];
+                if (nowyZakres === 'dzien') { if (!nowaData) return data.show('Wybierz dzień', 'error'); cele = [nowaData]; }
+                else if (nowyZakres === 'miesiac') cele = R.dni.map((x) => x.ds);
+                else cele = R.dni.filter((x) => nowyWd.includes(x.dow)).map((x) => x.ds);
+                setZapisuje(true);
+                for (const ds of cele) await data.addShiftManual({ date: ds, name: nowaOsoba.trim(), station: nowaStacja, start: nowaOd, end: nowaDo });
+                setZapisuje(false);
+              }}>{zapisuje ? 'Dodaję…' : `Dodaj do grafiku${nowyZakres === 'dzien' ? '' : ` (${nowyZakres === 'miesiac' ? R.dim : R.dni.filter((x) => nowyWd.includes(x.dow)).length} dni)`}`}</Btn>
+              <span className="text-xs text-slate-400">{nowaOsoba ? `${nowaOsoba.toUpperCase()} · ${nowaStacja} · ${nowaOd}–${nowaDo}` : ''}</span>
+            </div>
+          </Sekcja>
+
+          <Sekcja kolor="#455A64" tytul="Zmiany dodane ręcznie w tym miesiącu">
+            {(() => {
+              const dod = data.shifts.filter((x) => String(x.date || '').startsWith(`${year}-${String(mIdx + 1).padStart(2, '0')}`) && x.dodana);
+              if (!dod.length) return <p className="text-sm text-slate-400">Brak ręcznie dodanych zmian.</p>;
+              return (<div className="space-y-1">
+                {dod.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)).map((x, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight }}>
+                    <span className="font-mono text-xs" style={{ color: colors.primary.light }}>{x.date.slice(8)}.{x.date.slice(5, 7)}</span>
+                    <span className="font-semibold" style={{ color: colors.primary.darkest }}>{x.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'white', color: colors.primary.dark }}>{x.station}</span>
+                    <span style={{ color: colors.primary.dark }}>{x.start}–{x.end}</span>
+                    <span className="text-xs text-slate-400">{Number(x.hours || 0).toFixed(1)} h</span>
+                    <button onClick={() => data.removeShiftManual({ date: x.date, name: x.name, start: x.start, end: x.end })} className="ml-auto text-red-400"><Trash2 size={15} /></button>
+                  </div>))}
+                <p className="text-xs text-slate-400 mt-2">Razem dodane: {dod.reduce((a, x) => a + Number(x.hours || 0), 0).toFixed(1)} h</p>
+              </div>);
+            })()}
           </Sekcja>
         </>)}
 
@@ -1054,6 +1234,235 @@ const ForecastPlan = ({ data }) => {
   );
 };
 
+
+
+
+// ===================== PULPIT WSKAŹNIKÓW (wykresy wzorowane na GIR/MAPAL) =====================
+const PC = { bg: '#F5F4F0', card: '#FFFFFF', line: '#DEDCD5', ink: '#1C1E21', mute: '#8C8A83', accent: '#E2571E', cel: '#5C4B8A', plan: '#2F6FB5', dir: '#B5482F', ind: '#6B8E23', bad: '#B7362A', ok: '#12655B' };
+const DNI_PELNE = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
+const f1 = (v) => (v || 0).toFixed(1).replace('.', ',');
+
+/* 1. Ewolucja — wariancja narastająca, pole zielone nad zerem / czerwone pod */
+function Ewolucja({ dni }) {
+  const W = 720, H = 190, PL = 34, PB = 22, PT = 8;
+  const plan = dni.reduce((a, x) => a + x.sprzedaz, 0) / 31;
+  let cs = 0, cp = 0;
+  const pts = dni.map((x, i) => {
+    cs += x.sprzedaz; cp += plan;
+    return { i, v: ((cs - cp) / cp) * 100, d: x.d };
+  });
+  const mx = Math.max(3, ...pts.map((p) => Math.abs(p.v))) * 1.15;
+  const X = (i) => PL + (i * (W - PL - 8)) / 30;
+  const Y = (v) => PT + ((H - PT - PB) / 2) * (1 - v / mx);
+  const y0 = Y(0);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 560 }}>
+      {[-mx, -mx / 2, 0, mx / 2, mx].map((v, i) => (<g key={i}>
+        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={v === 0 ? PC.mute : PC.line} />
+        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7.5" fill={PC.mute}>{v.toFixed(0)}%</text></g>))}
+      {pts.slice(1).map((p, k) => {
+        const a = pts[k], dodatnie = (a.v + p.v) / 2 >= 0;
+        return <polygon key={k} points={`${X(a.i)},${y0} ${X(a.i)},${Y(a.v)} ${X(p.i)},${Y(p.v)} ${X(p.i)},${y0}`}
+          fill={dodatnie ? PC.ok : PC.bad} opacity=".28" />;
+      })}
+      <polyline points={pts.map((p) => `${X(p.i)},${Y(p.v)}`).join(" ")} fill="none" stroke={PC.ink} strokeWidth="1.6" />
+      {pts.map((p, i) => i % 5 === 0 || i === 30 ? (
+        <g key={i}><circle cx={X(p.i)} cy={Y(p.v)} r="2.4" fill={p.v >= 0 ? PC.ok : PC.bad} />
+          <text x={X(p.i)} y={H - 6} fontSize="7" textAnchor="middle" fill={PC.mute}>{p.d}</text></g>) : null)}
+      <text x={W - 8} y={Y(pts[30].v) - 6} fontSize="9" textAnchor="end" fill={pts[30].v >= 0 ? PC.ok : PC.bad}>
+        {pts[30].v >= 0 ? "+" : ""}{f1(pts[30].v)}%</text>
+    </svg>
+  );
+}
+
+/* 2. Zegar półkolisty */
+function Zegar({ label, wartosc, max, kolor }) {
+  const W = 160, H = 96, cx = 80, cy = 80, r = 58;
+  const frac = Math.max(0, Math.min(1, wartosc / max));
+  const pol = (a) => [cx + r * Math.cos(Math.PI * (1 - a)), cy - r * Math.sin(Math.PI * (1 - a))];
+  const [x1, y1] = pol(0), [x2, y2] = pol(frac);
+  const [bx, by] = pol(1);
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: 150 }}>
+        <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${bx} ${by}`} fill="none" stroke={PC.line} strokeWidth="11" />
+        <path d={`M ${x1} ${y1} A ${r} ${r} 0 ${frac > 0.5 ? 1 : 0} 1 ${x2} ${y2}`} fill="none" stroke={kolor} strokeWidth="11" strokeLinecap="round" />
+        <text x={cx} y={cy - 12} textAnchor="middle" fontSize="20" fill={PC.ink} fontFamily="ui-monospace,monospace">{f1(wartosc)}</text>
+        <text x={cx} y={cy + 2} textAnchor="middle" fontSize="8" fill={PC.mute}>godzin</text>
+        <text x={12} y={cy + 10} fontSize="7" fill={PC.mute}>0</text>
+        <text x={W - 12} y={cy + 10} fontSize="7" textAnchor="end" fill={PC.mute}>{max}</text>
+      </svg>
+      <div className="text-xs text-center" style={{ color: PC.mute }}>{label}</div>
+    </div>
+  );
+}
+
+/* 3. Rozbieżność — słupki rozchodzące się od zera */
+function Rozbieznosc({ grupy, procent }) {
+  const W = 700, rowH = 30, PL = 46, H = grupy.length * rowH + 22;
+  const mx = Math.max(...grupy.map((g) => Math.max(procent ? g.pDef : g.def, procent ? g.pExc : g.exc))) * 1.1 || 1;
+  const mid = PL + (W - PL - 16) / 2, half = (W - PL - 20) / 2;
+  const sc = (v) => (v / mx) * half;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 540 }}>
+      <line x1={mid} x2={mid} y1={0} y2={H - 16} stroke={PC.mute} strokeWidth=".8" />
+      {grupy.map((g, i) => {
+        const y = i * rowH + 6;
+        const dDir = sc(procent ? g.pDir : g.dDir), dInd = sc(procent ? g.pInd : g.dInd), e = sc(procent ? g.pExc : g.exc);
+        const jed = procent ? "%" : "h";
+        return (<g key={i}>
+          <text x={2} y={y + 13} fontSize="9" fill={PC.mute}>{g.nazwa}</text>
+          <rect x={mid - dDir - dInd} y={y} width={dInd} height={17} fill={PC.ind} />
+          <rect x={mid - dDir} y={y} width={dDir} height={17} fill={PC.dir} />
+          <rect x={mid} y={y} width={e} height={17} fill={PC.plan} opacity=".8" />
+          {dDir + dInd > 3 && <text x={mid - dDir - dInd - 4} y={y + 12} fontSize="8" textAnchor="end" fill={PC.bad}>
+            −{f1(procent ? g.pDef : g.def)}{jed}</text>}
+          {e > 3 && <text x={mid + e + 4} y={y + 12} fontSize="8" fill={PC.plan}>+{f1(procent ? g.pExc : g.exc)}{jed}</text>}
+        </g>);
+      })}
+      <text x={PL} y={H - 3} fontSize="7.5" fill={PC.mute}>niedobór</text>
+      <text x={W - 8} y={H - 3} fontSize="7.5" textAnchor="end" fill={PC.mute}>nadmiar</text>
+    </svg>
+  );
+}
+
+/* 4. Wykres śróddzienny — słupki pośrednia/bezpośrednia + linia obsady + nakładki */
+function Sroddzienny({ D, nakladka }) {
+  const W = 720, H = 210, PL = 26, PB = 20, PT = 8;
+  const cw = (W - PL - 8) / NS;
+  const mxY = Math.max(...D.dem, ...D.cover) + 1;
+  const Y = (v) => PT + (H - PT - PB) * (1 - v / mxY);
+  const sprz = new Array(NS).fill(0);
+  for (let h = 7; h <= 23; h++) { const v = ZLH[h] / 2; sprz[sl(h)] = v; sprz[sl(h) + 1] = v; }
+  const trans = sprz.map((v) => v / 44.38);
+  const nak = nakladka === "sprzedaz" ? sprz : nakladka === "transakcje" ? trans : null;
+  const mxN = nak ? Math.max(...nak) * 1.15 : 1;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 620 }}>
+      {[...Array(mxY + 1)].map((_, v) => v % 2 === 0 ? (<g key={v}>
+        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
+        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{v}</text></g>) : null)}
+      {D.dir.map((v, i) => v > 0 ? <rect key={`d${i}`} x={PL + i * cw + .5} y={Y(v)} width={cw - 1} height={Y(0) - Y(v)} fill={PC.dir} /> : null)}
+      {D.ind.map((v, i) => v > 0 ? <rect key={`i${i}`} x={PL + i * cw + .5} y={Y(v)} width={cw - 1} height={Y(0) - Y(v)} fill={PC.ind} opacity=".95" /> : null)}
+      <polyline points={D.cover.flatMap((v, i) => [`${PL + i * cw},${Y(v)}`, `${PL + (i + 1) * cw},${Y(v)}`]).join(" ")}
+        fill="none" stroke={PC.plan} strokeWidth="1.8" />
+      {D.cover.map((v, i) => i % 2 === 0 && v > 0 ? <circle key={i} cx={PL + i * cw + cw} cy={Y(v)} r="1.7" fill={PC.plan} /> : null)}
+      {nak && <polyline points={nak.map((v, i) => `${PL + i * cw + cw / 2},${PT + (H - PT - PB) * (1 - v / mxN)}`).join(" ")}
+        fill="none" stroke={PC.cel} strokeWidth="1.3" strokeDasharray="3 2" />}
+      {[...Array(NS)].map((_, i) => i % 4 === 0 ? <text key={i} x={PL + i * cw} y={H - 6} fontSize="7" fill={PC.mute}>{hmL(i)}</text> : null)}
+    </svg>
+  );
+}
+
+/* 5. Ranking z linią średniej */
+function Ranking({ dane, jednostka }) {
+  const W = 700, H = 170, PL = 30, PB = 26, PT = 8;
+  const mx = Math.max(...dane.map((d) => d.v)) * 1.1;
+  const bw = (W - PL - 10) / dane.length;
+  const sr = dane.reduce((a, d) => a + d.v, 0) / dane.length;
+  const Y = (v) => PT + (H - PT - PB) * (1 - v / mx);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }}>
+      {[0, mx / 2, mx].map((v, i) => (<g key={i}>
+        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
+        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{f0(v)}</text></g>))}
+      {dane.map((d, i) => (<g key={i}>
+        <rect x={PL + i * bw + bw * .18} y={Y(d.v)} width={bw * .64} height={Y(0) - Y(d.v)}
+          fill={d.v >= sr ? PC.plan : PC.mute} opacity={d.v >= sr ? .85 : .45} />
+        <text x={PL + i * bw + bw / 2} y={Y(d.v) - 3} fontSize="7.5" textAnchor="middle" fill={PC.ink}>{f0(d.v)}</text>
+        <text x={PL + i * bw + bw / 2} y={H - 12} fontSize="8" textAnchor="middle" fill={PC.mute}>{d.n}</text>
+      </g>))}
+      <line x1={PL} x2={W - 8} y1={Y(sr)} y2={Y(sr)} stroke={PC.bad} strokeWidth="1.4" strokeDasharray="4 3" />
+      <text x={W - 10} y={Y(sr) - 4} fontSize="7.5" textAnchor="end" fill={PC.bad}>średnia {f0(sr)} {jednostka}</text>
+    </svg>
+  );
+}
+
+/* 6. Pierścień — struktura wg pory dnia */
+function Piers({ czesci }) {
+  const W = 320, H = 170, cx = 85, cy = 85, R = 62, r = 36;
+  const tot = czesci.reduce((a, c) => a + c.v, 0);
+  let kat = -Math.PI / 2;
+  const luk = (a0, a1, rr) => [cx + rr * Math.cos(a0), cy + rr * Math.sin(a0), cx + rr * Math.cos(a1), cy + rr * Math.sin(a1)];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxWidth: 340 }}>
+      {czesci.map((c, i) => {
+        const a0 = kat, a1 = kat + (c.v / tot) * Math.PI * 2; kat = a1;
+        const [x1, y1, x2, y2] = luk(a0, a1, R), [x3, y3, x4, y4] = luk(a1, a0, r);
+        const big = a1 - a0 > Math.PI ? 1 : 0;
+        const mid = (a0 + a1) / 2, lx = cx + (R + 10) * Math.cos(mid), ly = cy + (R + 10) * Math.sin(mid);
+        return (<g key={i}>
+          <path d={`M ${x1} ${y1} A ${R} ${R} 0 ${big} 1 ${x2} ${y2} L ${x3} ${y3} A ${r} ${r} 0 ${big} 0 ${x4} ${y4} Z`} fill={c.kol} />
+          {c.v / tot > 0.06 && <text x={lx} y={ly} fontSize="7.5" textAnchor={Math.cos(mid) > 0 ? "start" : "end"} fill={PC.mute}>
+            {Math.round(c.v / tot * 100)}%</text>}
+        </g>);
+      })}
+      <text x={cx} y={cy + 4} textAnchor="middle" fontSize="11" fill={PC.ink} fontFamily="ui-monospace,monospace">100%</text>
+      {czesci.map((c, i) => (<g key={i}>
+        <rect x={190} y={30 + i * 20} width={9} height={9} rx="2" fill={c.kol} />
+        <text x={204} y={38 + i * 20} fontSize="8.5" fill={PC.mute}>{c.n}</text>
+      </g>))}
+    </svg>
+  );
+}
+
+/* 7. Słupki + linia procentowa (Horas Teóricas vs Pagadas) */
+function SlupkiLinia({ dane }) {
+  const W = 720, H = 190, PL = 30, PR = 34, PB = 24, PT = 10;
+  const mx = Math.max(...dane.flatMap((d) => [d.a, d.b])) * 1.15;
+  const bw = (W - PL - PR) / dane.length;
+  const Y = (v) => PT + (H - PT - PB) * (1 - v / mx);
+  const YP = (p) => PT + (H - PT - PB) * (1 - (p - 60) / 80);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 560 }}>
+      {[0, mx / 2, mx].map((v, i) => (<g key={i}>
+        <line x1={PL} x2={W - PR} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
+        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{f0(v)}</text></g>))}
+      {[80, 100, 120].map((p) => (
+        <text key={p} x={W - PR + 4} y={YP(p) + 3} fontSize="7" fill={PC.cel}>{p}%</text>))}
+      {dane.map((d, i) => (<g key={i}>
+        <rect x={PL + i * bw + bw * .14} y={Y(d.a)} width={bw * .34} height={Y(0) - Y(d.a)} fill={PC.cel} opacity=".55" />
+        <rect x={PL + i * bw + bw * .5} y={Y(d.b)} width={bw * .34} height={Y(0) - Y(d.b)} fill={PC.plan} opacity=".8" />
+        <text x={PL + i * bw + bw / 2} y={H - 10} fontSize="8" textAnchor="middle" fill={PC.mute}>{d.n}</text>
+      </g>))}
+      <polyline points={dane.map((d, i) => `${PL + i * bw + bw / 2},${YP(d.b / d.a * 100)}`).join(" ")}
+        fill="none" stroke={PC.bad} strokeWidth="1.6" />
+      {dane.map((d, i) => <circle key={i} cx={PL + i * bw + bw / 2} cy={YP(d.b / d.a * 100)} r="2.4" fill={PC.bad} />)}
+    </svg>
+  );
+}
+
+/* 8. Histogram załogi wg przedziałów godzin */
+function Histogram({ kubelki }) {
+  const W = 700, H = 165, PL = 26, PB = 26, PT = 10;
+  const mx = Math.max(...kubelki.map((k) => k.n)) * 1.2;
+  const bw = (W - PL - 10) / kubelki.length;
+  const Y = (v) => PT + (H - PT - PB) * (1 - v / mx);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }}>
+      {[0, Math.round(mx / 2), Math.round(mx)].map((v, i) => (<g key={i}>
+        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
+        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{v}</text></g>))}
+      {kubelki.map((k, i) => (<g key={i}>
+        <rect x={PL + i * bw + bw * .2} y={Y(k.n)} width={bw * .6} height={Y(0) - Y(k.n)} fill={PC.plan} opacity=".75" />
+        <text x={PL + i * bw + bw / 2} y={Y(k.n) - 3} fontSize="8" textAnchor="middle" fill={PC.ink}>{k.n}</text>
+        <text x={PL + i * bw + bw / 2} y={H - 10} fontSize="7.5" textAnchor="middle" fill={PC.mute}>{k.l}</text>
+      </g>))}
+    </svg>
+  );
+}
+
+/* =================================================================== */
+function Karta({ tytul, podtytul, prawo, children }) {
+  return (<div className="rounded-lg p-3 mt-2" style={{ background: PC.card, border: `1px solid ${PC.line}`, borderLeft: `3px solid ${PC.bad}` }}>
+    <div className="flex flex-wrap items-baseline gap-2 mb-2">
+      <span className="text-sm font-medium">{tytul}</span>
+      {podtytul && <span className="text-xs" style={{ color: PC.mute }}>{podtytul}</span>}
+      {prawo && <span className="ml-auto text-xs">{prawo}</span>}
+    </div>
+    {children}
+  </div>);
+}
 
 
 // ===================== PLAN BUDŻETU (kalkulator COL) =====================
@@ -1996,6 +2405,25 @@ const useData = () => {
   const tsToggleCompleted = useCallback((date) => { const cur = tsRef.current; persistTs({ ...cur, completed: { ...cur.completed, [date]: !cur.completed[date] } }); }, [persistTs]);
   const tsSetWeek = useCallback((ws, statusObj) => { const cur = tsRef.current; persistTs({ ...cur, weekStatus: { ...cur.weekStatus, [ws]: statusObj } }); }, [persistTs]);
 
+  // Dodanie osoby do grafiku z poziomu planowania — od razu tworzy też wpis wykonania (Actual)
+  const addShiftManual = useCallback(async (payload) => {
+    const r = await api('/schedule?action=add', 'POST', payload);
+    if (!r.success) { show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
+    const sh = r.shift;
+    await tsPutActual(wtKey(sh), { start: sh.start, end: sh.end, breaks: [] });
+    await sync();
+    show(`Dodano: ${sh.name} ${sh.start}–${sh.end} (grafik + wykonanie)`);
+    return true;
+  }, [sync, tsPutActual]);
+
+  const removeShiftManual = useCallback(async (payload) => {
+    const r = await api('/schedule?action=remove', 'POST', payload);
+    if (!r.success) { show(r.error || 'Nie udało się usunąć', 'error'); return false; }
+    await sync();
+    show('Usunięto zmianę');
+    return true;
+  }, [sync]);
+
   const refreshAccounts = useCallback(async () => { const r = await api('/accounts'); if (r.success) setAccounts(r.accounts || []); }, []);
   const addAccount = useCallback(async (f) => { const r = await api('/accounts', 'POST', f); if (r.success) { await refreshAccounts(); return { name: r.name, login: r.login, haslo: r.haslo }; } show(r.error || 'Błąd', 'error'); return null; }, [refreshAccounts]);
   const updateAccount = useCallback(async (id, patch) => { const r = await api('/accounts?id=' + id, 'PUT', patch); if (r.success) await refreshAccounts(); else show(r.error || 'Błąd', 'error'); }, [refreshAccounts]);
@@ -2013,7 +2441,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales };
 };
 
 // ===================== MAIN =====================
@@ -2035,7 +2463,6 @@ export default function App() {
     wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
     print: <PrintPage data={data} />,
     plan: <BudgetPlan data={data} setPage={setPage} />,
-    mgr: <PlanPage data={data} />,
     forecast: <ForecastPlan data={data} />,
     emps: <AdminEmployees data={data} />,
     swaps: <AdminSwaps data={data} />,
