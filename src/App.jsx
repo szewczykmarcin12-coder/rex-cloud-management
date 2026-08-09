@@ -1098,12 +1098,13 @@ const ForecastPlan = ({ data }) => {
             <div className="mt-4 flex items-center gap-3">
               <Btn disabled={zapisuje} onClick={async () => {
                 if (!nowaOsoba.trim()) return data.show('Podaj osobę', 'error');
+                const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === nowaOsoba.trim().toUpperCase()));
                 let cele = [];
                 if (nowyZakres === 'dzien') { if (!nowaData) return data.show('Wybierz dzień', 'error'); cele = [nowaData]; }
                 else if (nowyZakres === 'miesiac') cele = R.dni.map((x) => x.ds);
                 else cele = R.dni.filter((x) => nowyWd.includes(x.dow)).map((x) => x.ds);
                 setZapisuje(true);
-                for (const ds of cele) await data.addShiftManual({ date: ds, name: nowaOsoba.trim(), station: nowaStacja, start: nowaOd, end: nowaDo });
+                for (const ds of cele) await data.addShiftManual({ date: ds, name: nowaOsoba.trim(), station: nowaStacja, start: nowaOd, end: nowaDo, accountId: konto ? konto.id : undefined });
                 setZapisuje(false);
               }}>{zapisuje ? 'Dodaję…' : `Dodaj do grafiku${nowyZakres === 'dzien' ? '' : ` (${nowyZakres === 'miesiac' ? R.dim : R.dni.filter((x) => nowyWd.includes(x.dow)).length} dni)`}`}</Btn>
               <span className="text-xs text-slate-400">{nowaOsoba ? `${nowaOsoba.toUpperCase()} · ${nowaStacja} · ${nowaOd}–${nowaDo}` : ''}</span>
@@ -1241,6 +1242,7 @@ const ForecastPlan = ({ data }) => {
 const PC = { bg: '#F5F4F0', card: '#FFFFFF', line: '#DEDCD5', ink: '#1C1E21', mute: '#8C8A83', accent: '#E2571E', cel: '#5C4B8A', plan: '#2F6FB5', dir: '#B5482F', ind: '#6B8E23', bad: '#B7362A', ok: '#12655B' };
 const DNI_PELNE = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
 const f1 = (v) => (v || 0).toFixed(1).replace('.', ',');
+const hmL = (i) => String(Math.floor(((S0 * 60 + i * 30) % 1440) / 60)).padStart(2, '0');
 
 /* 1. Ewolucja — wariancja narastająca, pole zielone nad zerem / czerwone pod */
 function Ewolucja({ dni }) {
@@ -1555,17 +1557,18 @@ const BudgetPlan = ({ data, setPage }) => {
   const mPre = `${rokBud}-${String(mIdx + 1).padStart(2, '0')}`;
 
   // Godziny FAKTYCZNE — z grafiku danego miesiąca (bez wierszy instruktorskich, zgodnie z regułą liczenia)
+  // Godziny z grafiku — po IDENTYFIKATORZE KONTA (przypisanym przy imporcie), z zapasowym dopasowaniem po nazwie
   const godzGrafik = useMemo(() => {
-    const m = {};
+    const m = { poId: {}, poNazwie: {} };
     data.shifts.filter((x) => String(x.date || '').startsWith(mPre) && !jestInstruktor(x)).forEach((x) => {
-      const k = String(x.name || '').toUpperCase().trim();
-      m[k] = (m[k] || 0) + godzZ(x);
+      if (x.accountId) m.poId[x.accountId] = (m.poId[x.accountId] || 0) + godzZ(x);
+      else { const k = String(x.name || '').toUpperCase().trim(); m.poNazwie[k] = (m.poNazwie[k] || 0) + godzZ(x); }
     });
     return m;
   }, [data.shifts, mPre]);
-  const grafikJest = Object.keys(godzGrafik).length > 0;
+  const grafikJest = Object.keys(godzGrafik.poId).length > 0 || Object.keys(godzGrafik.poNazwie).length > 0;
   const kluczeOsoby = (e) => [e.grafikName || String(e.name || '').trim().split(/\s+/).pop(), ...(e.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim());
-  const godzAktOf = (e) => kluczeOsoby(e).reduce((a, k) => a + (godzGrafik[k] || 0), 0);
+  const godzAktOf = (e) => (godzGrafik.poId[e.id] || 0) + kluczeOsoby(e).reduce((a, k) => a + (godzGrafik.poNazwie[k] || 0), 0);
   // Godziny PLANOWANE — ręcznie ustawione w budżecie; bez ustawienia startują od grafiku (a gdy brak grafiku — od normy)
   const getGodz = (e) => (e.godzBy && e.godzBy[mIdx] != null) ? e.godzBy[mIdx] : (grafikJest ? godzAktOf(e) : (e.godziny || 0));
 
@@ -1870,6 +1873,7 @@ const AdminEmployees = ({ data }) => {
   return (
     <div className="flex-1 flex flex-col">
       <Header title="Pracownicy" subtitle="Konta pracowników — funkcje, stawki, dane logowania">
+        <button onClick={() => data.przypiszZmiany()} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: 'white', color: colors.primary.darkest }}>Przypisz zmiany do kont</button>
         <button onClick={() => setForm({ ...emptyForm })} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>+ Dodaj pracownika</button>
       </Header>
       <div className="flex-1 p-8 space-y-4 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
@@ -1893,16 +1897,16 @@ const AdminEmployees = ({ data }) => {
           ))}
         </div>
         {(() => {
-          const przypisane = new Set();
-          emps.forEach((e) => [e.grafikName, ...(e.aliasy || [])].filter(Boolean).forEach((x) => przypisane.add(String(x).toUpperCase().trim())));
           const wGrafiku = {};
-          (data.shifts || []).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); if (k) wGrafiku[k] = (wGrafiku[k] || 0) + godzZ(x); });
-          const osierocone = Object.entries(wGrafiku).filter(([k]) => !przypisane.has(k)).sort((a, b) => b[1] - a[1]);
+          (data.shifts || []).filter((x) => !x.accountId).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); if (k) wGrafiku[k] = (wGrafiku[k] || 0) + godzZ(x); });
+          const osierocone = Object.entries(wGrafiku).sort((a, b) => b[1] - a[1]);
           if (!osierocone.length) return null;
           return (
             <div className="bg-white rounded-xl shadow-sm border p-4" style={{ borderColor: '#f0c000' }}>
               <div className="flex items-center gap-2 mb-2"><AlertCircle size={16} style={{ color: '#B26A00' }} /><h3 className="font-semibold text-sm" style={{ color: colors.primary.darkest }}>Nazwy z grafiku bez konta ({osierocone.length})</h3></div>
-              <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Te osoby występują w grafiku, ale nie są przypisane do żadnego konta — ich godziny nie wliczą się do kosztów. Dopisz nazwę jako „Nazwa w grafiku" albo alias przy właściwym pracowniku (Edytuj).</p>
+              <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Te zmiany nie są przypisane do żadnego konta — ich godziny nie wliczą się do kosztów. Dopisz nazwę jako „Nazwa w grafiku" albo alias przy właściwym pracowniku (Edytuj), a potem kliknij „Przypisz zmiany do kont".</p>
+              <Btn variant="secondary" onClick={() => data.przypiszZmiany()}>Przypisz zmiany do kont</Btn>
+              <div className="h-2" />
               <div className="flex flex-wrap gap-1.5">
                 {osierocone.map(([k, h]) => <span key={k} className="text-xs px-2 py-1 rounded-lg font-mono" style={{ backgroundColor: '#fff8e6', color: '#8a6d1a' }}>{k} <span className="opacity-60">{h.toFixed(0)} h</span></span>)}
               </div>
@@ -2351,7 +2355,14 @@ const useData = () => {
     setLoading(true);
     try {
       const r = await api('/schedule', 'PUT', { shifts: parsed.shifts, roster: parsed.roster, meta: parsed.meta });
-      if (r.success) { show(`Zaimportowano ${parsed.shifts.length} zmian (${parsed.meta.monthName || r.month})`); await sync(); }
+      if (r.success) {
+        const brak = Object.keys(r.nieprzypisane || {}).length;
+        show(brak
+          ? `Zaimportowano ${parsed.shifts.length} zmian — przypisano do kont ${r.przypisane}, bez konta: ${Object.keys(r.nieprzypisane).slice(0, 3).join(', ')}${brak > 3 ? ` i ${brak - 3} więcej` : ''}`
+          : `Zaimportowano ${parsed.shifts.length} zmian (${parsed.meta.monthName || r.month}) — wszystkie przypisane do kont`,
+          brak ? 'error' : 'success');
+        await sync();
+      }
       else show('Błąd importu: ' + r.error, 'error');
     } catch { show('Błąd zapisu do bazy', 'error'); }
     setLoading(false);
@@ -2450,6 +2461,14 @@ const useData = () => {
     return true;
   }, [sync]);
 
+  const przypiszZmiany = useCallback(async () => {
+    const r = await api('/schedule?action=przypisz', 'POST', {});
+    if (!r.success) { show(r.error || 'Nie udało się przypisać', 'error'); return; }
+    await sync();
+    const brak = Object.keys(r.nieprzypisane || {}).length;
+    show(brak ? `Przypisano ${r.przypisane} z ${r.razem} zmian — ${brak} nazw bez konta` : `Przypisano wszystkie zmiany (${r.przypisane})`);
+  }, [sync]);
+
   const refreshAccounts = useCallback(async () => { const r = await api('/accounts'); if (r.success) setAccounts(r.accounts || []); }, []);
   const addAccount = useCallback(async (f) => { const r = await api('/accounts', 'POST', f); if (r.success) { await refreshAccounts(); return { name: r.name, login: r.login, haslo: r.haslo }; } show(r.error || 'Błąd', 'error'); return null; }, [refreshAccounts]);
   const updateAccount = useCallback(async (id, patch) => { const r = await api('/accounts?id=' + id, 'PUT', patch); if (r.success) await refreshAccounts(); else show(r.error || 'Błąd', 'error'); }, [refreshAccounts]);
@@ -2467,7 +2486,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany };
 };
 
 // ===================== MAIN =====================
