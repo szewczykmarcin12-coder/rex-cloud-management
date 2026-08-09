@@ -1546,7 +1546,7 @@ const BudgetPlan = ({ data, setPage }) => {
   // Pracownicy pochodzą z modułu „Pracownicy" (konta). Tutaj dokładamy tylko parametry kosztowe.
   const emps = useMemo(() => (data.accounts || []).map((a) => ({
     ...BP_KOSZT_DOMYSLNE, ...(koszParam[a.id] || {}),
-    id: a.id, name: a.name, grafikName: a.grafikName, pozycja: a.funkcja, umowa: a.umowa, stawka: a.stawka,
+    id: a.id, name: a.name, grafikName: a.grafikName, aliasy: a.aliasy || [], pozycja: a.funkcja, umowa: a.umowa, stawka: a.stawka,
     zusUZ: !!a.zus, instruktor: !!a.instruktor,
   })), [data.accounts, koszParam]);
 
@@ -1564,8 +1564,8 @@ const BudgetPlan = ({ data, setPage }) => {
     return m;
   }, [data.shifts, mPre]);
   const grafikJest = Object.keys(godzGrafik).length > 0;
-  const kluczOsoby = (e) => String(e.grafikName || String(e.name || '').trim().split(/\s+/).pop() || '').toUpperCase().trim();
-  const godzAktOf = (e) => godzGrafik[kluczOsoby(e)] || 0;
+  const kluczeOsoby = (e) => [e.grafikName || String(e.name || '').trim().split(/\s+/).pop(), ...(e.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim());
+  const godzAktOf = (e) => kluczeOsoby(e).reduce((a, k) => a + (godzGrafik[k] || 0), 0);
   // Godziny PLANOWANE — ręcznie ustawione w budżecie; bez ustawienia startują od grafiku (a gdy brak grafiku — od normy)
   const getGodz = (e) => (e.godzBy && e.godzBy[mIdx] != null) ? e.godzBy[mIdx] : (grafikJest ? godzAktOf(e) : (e.godziny || 0));
 
@@ -1810,7 +1810,7 @@ const FUNKCJE = [
   { id: 'RGM', label: 'Kierownik restauracji' },
 ];
 const funkcjaLabel = (id) => (FUNKCJE.find((f) => f.id === id) || {}).label || id;
-const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false };
+const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false, grafikName: '', aliasy: '' };
 
 const CopyField = ({ label, value }) => {
   const [ok, setOk] = useState(false);
@@ -1829,6 +1829,14 @@ const EmpForm = ({ init, onSave, onClose }) => {
         <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>{init.id ? 'Edytuj pracownika' : 'Nowy pracownik'}</h3><button onClick={onClose}><X size={20} className="text-slate-400" /></button></div>
         <div className="space-y-3">
           <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Imię i nazwisko</label><input value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="np. Jan Kowalski" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: valid || !f.name ? colors.primary.bg : '#E74C3C' }} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Nazwa w grafiku</label>
+              <input value={f.grafikName} onChange={(e) => set({ grafikName: e.target.value })} placeholder={f.name.trim().split(/\s+/).pop() || 'nazwisko'} className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} />
+              <p className="text-[10px] text-slate-400 mt-0.5">Dokładnie tak, jak osoba jest wpisana w matrycy (np. MATI KOLSKI)</p></div>
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Inne zapisy (aliasy)</label>
+              <input value={f.aliasy} onChange={(e) => set({ aliasy: e.target.value })} placeholder="np. MATI KOSKI, KOSKI" className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} />
+              <p className="text-[10px] text-slate-400 mt-0.5">Literówki i warianty, oddzielone przecinkiem</p></div>
+          </div>
           <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Funkcja</label><select value={f.funkcja} onChange={(e) => set({ funkcja: e.target.value })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{FUNKCJE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Typ umowy</label><select value={f.umowa} onChange={(e) => set({ umowa: e.target.value })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}><option value="UOP">UOP (etat)</option><option value="UZ">UZ (zlecenie)</option></select></div>
@@ -1850,8 +1858,9 @@ const AdminEmployees = ({ data }) => {
   const [q, setQ] = useState('');
 
   const save = async (f) => {
-    if (form.id) { await data.updateAccount(form.id, f); data.show('Zapisano zmiany'); }
-    else { const c = await data.addAccount(f); if (c) setCred(c); }
+    const payload = { ...f, grafikName: (f.grafikName || '').trim(), aliasy: String(f.aliasy || '').split(',').map((x) => x.trim()).filter(Boolean) };
+    if (form.id) { await data.updateAccount(form.id, payload); data.show('Zapisano zmiany'); }
+    else { const c = await data.addAccount(payload); if (c) setCred(c); }
     setForm(null);
   };
   const reset = async (e) => { const c = await data.resetAccountPassword(e.id); if (c) setCred(c); };
@@ -1869,20 +1878,37 @@ const AdminEmployees = ({ data }) => {
           <div className="grid grid-cols-[1.4fr_1.4fr_90px_90px_80px_1fr_150px] gap-2 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})`, color: 'white' }}><span>Pracownik</span><span>Funkcja</span><span>Umowa</span><span className="text-right">Stawka</span><span className="text-center">ZUS</span><span>Login</span><span className="text-right">Akcje</span></div>
           {filtered.length === 0 ? <div className="p-8 text-center text-slate-400">Brak kont. Kliknij „Dodaj pracownika".</div> : filtered.map((e, i) => (
             <div key={e.id} className="grid grid-cols-[1.4fr_1.4fr_90px_90px_80px_1fr_150px] gap-2 px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#eef2f7', backgroundColor: i % 2 ? '#f8fafc' : 'white' }}>
-              <span className="font-semibold truncate" style={{ color: colors.primary.darkest }}>{e.name}</span>
+              <span className="truncate"><span className="font-semibold" style={{ color: colors.primary.darkest }}>{e.name}</span>{e.grafikName && <span className="ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.grafikName}</span>}</span>
               <span style={{ color: colors.primary.dark }}>{funkcjaLabel(e.funkcja)}{e.instruktor && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>instruktor</span>}</span>
               <span><span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.umowa}</span></span>
               <span className="text-right font-medium" style={{ color: colors.primary.darkest }}>{e.umowa === 'UOP' ? `${zl(e.stawka)}` : `${zl(e.stawka)}/h`}</span>
               <span className="text-center">{e.zus ? <Check size={16} style={{ color: '#2E9E5B' }} className="inline" /> : <span className="text-slate-300">—</span>}</span>
               <span className="font-mono font-semibold" style={{ color: colors.primary.dark }}>{e.login}</span>
               <span className="flex items-center justify-end gap-1">
-                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
+                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', ') })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
                 <button onClick={() => reset(e)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}><Lock size={12} />PIN</button>
                 <button onClick={() => del(e)} className="text-red-400 p-1"><Trash2 size={15} /></button>
               </span>
             </div>
           ))}
         </div>
+        {(() => {
+          const przypisane = new Set();
+          emps.forEach((e) => [e.grafikName, ...(e.aliasy || [])].filter(Boolean).forEach((x) => przypisane.add(String(x).toUpperCase().trim())));
+          const wGrafiku = {};
+          (data.shifts || []).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); if (k) wGrafiku[k] = (wGrafiku[k] || 0) + godzZ(x); });
+          const osierocone = Object.entries(wGrafiku).filter(([k]) => !przypisane.has(k)).sort((a, b) => b[1] - a[1]);
+          if (!osierocone.length) return null;
+          return (
+            <div className="bg-white rounded-xl shadow-sm border p-4" style={{ borderColor: '#f0c000' }}>
+              <div className="flex items-center gap-2 mb-2"><AlertCircle size={16} style={{ color: '#B26A00' }} /><h3 className="font-semibold text-sm" style={{ color: colors.primary.darkest }}>Nazwy z grafiku bez konta ({osierocone.length})</h3></div>
+              <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Te osoby występują w grafiku, ale nie są przypisane do żadnego konta — ich godziny nie wliczą się do kosztów. Dopisz nazwę jako „Nazwa w grafiku" albo alias przy właściwym pracowniku (Edytuj).</p>
+              <div className="flex flex-wrap gap-1.5">
+                {osierocone.map(([k, h]) => <span key={k} className="text-xs px-2 py-1 rounded-lg font-mono" style={{ backgroundColor: '#fff8e6', color: '#8a6d1a' }}>{k} <span className="opacity-60">{h.toFixed(0)} h</span></span>)}
+              </div>
+            </div>
+          );
+        })()}
         <p className="text-xs text-slate-400">Login nadawany automatycznie (3 litery imienia + 3 nazwiska + numer). PIN startowy (4 cyfry) generowany przy utworzeniu — pracownik zmienia go przy pierwszym logowaniu. „PIN" resetuje i pokazuje nowy PIN startowy.</p>
       </div>
 
