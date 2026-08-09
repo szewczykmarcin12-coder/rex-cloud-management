@@ -1133,16 +1133,36 @@ const BudgetPlan = ({ data, setPage }) => {
   // Pracownicy pochodzą z modułu „Pracownicy" (konta). Tutaj dokładamy tylko parametry kosztowe.
   const emps = useMemo(() => (data.accounts || []).map((a) => ({
     ...BP_KOSZT_DOMYSLNE, ...(koszParam[a.id] || {}),
-    id: a.id, name: a.name, pozycja: a.funkcja, umowa: a.umowa, stawka: a.stawka,
+    id: a.id, name: a.name, grafikName: a.grafikName, pozycja: a.funkcja, umowa: a.umowa, stawka: a.stawka,
     zusUZ: !!a.zus, instruktor: !!a.instruktor,
   })), [data.accounts, koszParam]);
 
   const nom = settings.normy[mIdx] || 160;
-  const getGodz = (e) => (e.godzBy && e.godzBy[mIdx] != null) ? e.godzBy[mIdx] : e.godziny;
+  const rokBud = useMemo(() => { const ys = data.shifts.map((x) => +String(x.date).slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
+  const mPre = `${rokBud}-${String(mIdx + 1).padStart(2, '0')}`;
+
+  // Godziny FAKTYCZNE — z grafiku danego miesiąca (bez wierszy instruktorskich, zgodnie z regułą liczenia)
+  const godzGrafik = useMemo(() => {
+    const m = {};
+    data.shifts.filter((x) => String(x.date || '').startsWith(mPre) && !jestInstruktor(x)).forEach((x) => {
+      const k = String(x.name || '').toUpperCase().trim();
+      m[k] = (m[k] || 0) + godzZ(x);
+    });
+    return m;
+  }, [data.shifts, mPre]);
+  const grafikJest = Object.keys(godzGrafik).length > 0;
+  const kluczOsoby = (e) => String(e.grafikName || String(e.name || '').trim().split(/\s+/).pop() || '').toUpperCase().trim();
+  const godzAktOf = (e) => godzGrafik[kluczOsoby(e)] || 0;
+  // Godziny PLANOWANE — ręcznie ustawione w budżecie; bez ustawienia startują od grafiku (a gdy brak grafiku — od normy)
+  const getGodz = (e) => (e.godzBy && e.godzBy[mIdx] != null) ? e.godzBy[mIdx] : (grafikJest ? godzAktOf(e) : (e.godziny || 0));
+
   const koszty = emps.map((e) => ({ e, k: bpKoszt({ ...e, godziny: getGodz(e) }, nom, settings) }));
+  const kosztyAkt = emps.map((e) => ({ e, k: bpKoszt({ ...e, godziny: godzAktOf(e) }, nom, settings) }));
   const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
   const col = sum(koszty, (x) => x.k.total);
   const godzTotal = sum(koszty, (x) => x.k.worked);
+  const colAkt = sum(kosztyAkt, (x) => x.k.total);
+  const godzAktTotal = sum(kosztyAkt, (x) => x.k.worked);
   const sale = sprzedaz[mIdx] || 0, tr = transakcje[mIdx] || 0, dni = dniS[mIdx] || 0;
   const colPct = sale ? col / sale : 0;
   const agc = tr ? sale / tr : 0, splh = godzTotal ? sale / godzTotal : 0, mpt = tr ? godzTotal * 60 / tr : 0;
@@ -1188,6 +1208,17 @@ const BudgetPlan = ({ data, setPage }) => {
   const absPct = hRazem + hUrlop + hZLA ? ((hUrlop + hZLA) / (hRazem + hUrlop + hZLA)) * 100 : 0;
 
   const Stat = ({ v, l, sub, dark }) => (<div className="rounded-xl p-3 text-center shadow-sm border" style={{ backgroundColor: dark ? colors.primary.darkest : 'white', borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: dark ? 'white' : colors.primary.darkest }}>{v}</p><p className="text-[11px]" style={{ color: dark ? 'rgba(255,255,255,.7)' : colors.primary.light }}>{l}</p>{sub && <p className="text-[10px]" style={{ color: dark ? 'rgba(255,255,255,.5)' : '#94a3b8' }}>{sub}</p>}</div>);
+  // Kafelek z podwójną wartością: u góry faktyczne (z grafiku), pod spodem planowane (z budżetu)
+  const Dwa = ({ akt, plan, label, kolor }) => {
+    const roz = (parseFloat(String(akt).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0) - (parseFloat(String(plan).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0);
+    return (
+      <div className="rounded-xl p-3 shadow-sm border" style={{ backgroundColor: kolor || 'white', borderColor: colors.primary.bg }}>
+        <p className="text-[11px] mb-1" style={{ color: kolor ? 'rgba(255,255,255,.75)' : colors.primary.light }}>{label}</p>
+        <p className="text-xl font-bold leading-tight" style={{ color: kolor ? 'white' : colors.primary.darkest }}>{akt} <span className="text-[10px] font-medium opacity-70">aktualne</span></p>
+        <p className="text-sm font-semibold leading-tight mt-0.5" style={{ color: kolor ? 'rgba(255,255,255,.85)' : colors.primary.light }}>{plan} <span className="text-[10px] font-medium opacity-70">planowane</span></p>
+      </div>
+    );
+  };
   const numIn = (val, on, w = 'w-full') => <input type="number" value={val} onChange={(e) => on(e.target.value)} className={`${w} px-2 py-1 rounded border text-sm`} style={{ borderColor: colors.primary.bg }} />;
   const Fld = ({ label, children }) => (<div><label className="block text-[11px] mb-0.5" style={{ color: colors.primary.light }}>{label}</label>{children}</div>);
 
@@ -1212,10 +1243,12 @@ const BudgetPlan = ({ data, setPage }) => {
             <span className="text-xs text-slate-400 ml-auto self-center">Wskaźniki dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]}</b></span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-xl p-4 text-center shadow-sm md:col-span-2" style={{ backgroundColor: colors.primary.darkest }}><p className="text-3xl font-bold text-white">{zl(col)} zł</p><p className="text-xs text-white/70">COL — koszt pracy (total)</p></div>
-            <div className="rounded-xl p-4 text-center shadow-sm" style={{ backgroundColor: colPct > 0.2 ? '#E74C3C' : '#2E9E5B' }}><p className="text-3xl font-bold text-white">{(colPct * 100).toFixed(2)}%</p><p className="text-xs text-white/80">COL % (koszt / sprzedaż)</p></div>
-            <Stat v={`${godzTotal.toFixed(0)} h`} l="Godziny total" sub={`${dni ? (godzTotal / dni).toFixed(1) : 0} h/dzień`} />
+            <Dwa label="COL — koszt pracy (total)" akt={`${zl(colAkt)} zł`} plan={`${zl(col)} zł`} kolor={colors.primary.darkest} />
+            <Dwa label="COL % (koszt / sprzedaż)" akt={`${(sale ? colAkt / sale * 100 : 0).toFixed(2)}%`} plan={`${(colPct * 100).toFixed(2)}%`} kolor={(sale ? colAkt / sale : 0) > 0.2 ? '#E74C3C' : '#2E9E5B'} />
+            <Dwa label="Godziny total" akt={`${godzAktTotal.toFixed(0)} h`} plan={`${godzTotal.toFixed(0)} h`} />
+            <Dwa label="Godziny na dzień" akt={`${dni ? (godzAktTotal / dni).toFixed(1) : 0} h`} plan={`${dni ? (godzTotal / dni).toFixed(1) : 0} h`} />
           </div>
+          <p className="text-xs text-slate-400 -mt-2">„Aktualne" = godziny z grafiku {months[mIdx]} {rokBud}{grafikJest ? '' : ' (brak grafiku dla tego miesiąca)'}. „Planowane" = wartości ustawione w zakładce Pracownicy.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat v={zl(agc)} l="AGC" sub="sprzedaż / transakcje" />
             <Stat v={zl(splh)} l="SPLH" sub="sprzedaż / godziny" />
@@ -1242,8 +1275,8 @@ const BudgetPlan = ({ data, setPage }) => {
               <div key={e.id} className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
                 <div className="flex items-center gap-3 px-4 py-3">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BP_KAT[kat].color }} title={BP_KAT[kat].label} />
-                  <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate" style={{ color: colors.primary.darkest }}>{e.name}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{e.pozycja} · {e.umowa} · {getGodz(e)} h{e.instruktor ? ' · instruktor' : ''}</p></div>
-                  <div className="text-right shrink-0"><p className="text-[10px]" style={{ color: colors.primary.light }}>Koszt {months[mIdx]}</p><p className="font-bold" style={{ color: colors.primary.darkest }}>{zl(k.total)} zł</p></div>
+                  <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate" style={{ color: colors.primary.darkest }}>{e.name}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{e.pozycja} · {e.umowa} · grafik {godzAktOf(e).toFixed(0)} h / plan {Number(getGodz(e)).toFixed(0)} h{e.instruktor ? ' · instruktor' : ''}</p></div>
+                  <div className="text-right shrink-0"><p className="text-[10px]" style={{ color: colors.primary.light }}>Koszt {months[mIdx]}</p><p className="font-bold" style={{ color: colors.primary.darkest }}>{zl(bpKoszt({ ...e, godziny: godzAktOf(e) }, nom, settings).total)} zł</p><p className="text-[10px]" style={{ color: colors.primary.light }}>plan {zl(k.total)} zł</p></div>
                   <button onClick={() => setOpenRow(open ? null : e.id)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Szczegóły <ChevronRight size={13} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} /></button>
 
                 </div>
