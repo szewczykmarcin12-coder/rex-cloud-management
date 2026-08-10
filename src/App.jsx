@@ -190,21 +190,34 @@ const Login = ({ onLogin }) => {
 
 const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
   const pelne = [
+    { grupa: 'Pulpit' },
     { id: 'dashboard', label: 'Strona domowa', icon: Home },
+    { grupa: 'Workforce · planowanie' },
+    { id: 'wt', label: 'Grafik i czas pracy', icon: LayoutGrid },
+    { id: 'forecast', label: 'Optymalizacja i prognoza', icon: Clock },
     { id: 'import', label: 'Import z Excel', icon: Upload },
-    { id: 'wt', label: 'Grafik', icon: LayoutGrid },
-    { id: 'print', label: 'Drukuj grafik', icon: Printer },
-    { id: 'plan', label: 'Plan budżetu', icon: FileSpreadsheet },
-    { id: 'forecast', label: 'Optymalizacja', icon: Clock },
-    { id: 'emps', label: 'Pracownicy', icon: Users },
-    { id: 'swaps', label: 'Zamiany', icon: RefreshCw, badge: pendingSwaps },
+    { id: 'print', label: 'Wydruk grafiku', icon: Printer },
+    { grupa: 'Zespół' },
+    { id: 'emps', label: 'Pracownicy i konta', icon: Users },
+    { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
+    { grupa: 'Finanse' },
+    { id: 'plan', label: 'Budżet i koszty pracy', icon: FileSpreadsheet },
+    { grupa: 'System' },
     { id: 'settings', label: 'Ustawienia', icon: Settings }
   ];
-  const menu = role === 'asm' ? pelne : pelne.filter(m => ['dashboard', 'wt', 'print'].includes(m.id));
+  const widoczne = role === 'asm' ? null : ['dashboard', 'wt', 'print'];
+  const menu = pelne.filter((m) => m.grupa ? true : (!widoczne || widoczne.includes(m.id)));
   return (
     <div className="w-72 h-screen flex flex-col" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
       <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany · wydruk'}</p></div></div></div>
-      <nav className="flex-1 p-3 space-y-1">{menu.map(m => (<button key={m.id} onClick={() => setPage(m.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${page === m.id ? 'bg-white/15 text-white shadow-lg' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}><m.icon className="w-5 h-5" /><span className="font-medium">{m.label}</span>{m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}</button>))}</nav>
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">{menu.map((m, i) => m.grupa ? (
+        (role === 'asm' || ['Pulpit', 'Workforce · planowanie'].includes(m.grupa)) && <p key={'g' + i} className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">{m.grupa}</p>
+      ) : (
+        <button key={m.id} onClick={() => setPage(m.id)} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${page === m.id ? 'bg-white/15 text-white shadow-lg' : 'text-white/70 hover:bg-white/5 hover:text-white'}`} style={page === m.id ? { borderLeft: `3px solid ${colors.accent ? colors.accent.medium || '#E2571E' : '#E2571E'}` } : { borderLeft: '3px solid transparent' }}>
+          <m.icon className="w-[18px] h-[18px]" /><span className="text-[13.5px] font-medium">{m.label}</span>
+          {m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}
+        </button>
+      ))}</nav>
       <div className="p-4 border-t border-white/10"><button onClick={logout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-red-400 hover:bg-white/5 transition-all"><LogOut className="w-5 h-5" /><span className="font-medium">Wyloguj się</span></button></div>
     </div>
   );
@@ -736,7 +749,7 @@ const OptWidokDnia = ({ dem, kc, cover, shifts }) => {
   );
 };
 
-const ForecastPlan = ({ data }) => {
+const ForecastPlan = ({ data, setPage }) => {
   const [tab, setTab] = useState("miesiac");
   const hydrated = useRef(false);
   const [mIdx, setMIdx] = useState(new Date().getMonth());   // zawsze bieżący miesiąc na start
@@ -905,6 +918,15 @@ const ForecastPlan = ({ data }) => {
   const razem = R.sumE + R.mgr + szkol;
 
   const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["pulpit", "Pulpit"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
+  const kosztMies = useMemo(() => {
+    const poId = new Map((data.accounts || []).map((a) => [a.id, a]));
+    const poNazwie = new Map((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+    const pre = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
+    return data.shifts.filter((x) => String(x.date || '').startsWith(pre) && !jestInstruktor(x)).reduce((a, x) => {
+      const k = (x.accountId && poId.get(x.accountId)) || poNazwie.get(String(x.name || '').toUpperCase().trim());
+      return a + kosztGodzin(k, godzZ(x));
+    }, 0);
+  }, [data.shifts, data.accounts, year, mIdx]);
   const dniEst = R.dni.filter((x) => x.jestEst).length;
   const sumaEst = R.dni.filter((x) => x.jestEst).reduce((a, x) => a + x.sprzedaz, 0);
 
@@ -924,6 +946,10 @@ const ForecastPlan = ({ data }) => {
           {hasReal && <button onClick={() => { setRealSales({}); setRealChecks({}); setImportInfo(null); data.clearSales(); }} className="ml-auto text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: "white", color: colors.primary.dark }}>Wyczyść</button>}
         </div>
 
+        <div className="flex flex-wrap gap-2 text-xs">
+          <button onClick={() => setPage && setPage('wt')} className="px-3 py-1.5 rounded-full font-medium" style={{ backgroundColor: 'white', color: colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>← Siatka grafiku (planowanie)</button>
+          <button onClick={() => setPage && setPage('plan')} className="px-3 py-1.5 rounded-full font-medium" style={{ backgroundColor: 'white', color: colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>Budżet i koszty pracy (COL) →</button>
+        </div>
         {dniEst > 0 && (
           <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#fff4e0", color: "#8a6d1a" }}>
             <span className="text-sm"><b>Prognoza</b> — {dniEst} z {R.dim} dni tego miesiąca nie ma jeszcze danych sprzedaży, więc są <b>estymowane</b>{PRED ? ` na podstawie ${PRED.dni} dni historii (${PRED.od} → ${PRED.do})` : ""}.</span>
@@ -935,6 +961,7 @@ const ForecastPlan = ({ data }) => {
           <OptKpi label="Godziny crew — silnik" value={f0(R.sumE) + " h"} sub={`SPLH ${f0(R.splhE)} zł/rbh`} tone={roz < 0 ? OC.ok : OC.warn} />
           <OptKpi label="Różnica" value={`${roz >= 0 ? "+" : "−"}${f0(Math.abs(roz))} h`} tone={roz < 0 ? OC.ok : OC.warn} sub={`${R.sumA ? (roz / R.sumA * 100).toFixed(1).replace(".", ",") : 0}% · przesunięcie ${f0(przesun)} h`} />
           <OptKpi label="Limit miesiąca" value={`${f0(limitMies)} h`} sub={`crew ${f0(R.sumE)} + mgr ${f0(R.mgr)} + szkol. ${szkol} = ${f0(razem)}`} tone={razem > limitMies ? OC.bad : OC.ok} />
+          <OptKpi label="Koszt pracy — grafik (szac.)" value={`${f0(kosztMies)} zł`} sub={`${R.sumS ? (kosztMies / R.sumS * 100).toFixed(1).replace('.', ',') : 0}% sprzedaży · pełny COL w module Budżet`} tone={R.sumS && kosztMies / R.sumS > 0.2 ? OC.warn : undefined} />
         </div>
 
         <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: colors.primary.bgLight }}>
@@ -1650,7 +1677,7 @@ const BudgetPlan = ({ data, setPage }) => {
             ); })}
           </div>
           {emps.length === 0 && <div className="bg-white rounded-xl p-6 text-center border" style={{ borderColor: colors.primary.bg }}><p className="text-slate-500 mb-3">Brak pracowników. Konta zakładasz w module „Pracownicy" — trafiają tu automatycznie.</p><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Przejdź do modułu Pracownicy</Btn></div>}
-          <div className="flex items-center gap-3"><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Zarządzaj pracownikami</Btn><span className="text-xs text-slate-400">Imię, stanowisko, umowa, stawka i ZUS pochodzą z modułu Pracownicy. Tutaj ustawiasz tylko dane kosztowe (godziny, premia, BHP, urlop, ZLA, nocne, PPK, PFRON).</span></div>
+          <div className="flex items-center gap-3"><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Zarządzaj pracownikami</Btn><Btn variant="secondary" onClick={() => setPage && setPage('forecast')}>Optymalizacja i prognoza</Btn><span className="text-xs text-slate-400">Imię, stanowisko, umowa, stawka i ZUS pochodzą z modułu Pracownicy. Tutaj ustawiasz tylko dane kosztowe (godziny, premia, BHP, urlop, ZLA, nocne, PPK, PFRON).</span></div>
         </>)}
 
         {tab === 'analiza' && (<>
@@ -2172,6 +2199,154 @@ const WTTemplates = ({ data, weeks }) => {
   );
 };
 
+
+// Wspólne scalanie par praca+instruktor (doba operacyjna 06→06)
+const scalParyPlan = (arr) => {
+  const zwykle = [], instr = [];
+  arr.forEach((x) => (jestInstruktor(x) ? instr : zwykle).push(x));
+  const out = zwykle.map((x) => ({ ...x }));
+  instr.forEach((i) => {
+    const para = out.find((x) => x.date === i.date && plnMin(x.start) < plnMin(i.end) + (plnMin(i.end) <= plnMin(i.start) ? 1440 : 0) && plnMin(i.start) < plnMin(x.end) + (plnMin(x.end) <= plnMin(x.start) ? 1440 : 0));
+    if (para) { para.szkoli = true; para.partnerSzk = i.partner || i.uczen || null; para.paraInstr = { date: i.date, name: i.name, start: i.start, end: i.end }; }
+    else out.push({ ...i, szkoli: true });
+  });
+  return out;
+};
+// Szacunkowy koszt godzin wg konta (UZ: stawka/h; UOP: wynagrodzenie mies. / 160 h)
+const kosztGodzin = (konto, h) => !konto ? 0 : (konto.umowa === 'UOP' ? (konto.stawka / 160) * h : konto.stawka * h);
+
+// ===================== SIATKA TYGODNIA (planowanie jak MAPAL Scheduler) =====================
+const WeekPlanner = ({ data, days, locked, onDzien }) => {
+  const [modal, setModal] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const konta = data.accounts || [];
+  const zmianyTyg = useMemo(() => data.shifts.filter((x) => days.includes(x.date)), [data.shifts, days]);
+  const stacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
+  const sprzedazMap = ((data.salesData || {}).sales) || {};
+
+  const wiersze = useMemo(() => {
+    const zKont = konta.map((a) => {
+      const moje = scalParyPlan(zmianyTyg.filter((x) => x.accountId === a.id));
+      return { key: `a:${a.id}`, id: a.id, konto: a, label: a.name, grafik: a.grafikName || a.name, funkcja: a.funkcja, moje };
+    });
+    const bezKonta = [...new Set(zmianyTyg.filter((x) => !x.accountId).map((x) => String(x.name).toUpperCase()))]
+      .map((n) => ({ key: `n:${n}`, id: null, konto: null, label: n, grafik: n, funkcja: null, moje: scalParyPlan(zmianyTyg.filter((x) => !x.accountId && String(x.name).toUpperCase() === n)) }));
+    const rows = [...zKont, ...bezKonta].map((w) => ({ ...w, sumaH: w.moje.reduce((a, x) => a + godzZ(x), 0) }));
+    rows.sort((a, b) => (b.sumaH - a.sumaH) || a.label.localeCompare(b.label));
+    return rows;
+  }, [konta, zmianyTyg]);
+
+  const sumaTygH = wiersze.reduce((a, w) => a + w.sumaH, 0);
+  const sumaKoszt = wiersze.reduce((a, w) => a + kosztGodzin(w.konto, w.sumaH), 0);
+  const sprzedazTyg = days.reduce((a, d) => a + (sprzedazMap[d] || 0), 0);
+  const sumaDniaH = (d) => wiersze.reduce((a, w) => a + w.moje.filter((x) => x.date === d).reduce((x2, y) => x2 + godzZ(y), 0), 0);
+
+  const klikPusta = (w, d) => { if (locked) return; setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER', start: '08:00', end: '16:00', date: d }); };
+  const klikChip = (w, x, e) => { e.stopPropagation(); if (locked) return; setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, date: x.date, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { date: x.date, name: x.name, start: x.start, end: x.end } }); };
+  const zapisz = async () => {
+    if (!modal) return; setSaving(true);
+    let ok;
+    if (modal.tryb === 'nowa') ok = await data.addShiftManual({ date: modal.date, name: modal.osoba, station: modal.station, start: modal.start, end: modal.end, accountId: modal.accountId || undefined });
+    else {
+      ok = await data.updateShiftManual(modal.ident, { station: modal.station, start: modal.start, end: modal.end });
+      if (ok && modal.paraInstr) await data.updateShiftManual(modal.paraInstr, { start: modal.start, end: modal.end });
+    }
+    setSaving(false); if (ok) setModal(null);
+  };
+  const usun = async () => {
+    if (!modal || modal.tryb !== 'edycja') return; setSaving(true);
+    const ok = await data.removeShiftManual(modal.ident);
+    if (ok && modal.paraInstr) await data.removeShiftManual(modal.paraInstr);
+    setSaving(false); if (ok) setModal(null);
+  };
+
+  const gridCols = '190px repeat(7, minmax(108px, 1fr)) 118px';
+  return (
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2.5" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})` }}>
+        <span className="text-sm font-semibold text-white">Siatka tygodnia</span>
+        <span className="text-xs text-white/80">Godziny: <b className="text-white">{f0(sumaTygH)} h</b></span>
+        <span className="text-xs text-white/80">Koszt pracy (szac.): <b className="text-white">{f0(sumaKoszt)} zł</b></span>
+        {sprzedazTyg > 0 && <><span className="text-xs text-white/80">Sprzedaż: <b className="text-white">{f0(sprzedazTyg)} zł</b></span>
+        <span className="text-xs text-white/80">SPLH: <b className="text-white" style={{ color: sumaTygH && sprzedazTyg / sumaTygH >= 420 ? '#7CE0A3' : undefined }}>{sumaTygH ? f0(sprzedazTyg / sumaTygH) : '—'}</b></span></>}
+        <span className="ml-auto text-[11px] text-white/60">kliknij pustą komórkę = nowa zmiana · kliknij zmianę = edycja</span>
+      </div>
+      <div className="overflow-x-auto"><div style={{ minWidth: 1120 }}>
+        <div className="grid" style={{ gridTemplateColumns: gridCols, borderBottom: `2px solid ${colors.primary.bg}` }}>
+          <div className="px-3 py-2 text-[11px] font-bold uppercase" style={{ color: colors.primary.dark }}>Pracownik</div>
+          {days.map((d) => { const dt = new Date(d); return (
+            <button key={d} onClick={() => onDzien && onDzien(d)} title="Otwórz widok dnia" className="px-1 py-2 text-center border-l hover:bg-slate-50" style={{ borderColor: '#f1f5f9' }}>
+              <span className="block text-[11px] font-bold" style={{ color: [0, 6].includes(dt.getDay()) ? '#B7362A' : colors.primary.dark }}>{['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]} {dt.getDate()}</span>
+            </button>
+          ); })}
+          <div className="px-2 py-2 text-[11px] font-bold uppercase text-right border-l" style={{ color: colors.primary.dark, borderColor: '#f1f5f9' }}>Σ tydzień</div>
+        </div>
+        <div className="max-h-[560px] overflow-y-auto">
+          {wiersze.map((w) => (
+            <div key={w.key} className="grid border-b last:border-0" style={{ gridTemplateColumns: gridCols, borderColor: '#f1f5f9', backgroundColor: w.sumaH === 0 ? '#fbfcfe' : 'white' }}>
+              <div className="px-3 py-1.5 flex flex-col justify-center min-h-[46px]">
+                <p className="text-[12.5px] font-semibold truncate" style={{ color: w.sumaH ? colors.primary.darkest : '#94a3b8' }}>{w.label}</p>
+                <p className="text-[10px]" style={{ color: colors.primary.light }}>{w.funkcja ? funkcjaLabel(w.funkcja) : '⚠ brak konta'}</p>
+              </div>
+              {days.map((d) => {
+                const cel = w.moje.filter((x) => x.date === d).sort((a, b) => a.start.localeCompare(b.start));
+                return (
+                  <div key={d} onClick={() => cel.length === 0 && klikPusta(w, d)} className={`border-l px-1 py-1 flex flex-col gap-1 justify-center ${cel.length === 0 && !locked ? 'cursor-pointer hover:bg-slate-50' : ''}`} style={{ borderColor: '#f1f5f9' }}>
+                    {cel.map((x, i) => { const kol = stationColor(x.station); return (
+                      <button key={i} onClick={(e) => klikChip(w, x, e)} className="rounded-md px-1.5 py-0.5 text-left hover:brightness-95" style={{ backgroundColor: `${kol}1d`, borderLeft: `3px solid ${kol}` }} title={`${x.station} ${x.start}–${x.end}${x.szkoli ? ` · szkoli${x.partnerSzk ? ': ' + x.partnerSzk : ''}` : ''}`}>
+                        <span className="block text-[9.5px] font-bold leading-tight truncate" style={{ color: kol }}>{etykietaStacji(x)}{x.szkoli ? ' 🎓' : ''}</span>
+                        <span className="block text-[10px] leading-tight" style={{ color: colors.primary.dark }}>{x.start}–{x.end}</span>
+                      </button>
+                    ); })}
+                    {cel.length === 0 && !locked && <span className="text-center text-slate-200 text-lg leading-none select-none">+</span>}
+                  </div>
+                );
+              })}
+              <div className="border-l px-2 py-1.5 flex flex-col justify-center items-end" style={{ borderColor: '#f1f5f9' }}>
+                <span className="text-[12.5px] font-bold" style={{ color: w.sumaH ? colors.primary.darkest : '#cbd5e1' }}>{w.sumaH.toFixed(1).replace('.', ',')} h</span>
+                {w.konto && w.sumaH > 0 && <span className="text-[10px]" style={{ color: colors.primary.light }}>{f0(kosztGodzin(w.konto, w.sumaH))} zł</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid border-t-2" style={{ gridTemplateColumns: gridCols, borderColor: colors.primary.bg, backgroundColor: colors.primary.bgLight }}>
+          <div className="px-3 py-2 text-[11px] font-bold" style={{ color: colors.primary.dark }}>Σ godzin dnia</div>
+          {days.map((d) => <div key={d} className="px-1 py-2 text-center text-[12px] font-bold border-l" style={{ color: colors.primary.darkest, borderColor: '#eef2f7' }}>{sumaDniaH(d).toFixed(1).replace('.', ',')}</div>)}
+          <div className="px-2 py-2 text-right text-[12px] font-bold border-l" style={{ color: colors.primary.darkest, borderColor: '#eef2f7' }}>{sumaTygH.toFixed(1).replace('.', ',')} h</div>
+        </div>
+      </div></div>
+
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,.45)' }} onClick={() => !saving && setModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold" style={{ color: colors.primary.darkest }}>{modal.tryb === 'nowa' ? 'Nowa zmiana' : 'Edytuj zmianę'}</h3>
+              <button onClick={() => setModal(null)} className="text-slate-400"><X size={18} /></button>
+            </div>
+            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>{modal.osoba} · {dniPelne[new Date(modal.date).getDay()]}, {modal.date}{modal.szkoli ? ' · 🎓 szkoli' : ''}</p>
+            <div className="space-y-3">
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Stanowisko</label>
+                <select value={modal.station} onChange={(e) => setModal({ ...modal, station: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>{stacje.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Początek</label><input type="time" step="900" value={modal.start} onChange={(e) => setModal({ ...modal, start: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+                <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Koniec</label><input type="time" step="900" value={modal.end} onChange={(e) => setModal({ ...modal, end: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+              </div>
+              <p className="text-xs" style={{ color: colors.primary.light }}>Czas trwania: <b style={{ color: colors.primary.darkest }}>{(() => { let a = plnMin(modal.start), b = plnMin(modal.end); if (b <= a) b += 1440; return ((b - a) / 60).toFixed(2).replace('.', ','); })()} h</b>{plnMin(modal.end) <= plnMin(modal.start) ? ' (przez północ)' : ''}</p>
+            </div>
+            <div className="flex items-center gap-2 mt-5">
+              {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>Usuń zmianę</button>}
+              <div className="ml-auto flex gap-2">
+                <button disabled={saving} onClick={() => setModal(null)} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
+                <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{saving ? 'Zapisuję…' : 'Zatwierdź'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ===================== PLANER DNIA (styl MAPAL Scheduler 2.0) =====================
 // Wiersze = pracownicy, oś = doba operacyjna 06:00→06:00. Klik w pusty obszar dodaje
 // zmianę (start = kliknięta godzina), klik w pasek otwiera edycję. Wszystko zapisuje
@@ -2331,6 +2506,7 @@ const WorkingTime = ({ data, canEdit }) => {
   const [fStation, setFStation] = useState('');
   const [order, setOrder] = useState('entry');
   const [brkFor, setBrkFor] = useState(null);
+  const [zakresTyg, setZakresTyg] = useState('siatka');   // 'siatka' (cały tydzień) | 'dzien'
   const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
   const [addOsoba, setAddOsoba] = useState('');
@@ -2445,6 +2621,16 @@ const WorkingTime = ({ data, canEdit }) => {
       <div className="flex-1 p-8 space-y-4 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Wróć do tygodni</button>
         {locked && <div className="rounded-lg px-4 py-2 text-sm font-medium" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>{canEdit ? 'Tydzień zamknięty (Closed) — widok tylko do podglądu. Odblokuj na liście tygodni, aby edytować.' : 'Widok tylko do podglądu (kierownik zmiany).'}</div>}
+
+        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
+          {[['siatka', 'Tydzień — siatka planowania'], ['dzien', 'Widok dnia']].map(([k, l]) => (
+            <button key={k} onClick={() => setZakresTyg(k)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: zakresTyg === k ? colors.primary.medium : 'transparent', color: zakresTyg === k ? 'white' : colors.primary.dark }}>{l}</button>
+          ))}
+        </div>
+
+        {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} />}
+
+        {zakresTyg === 'dzien' && (<>
         <div className="flex gap-1 flex-wrap">
           {weekDays.map((d) => { const n = dayShifts(d).length; const dt = new Date(d); const nm = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]; const dc = ts.completed[d]; return (
             <button key={d} onClick={() => setDay(d)} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ backgroundColor: day === d ? colors.primary.medium : 'white', color: day === d ? 'white' : n ? colors.primary.dark : '#94a3b8', border: `1px solid ${day === d ? colors.primary.medium : colors.primary.bg}` }}>{dc && <Check size={12} style={{ color: day === d ? 'white' : '#2E9E5B' }} />}{nm} {dt.getDate()}<span className="text-xs opacity-70">({n})</span></button>
@@ -2556,6 +2742,7 @@ const WorkingTime = ({ data, canEdit }) => {
           </div>
         </div>
         <p className="text-xs text-slate-400">Górny pasek = plan (Shift), dolny = wykonanie (Actual); czerwony segment = przerwa niepłatna. Korekty nanoś po zakończeniu zmiany pracownika. Tolerancja 5 min (micros ↔ girnet).</p>
+        </>)}
         </>)}
       </div>
       {brkFor && <WTBreaks actual={act(brkFor)} locked={locked} onSave={(breaks) => data.tsPutActual(wtKey(brkFor), { ...act(brkFor), breaks })} onClose={() => setBrkFor(null)} />}
@@ -2802,7 +2989,7 @@ export default function App() {
     wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
     print: <PrintPage data={data} />,
     plan: <BudgetPlan data={data} setPage={setPage} />,
-    forecast: <ForecastPlan data={data} />,
+    forecast: <ForecastPlan data={data} setPage={setPage} />,
     emps: <AdminEmployees data={data} />,
     swaps: <AdminSwaps data={data} />,
     settings: <SettingsPage data={data} />
