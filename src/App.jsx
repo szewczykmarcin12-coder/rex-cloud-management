@@ -190,35 +190,60 @@ const Login = ({ onLogin }) => {
 
 const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
   const pelne = [
-    { grupa: 'Pulpit' },
-    { id: 'dashboard', label: 'Strona domowa', icon: Home },
-    { grupa: 'Workforce · planowanie' },
-    { id: 'wt', label: 'Grafik i czas pracy', icon: LayoutGrid },
-    { id: 'forecast', label: 'Optymalizacja i prognoza', icon: Clock },
-    { id: 'import', label: 'Import z Excel', icon: Upload },
-    { id: 'print', label: 'Wydruk grafiku', icon: Printer },
-    { grupa: 'Zespół' },
-    { id: 'emps', label: 'Pracownicy i konta', icon: Users },
-    { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
-    { grupa: 'Finanse' },
-    { id: 'plan', label: 'Budżet i koszty pracy', icon: FileSpreadsheet },
-    { grupa: 'System' },
-    { id: 'settings', label: 'Ustawienia', icon: Settings }
+    { gid: 'pulpit', grupa: 'Pulpit', icon: Home, items: [ { id: 'dashboard', label: 'Strona domowa', icon: Home } ] },
+    { gid: 'workforce', grupa: 'Workforce', icon: LayoutGrid, items: [
+      { id: 'wt', label: 'Grafik i czas pracy', icon: LayoutGrid },
+      { id: 'forecast', label: 'Optymalizacja i prognoza', icon: Clock },
+      { id: 'import', label: 'Import z Excel', icon: Upload },
+      { id: 'print', label: 'Wydruk grafiku', icon: Printer },
+    ] },
+    { gid: 'zespol', grupa: 'Zespół', icon: Users, items: [
+      { id: 'emps', label: 'Pracownicy i konta', icon: Users },
+      { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
+    ] },
+    { gid: 'finanse', grupa: 'Finanse', icon: FileSpreadsheet, items: [ { id: 'plan', label: 'Budżet i koszty pracy', icon: FileSpreadsheet } ] },
+    { gid: 'system', grupa: 'System', icon: Settings, items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
   ];
   const widoczne = role === 'asm' ? null : ['dashboard', 'wt', 'print'];
-  const menu = pelne.filter((m) => m.grupa ? true : (!widoczne || widoczne.includes(m.id)));
+  const grupyMenu = pelne
+    .map((g) => ({ ...g, items: g.items.filter((m) => !widoczne || widoczne.includes(m.id)) }))
+    .filter((g) => g.items.length > 0);
+  const [openG, setOpenG] = useState(null);
+  const aktywnaGrupa = grupyMenu.find((g) => g.items.some((m) => m.id === page));
   return (
-    <div className="w-72 h-screen flex flex-col" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
-      <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div><div><span className="text-white text-xl font-light">REX</span><span className="text-xl font-light ml-1" style={{ color: colors.primary.bg }}>Cloud</span><p className="text-xs text-white/50">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany · wydruk'}</p></div></div></div>
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">{menu.map((m, i) => m.grupa ? (
-        (role === 'asm' || ['Pulpit', 'Workforce · planowanie'].includes(m.grupa)) && <p key={'g' + i} className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">{m.grupa}</p>
-      ) : (
-        <button key={m.id} onClick={() => setPage(m.id)} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${page === m.id ? 'bg-white/15 text-white shadow-lg' : 'text-white/70 hover:bg-white/5 hover:text-white'}`} style={page === m.id ? { borderLeft: `3px solid ${colors.accent ? colors.accent.medium || '#E2571E' : '#E2571E'}` } : { borderLeft: '3px solid transparent' }}>
-          <m.icon className="w-[18px] h-[18px]" /><span className="text-[13.5px] font-medium">{m.label}</span>
-          {m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}
-        </button>
-      ))}</nav>
-      <div className="p-4 border-t border-white/10"><button onClick={logout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-red-400 hover:bg-white/5 transition-all"><LogOut className="w-5 h-5" /><span className="font-medium">Wyloguj się</span></button></div>
+    <div className="h-screen flex" onMouseLeave={() => setOpenG(null)}>
+    <div className="w-[68px] h-screen flex flex-col rail" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
+      <div className="py-4 flex justify-center border-b border-white/10"><div className="w-11 h-11 rounded-xl flex items-center justify-center" title={`REX Cloud · ${role === 'asm' ? 'ASM' : 'Kierownik zmiany'}`} style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div></div>
+      <nav className="flex-1 py-3 flex flex-col items-center gap-1.5 overflow-y-auto">
+        {grupyMenu.map((g) => {
+          const aktywna = aktywnaGrupa && aktywnaGrupa.gid === g.gid;
+          const badge = g.items.reduce((a, m) => a + (m.badge || 0), 0);
+          return (
+            <button key={g.gid} onClick={() => setOpenG(openG === g.gid ? null : g.gid)} title={g.grupa}
+              className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${aktywna || openG === g.gid ? 'bg-white/15 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'}`}
+              style={aktywna ? { boxShadow: 'inset 3px 0 0 #E2571E' } : undefined}>
+              <g.icon className="w-[21px] h-[21px]" />
+              {badge > 0 && <span className="absolute -top-0.5 -right-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{badge}</span>}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="py-3 border-t border-white/10 flex justify-center"><button onClick={logout} title="Wyloguj się" className="w-12 h-12 rounded-xl flex items-center justify-center text-red-400 hover:bg-white/5"><LogOut className="w-5 h-5" /></button></div>
+    </div>
+
+    {openG && (() => { const g = grupyMenu.find((x) => x.gid === openG); if (!g) return null; return (
+      <div className="w-60 h-screen flex flex-col shadow-2xl" style={{ backgroundColor: colors.primary.darkest, borderLeft: '1px solid rgba(255,255,255,.08)' }}>
+        <div className="px-4 py-4 border-b border-white/10"><p className="text-[10px] font-bold uppercase tracking-wider text-white/40">{g.grupa}</p><p className="text-white text-sm font-semibold mt-0.5">REX Cloud</p></div>
+        <div className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+          {g.items.map((m) => (
+            <button key={m.id} onClick={() => { setPage(m.id); setOpenG(null); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all ${page === m.id ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+              <m.icon className="w-4 h-4" /><span className="text-[13px] font-medium">{m.label}</span>
+              {m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    ); })()}
     </div>
   );
 };
@@ -2311,7 +2336,12 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
         </div>
         <div className="grid border-t-2" style={{ gridTemplateColumns: gridCols, borderColor: colors.primary.bg, backgroundColor: colors.primary.bgLight }}>
           <div className="px-3 py-2 text-[11px] font-bold" style={{ color: colors.primary.dark }}>Σ godzin dnia</div>
-          {days.map((d) => <div key={d} className="px-1 py-2 text-center text-[12px] font-bold border-l" style={{ color: colors.primary.darkest, borderColor: '#eef2f7' }}>{sumaDniaH(d).toFixed(1).replace('.', ',')}</div>)}
+          {days.map((d) => { const idealH = (() => { const dw = new Date(d).getDay(); const { dir, ind } = optRozbicie(0, 420, 3, 'krzywa', dw); return dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2; })(); const h = sumaDniaH(d); const kol = h < idealH * 0.95 ? '#B7362A' : h > idealH * 1.1 ? '#2F6FB5' : '#12655B'; return (
+            <div key={d} className="px-1 py-1.5 text-center border-l" style={{ borderColor: '#eef2f7' }}>
+              <span className="block text-[12px] font-bold leading-tight" style={{ color: kol }}>{h.toFixed(1).replace('.', ',')}</span>
+              <span className="block text-[9px] leading-tight" style={{ color: colors.primary.light }}>potrzeba {idealH.toFixed(0)}</span>
+            </div>
+          ); })}
           <div className="px-2 py-2 text-right text-[12px] font-bold border-l" style={{ color: colors.primary.darkest, borderColor: '#eef2f7' }}>{sumaTygH.toFixed(1).replace('.', ',')} h</div>
         </div>
       </div></div>
@@ -2362,6 +2392,20 @@ const DayPlanner = ({ data, day, locked }) => {
 
   const zmianyDnia = data.shifts.filter((x) => x.date === day);
   const konta = data.accounts || [];
+  const [drag, setDrag] = useState(null);   // { key, a, b } — przeciąganie po pustym tle wiersza
+
+  // Zapotrzebowanie (krzywa celu KC + prace pośrednie) vs obsada z planu — pasmo jak "Personal Ideal / Proyectado"
+  const dowDnia = new Date(day).getDay();
+  const { dir: demDir, ind: demInd } = optRozbicie(0, 420, 3, 'krzywa', dowDnia);
+  const demand = demDir.map((v, i) => Math.max(v, demInd[i]));
+  const coverPlan = useMemo(() => {
+    const c = new Array(NS).fill(0);
+    zmianyDnia.filter((x) => !jestInstruktor(x)).forEach((x) => {
+      const a = Math.floor(wtRel(x.start) / 30); const dl = Math.round(wtDur(x.start, x.end) / 30);
+      for (let i = 0; i < dl; i++) { const p = a + i; if (p >= 0 && p < NS) c[p]++; }
+    });
+    return c;
+  }, [zmianyDnia]);
   const stacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
 
   // Para praca+instruktor (te same/nachodzące godziny) = JEDEN pasek ze znacznikiem szkolenia.
@@ -2391,12 +2435,22 @@ const DayPlanner = ({ data, day, locked }) => {
 
   const godzinyOsi = Array.from({ length: PLN_HN - PLN_H0 }, (_, i) => PLN_H0 + i);
 
-  const klikTlo = (w, e) => {
-    if (locked) return;
+  const slotZ = (e) => {
     const box = e.currentTarget.getBoundingClientRect();
     const frac = Math.min(Math.max((e.clientX - box.left) / box.width, 0), 1);
-    const minuty = PLN_H0 * 60 + Math.floor(frac * (PLN_HN - PLN_H0) * 60 / 30) * 30;   // przyciąganie do 30 min
-    setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER', start: plnClock(minuty), end: plnClock(Math.min(minuty + 480, PLN_HN * 60)) });
+    return Math.round(frac * (PLN_HN - PLN_H0) * 2);          // slot co 30 min (0..48)
+  };
+  const dragStart = (w, e) => { if (locked || e.button !== 0) return; const a = slotZ(e); setDrag({ key: w.key, w, a, b: a + 1 }); };
+  const dragMove = (w, e) => { if (!drag || drag.key !== w.key) return; const b = slotZ(e); setDrag((d) => ({ ...d, b })); };
+  const dragEnd = (w, e) => {
+    if (!drag || drag.key !== w.key) { setDrag(null); return; }
+    const a = Math.min(drag.a, drag.b), b = Math.max(drag.a, drag.b);
+    const minA = PLN_H0 * 60 + a * 30;
+    const minB = PLN_H0 * 60 + Math.max(b, a + 1) * 30;
+    const przeciagniete = Math.abs(drag.b - drag.a) >= 1;
+    setDrag(null);
+    setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER',
+      start: plnClock(minA), end: plnClock(przeciagniete ? minB : Math.min(minA + 480, PLN_HN * 60)) });
   };
   const klikPasek = (w, x, e) => {
     e.stopPropagation();
@@ -2439,6 +2493,26 @@ const DayPlanner = ({ data, day, locked }) => {
             {godzinyOsi.map((h) => <div key={h} className="flex-1 text-center text-[10px] py-1.5 font-medium" style={{ color: h >= 13 && h < 20 ? '#B26A00' : colors.primary.light, borderLeft: '1px solid #f1f5f9', backgroundColor: h >= 13 && h < 20 ? '#fffaf0' : undefined }}>{String(h % 24).padStart(2, '0')}</div>)}
           </div>
         </div>
+        <div className="flex" style={{ borderBottom: `2px solid ${colors.primary.bg}`, backgroundColor: '#fbfcfe' }}>
+          <div className="w-56 shrink-0 px-3 py-1 flex flex-col justify-center">
+            <p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Potrzeba / obsada</p>
+            <p className="text-[9px]" style={{ color: colors.primary.light }}>krzywa celu · <span style={{ color: '#B7362A' }}>■ brakuje</span> <span style={{ color: '#12655B' }}>■ ok</span> <span style={{ color: '#2F6FB5' }}>■ zapas</span></p>
+          </div>
+          <div className="flex-1 flex">
+            {godzinyOsi.map((h) => {
+              const i1 = sl(h), i2 = sl(h) + 1;
+              const need = Math.max(demand[i1] || 0, demand[i2] || 0);
+              const have = Math.min(coverPlan[i1] || 0, coverPlan[i2] || 0);
+              const kol = have < need ? '#B7362A' : have > need ? '#2F6FB5' : '#12655B';
+              const bg = have < need ? '#fbe9e7' : have > need ? '#e8f1fb' : '#e9f7ef';
+              return (
+                <div key={h} className="flex-1 text-center py-0.5 border-l" style={{ borderColor: '#f1f5f9', backgroundColor: need || have ? bg : undefined }} title={`${String(h % 24).padStart(2, '0')}:00 — potrzeba ${need}, w planie ${have}`}>
+                  <span className="block text-[9px] font-bold leading-tight" style={{ color: kol }}>{have}/{need}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <div className="max-h-[520px] overflow-y-auto">
           {wiersze.map((w) => (
             <div key={w.key} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#f1f5f9' }}>
@@ -2446,7 +2520,14 @@ const DayPlanner = ({ data, day, locked }) => {
                 <p className="text-[13px] font-semibold truncate" style={{ color: colors.primary.darkest }}>{w.label}</p>
                 <p className="text-[10px]" style={{ color: colors.primary.light }}>{w.funkcja ? funkcjaLabel(w.funkcja) : '⚠ brak konta'}{w.moje.length ? ` · ${w.moje.reduce((a, x) => a + godzZ(x), 0).toFixed(1).replace('.', ',')} h` : ''}</p>
               </div>
-              <div className="relative flex-1 cursor-pointer" style={{ minHeight: 44 }} onClick={(e) => klikTlo(w, e)} title={locked ? '' : 'Kliknij, aby dodać zmianę'}>
+              <div className="relative flex-1 cursor-crosshair select-none" style={{ minHeight: 44 }}
+                onMouseDown={(e) => dragStart(w, e)} onMouseMove={(e) => dragMove(w, e)} onMouseUp={(e) => dragEnd(w, e)}
+                title={locked ? '' : 'Kliknij lub przeciągnij, aby dodać zmianę'}>
+                {drag && drag.key === w.key && (() => { const a = Math.min(drag.a, drag.b), b = Math.max(drag.a, drag.b, a + 1); return (
+                  <div className="absolute rounded-md pointer-events-none flex items-center justify-center" style={{ left: `${a / (2 * (PLN_HN - PLN_H0)) * 100}%`, width: `${(b - a) / (2 * (PLN_HN - PLN_H0)) * 100}%`, top: 5, bottom: 5, backgroundColor: 'rgba(226,87,30,.18)', border: '2px dashed #E2571E' }}>
+                    <span className="text-[10px] font-bold" style={{ color: '#B7440F' }}>{plnClock(PLN_H0 * 60 + a * 30)}–{plnClock(PLN_H0 * 60 + b * 30)}</span>
+                  </div>
+                ); })()}
                 {godzinyOsi.map((h, i) => <div key={h} className="absolute top-0 bottom-0" style={{ left: `${(i / godzinyOsi.length) * 100}%`, width: 1, backgroundColor: h >= 13 && h < 20 ? '#f5e6c8' : '#f1f5f9' }} />)}
                 {w.moje.map((x, i) => {
                   const L = plnPct(x.start); const Wd = Math.max(plnPct(x.end) - L, 2);
