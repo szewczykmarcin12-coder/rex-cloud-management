@@ -52,7 +52,8 @@ const paraOpis = (s) => {
 const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
 const monthsGen = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
 const dniPelne = ['niedziela','poniedziałek','wtorek','środa','czwartek','piątek','sobota'];
-const ymd = (d) => (typeof d === 'string' ? d : d.toISOString().split('T')[0]);
+// Data lokalna YYYY-MM-DD — NIGDY przez toISOString (UTC cofa dzień w strefach dodatnich!)
+const ymd = (d) => (typeof d === 'string' ? d : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
 
 // ── Czas pracy (Working Time) — oś od 06:00 ──
 const WT_BASE = 360;
@@ -476,10 +477,10 @@ const ImportPage = ({ data }) => {
 
 const SchedulePage = ({ data }) => {
   const today = new Date();
-  const [weekStart, setWeekStart] = useState(() => { const d = data.meta.firstDate ? new Date(data.meta.firstDate) : new Date(today); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().split('T')[0]; });
+  const [weekStart, setWeekStart] = useState(() => { const d = data.meta.firstDate ? new Date(data.meta.firstDate) : new Date(today); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); });
 
-  const weekDates = useMemo(() => { const arr = []; const start = new Date(weekStart); for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); arr.push(d.toISOString().split('T')[0]); } return arr; }, [weekStart]);
-  const changeWeek = (dir) => { const d = new Date(weekStart); d.setDate(d.getDate() + dir * 7); setWeekStart(d.toISOString().split('T')[0]); };
+  const weekDates = useMemo(() => { const arr = []; const start = new Date(weekStart); for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); arr.push(ymd(d)); } return arr; }, [weekStart]);
+  const changeWeek = (dir) => { const d = new Date(weekStart); d.setDate(d.getDate() + dir * 7); setWeekStart(ymd(d)); };
   const label = () => { const s = new Date(weekStart); const e = new Date(weekStart); e.setDate(e.getDate() + 6); return `${s.getDate()} ${months[s.getMonth()].slice(0,3)} – ${e.getDate()} ${months[e.getMonth()].slice(0,3)} ${e.getFullYear()}`; };
 
   const shiftsByDate = (ds) => data.shifts.filter(s => s.date === ds).sort((a,b) => (a.start||'').localeCompare(b.start||''));
@@ -502,7 +503,7 @@ const SchedulePage = ({ data }) => {
             {weekDates.map(ds => {
               const d = new Date(ds);
               const list = shiftsByDate(ds);
-              const isToday = ds === today.toISOString().split('T')[0];
+              const isToday = ds === ymd(today);
               const totalH = list.reduce((a, s) => a + (s.hours || 0), 0);
               return (
                 <div key={ds} className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col" style={isToday ? { boxShadow: `0 0 0 2px ${colors.accent.dark}` } : {}}>
@@ -536,9 +537,9 @@ const SchedulePage = ({ data }) => {
 
 const PrintPage = ({ data }) => {
   const [mode, setMode] = useState('day'); // 'day' | 'range'
-  const [singleDate, setSingleDate] = useState(data.meta.firstDate || new Date().toISOString().split('T')[0]);
-  const [rangeStart, setRangeStart] = useState(data.meta.firstDate || new Date().toISOString().split('T')[0]);
-  const [rangeEnd, setRangeEnd] = useState(data.meta.firstDate || new Date().toISOString().split('T')[0]);
+  const [singleDate, setSingleDate] = useState(data.meta.firstDate || ymd(new Date()));
+  const [rangeStart, setRangeStart] = useState(data.meta.firstDate || ymd(new Date()));
+  const [rangeEnd, setRangeEnd] = useState(data.meta.firstDate || ymd(new Date()));
   const [busy, setBusy] = useState(false);
 
   const doPrint = (open) => {
@@ -1194,15 +1195,59 @@ const ForecastPlan = ({ data, setPage }) => {
         </>)}
 
         {tab === "zaloga" && (
-          <Sekcja kolor="#082567" tytul="Załoga — godziny z grafiku w miesiącu">
-            {(() => { const map = {}; data.shifts.filter((s) => (s.date || "").slice(0, 7) === `${year}-${String(mIdx + 1).padStart(2, "0")}` && !jestInstruktor(s)).forEach((s) => { map[s.name] = (map[s.name] || 0) + godzZ(s); });
-              const arr = Object.entries(map).sort((a, b) => b[1] - a[1]); const max = Math.max(1, ...arr.map((x) => x[1]));
-              return arr.length === 0 ? <p className="text-slate-400 text-sm">Brak grafiku w tym miesiącu.</p> : (
-                <div className="space-y-1.5">{arr.map(([n, h]) => (
-                  <div key={n}><div className="flex justify-between text-xs mb-0.5"><span style={{ color: colors.primary.dark }}>{n}</span><b style={{ color: colors.primary.darkest }}>{fH1(h)}</b></div>
-                    <div className="h-2.5 rounded" style={{ backgroundColor: colors.primary.bgLight }}><div className="h-2.5 rounded" style={{ width: `${h / max * 100}%`, backgroundColor: h > 200 ? OC.warn : colors.primary.medium }} /></div></div>))}
-                  <p className="text-xs text-slate-400 mt-2">Suma: {fH1(arr.reduce((a, x) => a + x[1], 0))} · osób: {arr.length}</p>
-                </div>); })()}
+          <Sekcja kolor="#082567" tytul={`Załoga — godziny pracowników w miesiącu (${months[mIdx]} ${year})`}>
+            {(() => {
+              const pre = `${year}-${String(mIdx + 1).padStart(2, "0")}`;
+              const mies = data.shifts.filter((s) => (s.date || "").slice(0, 7) === pre && !jestInstruktor(s));
+              // godziny po IDENTYFIKATORZE KONTA; zapasowo po nazwie w grafiku / aliasach
+              const poId = {}, poNazwie = {};
+              mies.forEach((s) => {
+                if (s.accountId) poId[s.accountId] = (poId[s.accountId] || 0) + godzZ(s);
+                else { const k = String(s.name || "").toUpperCase().trim(); poNazwie[k] = (poNazwie[k] || 0) + godzZ(s); }
+              });
+              const wiersze = (data.accounts || []).map((a) => {
+                const klucze = [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim());
+                const h = (poId[a.id] || 0) + klucze.reduce((x, k) => x + (poNazwie[k] || 0), 0);
+                const zmian = mies.filter((s) => s.accountId === a.id || klucze.includes(String(s.name || "").toUpperCase().trim())).length;
+                return { id: a.id, name: a.name, funkcja: a.funkcja, instruktor: a.instruktor, grafik: a.grafikName, h, zmian, koszt: kosztGodzin(a, h) };
+              }).sort((a, b) => b.h - a.h || a.name.localeCompare(b.name));
+              const przypisaneNazwy = new Set((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim())));
+              const bezKonta = Object.entries(poNazwie).filter(([k]) => !przypisaneNazwy.has(k)).sort((a, b) => b[1] - a[1]);
+              const max = Math.max(1, ...wiersze.map((x) => x.h));
+              const sumaH = wiersze.reduce((a, x) => a + x.h, 0);
+              if (!mies.length) return <p className="text-slate-400 text-sm">Brak grafiku w tym miesiącu.</p>;
+              return (<>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <OptKpi label="Pracowników ze zmianami" value={f0(wiersze.filter((x) => x.h > 0).length)} sub={`z ${wiersze.length} kont`} />
+                  <OptKpi label="Godziny przypisane" value={`${f0(sumaH)} h`} />
+                  <OptKpi label="Koszt (szac.)" value={`${f0(wiersze.reduce((a, x) => a + x.koszt, 0))} zł`} />
+                  <OptKpi label="Bez konta" value={f0(bezKonta.length)} sub={bezKonta.length ? `${f0(bezKonta.reduce((a, x) => a + x[1], 0))} h poza rozliczeniem` : "wszystko przypisane"} tone={bezKonta.length ? OC.warn : OC.ok} />
+                </div>
+                <div className="space-y-1.5">
+                  {wiersze.filter((x) => x.h > 0).map((w) => (
+                    <div key={w.id}>
+                      <div className="flex items-center justify-between text-xs mb-0.5 gap-2">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-medium truncate" style={{ color: colors.primary.darkest }}>{w.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{funkcjaLabel(w.funkcja)}</span>
+                          {w.instruktor && <span className="shrink-0">🎓</span>}
+                        </span>
+                        <span className="shrink-0"><b style={{ color: colors.primary.darkest }}>{fH1(w.h)}</b><span className="text-slate-400"> · {w.zmian} zm. · {f0(w.koszt)} zł</span></span>
+                      </div>
+                      <div className="h-2.5 rounded" style={{ backgroundColor: colors.primary.bgLight }}><div className="h-2.5 rounded" style={{ width: `${w.h / max * 100}%`, backgroundColor: w.h > 200 ? OC.warn : colors.primary.medium }} /></div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-400 mt-2">Suma: {fH1(sumaH)} · pracowników ze zmianami: {wiersze.filter((x) => x.h > 0).length}</p>
+                  {wiersze.some((x) => x.h === 0) && <p className="text-xs text-slate-300">Bez zmian w tym miesiącu: {wiersze.filter((x) => x.h === 0).map((x) => x.name).join(", ")}</p>}
+                </div>
+                {bezKonta.length > 0 && (
+                  <div className="mt-4 rounded-xl p-3" style={{ backgroundColor: "#fff8e6" }}>
+                    <p className="text-xs font-semibold mb-1.5" style={{ color: "#8a6d1a" }}>Zmiany bez konta — nie liczą się do pracowników powyżej. Uzupełnij „Nazwę w grafiku" lub alias w module Pracownicy i kliknij „Przypisz zmiany do kont".</p>
+                    <div className="flex flex-wrap gap-1.5">{bezKonta.map(([k, h]) => <span key={k} className="text-xs px-2 py-1 rounded-lg font-mono" style={{ backgroundColor: "white", color: "#8a6d1a" }}>{k} <span className="opacity-60">{fH1(h)}</span></span>)}</div>
+                  </div>
+                )}
+              </>);
+            })()}
           </Sekcja>
         )}
 
@@ -1951,7 +1996,7 @@ const AdminEmployees = ({ data }) => {
 };
 
 const PlanPage = ({ data }) => {
-  const domyslnyYm = (data.months && data.months[0]?.key) || (data.meta.firstDate || '').slice(0, 7) || new Date().toISOString().slice(0, 7);
+  const domyslnyYm = (data.months && data.months[0]?.key) || (data.meta.firstDate || '').slice(0, 7) || ymd(new Date()).slice(0, 7);
   const [ym, setYm] = useState(domyslnyYm);
   const dni = dniMiesiaca(ym);
   const [mgrH, setMgrH] = useState(8);
