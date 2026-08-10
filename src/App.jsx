@@ -2189,12 +2189,26 @@ const DayPlanner = ({ data, day, locked }) => {
   const konta = data.accounts || [];
   const stacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
 
+  // Para praca+instruktor (te same/nachodzące godziny) = JEDEN pasek ze znacznikiem szkolenia.
+  // Wiersz instruktorski to duplikat wyświetleniowy — nie liczymy go do godzin.
+  const scalDlaWiersza = (arr) => {
+    const zwykle = [], instr = [];
+    arr.forEach((x) => (jestInstruktor(x) ? instr : zwykle).push(x));
+    const out = zwykle.map((x) => ({ ...x }));
+    instr.forEach((i) => {
+      const para = out.find((x) => x.date === i.date && plnMin(x.start) < plnMin(i.end) + (plnMin(i.end) <= plnMin(i.start) ? 1440 : 0) && plnMin(i.start) < plnMin(x.end) + (plnMin(x.end) <= plnMin(x.start) ? 1440 : 0));
+      if (para) { para.szkoli = true; para.partnerSzk = i.partner || i.uczen || null; para.paraInstr = { date: i.date, name: i.name, start: i.start, end: i.end }; }
+      else out.push({ ...i, szkoli: true });
+    });
+    return out;
+  };
+
   // wiersze: wszystkie konta + osoby z grafiku bez konta
   const wiersze = useMemo(() => {
-    const zKont = konta.map((a) => ({ key: `a:${a.id}`, id: a.id, label: a.name, grafik: a.grafikName || a.name, funkcja: a.funkcja, moje: zmianyDnia.filter((x) => x.accountId === a.id) }));
+    const zKont = konta.map((a) => ({ key: `a:${a.id}`, id: a.id, label: a.name, grafik: a.grafikName || a.name, funkcja: a.funkcja, moje: scalDlaWiersza(zmianyDnia.filter((x) => x.accountId === a.id)) }));
     const znane = new Set(zmianyDnia.filter((x) => x.accountId).map((x) => x.accountId));
     const bezKonta = [...new Set(zmianyDnia.filter((x) => !x.accountId).map((x) => String(x.name).toUpperCase()))]
-      .map((n) => ({ key: `n:${n}`, id: null, label: n, grafik: n, funkcja: null, moje: zmianyDnia.filter((x) => !x.accountId && String(x.name).toUpperCase() === n) }));
+      .map((n) => ({ key: `n:${n}`, id: null, label: n, grafik: n, funkcja: null, moje: scalDlaWiersza(zmianyDnia.filter((x) => !x.accountId && String(x.name).toUpperCase() === n)) }));
     const rows = [...zKont, ...bezKonta];
     rows.sort((a, b) => (b.moje.length - a.moje.length) || a.label.localeCompare(b.label));
     return rows;
@@ -2212,14 +2226,17 @@ const DayPlanner = ({ data, day, locked }) => {
   const klikPasek = (w, x, e) => {
     e.stopPropagation();
     if (locked) return;
-    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, ident: { date: x.date, name: x.name, start: x.start, end: x.end } });
+    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { date: x.date, name: x.name, start: x.start, end: x.end } });
   };
   const zapisz = async () => {
     if (!modal) return;
     setSaving(true);
     let ok;
     if (modal.tryb === 'nowa') ok = await data.addShiftManual({ date: day, name: modal.osoba, station: modal.station, start: modal.start, end: modal.end, accountId: modal.accountId || undefined });
-    else ok = await data.updateShiftManual(modal.ident, { station: modal.station, start: modal.start, end: modal.end });
+    else {
+      ok = await data.updateShiftManual(modal.ident, { station: modal.station, start: modal.start, end: modal.end });
+      if (ok && modal.paraInstr) await data.updateShiftManual(modal.paraInstr, { start: modal.start, end: modal.end });   // wiersz szkoleniowy trzyma te same godziny
+    }
     setSaving(false);
     if (ok) setModal(null);
   };
@@ -2227,6 +2244,7 @@ const DayPlanner = ({ data, day, locked }) => {
     if (!modal || modal.tryb !== 'edycja') return;
     setSaving(true);
     const ok = await data.removeShiftManual(modal.ident);
+    if (ok && modal.paraInstr) await data.removeShiftManual(modal.paraInstr);   // usuń też sparowany wiersz szkoleniowy
     setSaving(false);
     if (ok) setModal(null);
   };
@@ -2261,8 +2279,8 @@ const DayPlanner = ({ data, day, locked }) => {
                   return (
                     <button key={i} onClick={(e) => klikPasek(w, x, e)} className="absolute rounded-md text-left px-1.5 overflow-hidden shadow-sm hover:brightness-95"
                       style={{ left: `${L}%`, width: `${Wd}%`, top: 7, bottom: 7, backgroundColor: `${kol}22`, borderLeft: `3px solid ${kol}` }}
-                      title={`${x.station} ${x.start}–${x.end}${x.dodana ? ' (ręczna)' : ''} — kliknij, aby edytować`}>
-                      <span className="block text-[10px] font-bold leading-tight truncate" style={{ color: kol }}>{x.station}</span>
+                      title={`${x.station} ${x.start}–${x.end}${x.szkoli ? ` · szkoli${x.partnerSzk ? ': ' + x.partnerSzk : ''}` : ''}${x.dodana ? ' (ręczna)' : ''} — kliknij, aby edytować`}>
+                      <span className="block text-[10px] font-bold leading-tight truncate" style={{ color: kol }}>{etykietaStacji ? etykietaStacji(x) : x.station}{x.szkoli ? ' 🎓' : ''}</span>
                       <span className="block text-[10px] leading-tight" style={{ color: colors.primary.dark }}>{x.start}–{x.end}</span>
                     </button>
                   );
@@ -2348,8 +2366,10 @@ const WorkingTime = ({ data, canEdit }) => {
   if (order === 'az') rows.sort((a, b) => a.name.localeCompare(b.name));
   else if (order === 'diff') rows.sort((a, b) => Math.abs(actualNet(b) - wtDur(b.start, b.end)) - Math.abs(actualNet(a) - wtDur(a.start, a.end)));
 
-  const plannedMin = rows.reduce((x, s) => x + wtDur(s.start, s.end), 0);
-  const actualMin = rows.reduce((x, s) => x + actualNet(s), 0);
+  // Wiersze instruktorskie to duplikaty (osoba ma równolegle swoją zmianę) — nie liczą się do godzin
+  const rowsGodz = rows.filter((s) => !jestInstruktor(s));
+  const plannedMin = rowsGodz.reduce((x, s) => x + wtDur(s.start, s.end), 0);
+  const actualMin = rowsGodz.reduce((x, s) => x + actualNet(s), 0);
   const eff = plannedMin ? Math.round((actualMin / plannedMin) * 100) : 0;
 
   const simulate = () => {
