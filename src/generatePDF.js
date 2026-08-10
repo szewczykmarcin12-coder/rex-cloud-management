@@ -58,6 +58,40 @@ function fonty(doc) {
   doc.setFont('Lib', 'normal');
 }
 
+
+// ── Szkolenia: scalanie pary praca+instruktor do jednego wiersza ──
+const norm = (n) => String(n || '').trim().toUpperCase().replace(/\s+/g, ' ');
+const pdfMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+const pdfNachodza = (a, b) => {
+  let a1 = pdfMin(a.start), a2 = pdfMin(a.end); if (a2 <= a1) a2 += 1440;
+  let b1 = pdfMin(b.start), b2 = pdfMin(b.end); if (b2 <= b1) b2 += 1440;
+  return a1 < b2 && b1 < a2;
+};
+// Wiersz instruktorski nachodzący na zwykłą zmianę tej samej osoby = duplikat:
+// zwykła zmiana dostaje flagę szkoli (czapeczka), duplikat znika z wydruku.
+function scalPary(dzienne) {
+  const zwykle = [], instr = [];
+  dzienne.forEach((s) => (jestInstr(s) ? instr : zwykle).push(s));
+  const out = zwykle.map((s) => ({ ...s }));
+  instr.forEach((i) => {
+    const para = out.find((s) => norm(s.name) === norm(i.name) && pdfNachodza(s, i));
+    if (para) { para.szkoli = true; para.partnerSzk = i.partner || null; }
+    else out.push({ ...i, szkoli: true });          // instruktor bez zwykłej zmiany — zostaje raz
+  });
+  return out;
+}
+// Czapeczka akademicka rysowana wektorowo (czcionka PDF nie ma emoji)
+function rysujCzapke(doc, x, y, kol = [0, 121, 107]) {
+  const w = 3.0, h = 1.15;                          // romb (denko czapki)
+  doc.setFillColor(...kol);
+  doc.triangle(x, y, x + w / 2, y - h, x + w, y, 'F');
+  doc.triangle(x, y, x + w / 2, y + h, x + w, y, 'F');
+  doc.setDrawColor(...kol); doc.setLineWidth(0.35);
+  doc.line(x + w * 0.78, y + h * 0.35, x + w * 0.78, y + h + 0.75);   // frędzel
+  doc.setFillColor(...kol);
+  doc.circle(x + w * 0.78, y + h + 0.95, 0.28, 'F');
+}
+
 // ── Render jednego dnia ──────────────────────────────────────────────
 function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
   const W = doc.internal.pageSize.getWidth();
@@ -65,8 +99,9 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
   const M = 8;
   const d = new Date(dateStr);
 
-  const dzienne = shifts.filter(s => s.date === dateStr);
-  const sumaGodz = dzienne.filter(s=>!jestInstr(s)).reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
+  const surowe = shifts.filter(s => s.date === dateStr);
+  const sumaGodz = surowe.filter(s=>!jestInstr(s)).reduce((a,s)=>a+godzZmiany(s),0) + dodatkiMgr;
+  const dzienne = scalPary(surowe);
 
   // ── NAGŁÓWEK ──
   doc.setFillColor(...NAVY); doc.rect(0,0,W,21,'F');
@@ -81,7 +116,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
   doc.text(location, W - M, 8.5, { align:'right' });
   doc.setFont('Lib','normal'); doc.setFontSize(9);
   doc.setTextColor(...PEACH);
-  doc.text(`Zmian: ${dzienne.length}      Roboczogodzin: ${sumaGodz.toFixed(1)} h`, W - M, 15.5, { align:'right' });
+  doc.text(`Zmian: ${surowe.length}      Roboczogodzin: ${sumaGodz.toFixed(1)} h`, W - M, 15.5, { align:'right' });
 
   // ── UKŁAD ──
   const bodyTop = 27, bodyBot = H - 8;
@@ -115,13 +150,16 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
     ludzie.forEach((s, i) => {
       if (i % 2 === 1) { doc.setFillColor(245,247,250); doc.rect(x, ry, colW, rowH, 'F'); }
       doc.setTextColor(...INK); doc.setFont('Lib','normal'); doc.setFontSize(8);
-      // przy szkoleniu dopisz rolę i parę (uczeń → instruktor / instruktor → uczeń)
+      // Uczeń: nazwisko + instruktor w nawiasie. Szkolący: nazwisko + czapeczka (bez dublowania tekstu).
       const r = rolaSzk(s);
       let nmTxt = s.name;
-      if (r === 'training') nmTxt = `${s.name}  (szkol.${s.partner ? ', instr.: ' + s.partner : ''})`;
-      else if (r === 'instruktor') nmTxt = `${s.name}  (instruktor${s.partner ? ', szkoli: ' + s.partner : ''})`;
+      if (r === 'training') nmTxt = `${s.name}  (instr.: ${s.partner || '—'})`;
       const nm = nmTxt.length > 40 ? nmTxt.slice(0,39)+'…' : nmTxt;
       doc.text(nm, x + 2.5, ry + rowH - 1.5);
+      if (s.szkoli) {
+        const wTxt = doc.getTextWidth(nm);
+        rysujCzapke(doc, x + 2.5 + wTxt + 1.6, ry + rowH - 2.9);
+      }
       doc.setFontSize(7.9);
       const gh = godzZmiany(s);
       doc.text(`${s.start||''} – ${s.end||''}`, x + colW - 16, ry + rowH - 1.5, { align:'right' });
