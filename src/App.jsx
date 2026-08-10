@@ -193,7 +193,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
     { gid: 'pulpit', grupa: 'Pulpit', icon: Home, items: [ { id: 'dashboard', label: 'Strona domowa', icon: Home } ] },
     { gid: 'workforce', grupa: 'Workforce', icon: LayoutGrid, items: [
       { id: 'wt', label: 'Grafik i czas pracy', icon: LayoutGrid },
-      { id: 'forecast', label: 'Optymalizacja i prognoza', icon: Clock },
+      { id: 'forecast', label: 'Planowanie: optymalizacja + budżet', icon: Clock },
       { id: 'import', label: 'Import z Excel', icon: Upload },
       { id: 'print', label: 'Wydruk grafiku', icon: Printer },
     ] },
@@ -201,7 +201,6 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
       { id: 'emps', label: 'Pracownicy i konta', icon: Users },
       { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
     ] },
-    { gid: 'finanse', grupa: 'Finanse', icon: FileSpreadsheet, items: [ { id: 'plan', label: 'Budżet i koszty pracy', icon: FileSpreadsheet } ] },
     { gid: 'system', grupa: 'System', icon: Settings, items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
   ];
   const widoczne = role === 'asm' ? null : ['dashboard', 'wt', 'print'];
@@ -275,6 +274,29 @@ const Dashboard = ({ data, setPage }) => {
     { label: 'Zastępcy kierownika', val: ile('ASM'), color: '#2F6FB5' },
     { label: 'Kierownik restauracji', val: ile('RGM'), color: '#082567' },
   ];
+  // Wykresy z Pulpitu — na danych bieżącego miesiąca
+  const sales = ((data.salesData || {}).sales) || {};
+  const dniWyk = useMemo(() => {
+    if (!mkey) return [];
+    const [y, m] = mkey.split('-').map(Number);
+    const dim = new Date(y, m, 0).getDate();
+    return Array.from({ length: dim }, (_, i) => {
+      const ds = `${mkey}-${String(i + 1).padStart(2, '0')}`;
+      return { d: i + 1, ds, dow: new Date(ds).getDay(), sprzedaz: sales[ds] || 0 };
+    }).filter((x) => x.sprzedaz > 0);
+  }, [mkey, data.salesData]);
+  const zalogaMapD = useMemo(() => {
+    const m = {};
+    mShifts.filter((x) => !jestInstruktor(x)).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); m[k] = (m[k] || 0) + godzZ(x); });
+    return m;
+  }, [mShifts]);
+  const rankingDni = [...Array(7)].map((_, i) => {
+    const g = mShifts.filter((x) => new Date(x.date).getDay() === i && !jestInstruktor(x));
+    const h = g.reduce((a, x) => a + godzZ(x), 0);
+    const sp = dniWyk.filter((x) => x.dow === i).reduce((a, x) => a + x.sprzedaz, 0);
+    return { n: ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][i], v: h ? sp / h : 0 };
+  });
+
   const stats = [
     { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
     { label: 'Konta pracowników', val: acc.length, icon: Users, color: '#9C27B0' },
@@ -302,6 +324,26 @@ const Dashboard = ({ data, setPage }) => {
               ))}
             </div>
           )}
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          {dniWyk.length > 1 && (
+            <Karta tytul="Ewolucja sprzedaży narastająco" podtytul={`${mLabel} · odchylenie od średniej dziennej`}>
+              <Ewolucja dni={dniWyk} />
+            </Karta>
+          )}
+          <Karta tytul="Ranking dni tygodnia" podtytul="SPLH z grafiku (zł/rbh)">
+            <Ranking jednostka="zł/rbh" dane={rankingDni} />
+          </Karta>
+          <Karta tytul="Rozkład załogi wg godzin miesiąca" podtytul={`${Object.keys(zalogaMapD).length} osób · ${mLabel}`}>
+            <Histogram kubelki={(() => { const h = Object.values(zalogaMapD); return [
+              { l: '<40 h', n: h.filter((x) => x < 40).length },
+              { l: '40–80', n: h.filter((x) => x >= 40 && x < 80).length },
+              { l: '80–120', n: h.filter((x) => x >= 80 && x < 120).length },
+              { l: '120–160', n: h.filter((x) => x >= 120 && x < 160).length },
+              { l: '160+', n: h.filter((x) => x >= 160).length }]; })()} />
+          </Karta>
+          {dniWyk.length === 0 && <div className="rounded-xl p-6 text-sm text-slate-400 bg-white border" style={{ borderColor: colors.primary.bg }}>Zaimportuj sprzedaż w module Planowanie, aby zobaczyć tu również ewolucję sprzedaży i pełny SPLH.</div>}
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #26A69A' }}>
@@ -2240,6 +2282,23 @@ const scalParyPlan = (arr) => {
 // Szacunkowy koszt godzin wg konta (UZ: stawka/h; UOP: wynagrodzenie mies. / 160 h)
 const kosztGodzin = (konto, h) => !konto ? 0 : (konto.umowa === 'UOP' ? (konto.stawka / 160) * h : konto.stawka * h);
 
+
+// ===================== PLANOWANIE: OPTYMALIZACJA + BUDŻET w jednym module =====================
+const PlanFinanse = ({ data, setPage }) => {
+  const [sek, setSek] = useState('opty');
+  const nav = (id) => { if (id === 'plan') setSek('budzet'); else if (id === 'forecast') setSek('opty'); else setPage(id); };
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="px-8 pt-5 flex gap-1 bg-white border-b" style={{ borderColor: colors.primary.bg }}>
+        {[['opty', 'Optymalizacja i prognoza'], ['budzet', 'Budżet i koszty pracy (COL)']].map(([k, l]) => (
+          <button key={k} onClick={() => setSek(k)} className="px-5 py-2.5 rounded-t-xl text-sm font-semibold" style={{ backgroundColor: sek === k ? colors.primary.bgLight : 'transparent', color: sek === k ? colors.primary.darkest : colors.primary.light, borderBottom: sek === k ? `3px solid ${colors.primary.medium}` : '3px solid transparent' }}>{l}</button>
+        ))}
+      </div>
+      {sek === 'opty' ? <ForecastPlan data={data} setPage={nav} /> : <BudgetPlan data={data} setPage={nav} />}
+    </div>
+  );
+};
+
 // ===================== SIATKA TYGODNIA (planowanie jak MAPAL Scheduler) =====================
 const WeekPlanner = ({ data, days, locked, onDzien }) => {
   const [modal, setModal] = useState(null);
@@ -2396,7 +2455,8 @@ const DayPlanner = ({ data, day, locked }) => {
 
   // Zapotrzebowanie (krzywa celu KC + prace pośrednie) vs obsada z planu — pasmo jak "Personal Ideal / Proyectado"
   const dowDnia = new Date(day).getDay();
-  const { dir: demDir, ind: demInd } = optRozbicie(0, 420, 3, 'krzywa', dowDnia);
+  const sprzedazDnia = (((data.salesData || {}).sales) || {})[day] || 0;
+  const { dir: demDir, ind: demInd } = optRozbicie(sprzedazDnia, 420, 3, sprzedazDnia ? 'sprzedaz' : 'krzywa', dowDnia);
   const demand = demDir.map((v, i) => Math.max(v, demInd[i]));
   const coverPlan = useMemo(() => {
     const c = new Array(NS).fill(0);
@@ -2493,25 +2553,28 @@ const DayPlanner = ({ data, day, locked }) => {
             {godzinyOsi.map((h) => <div key={h} className="flex-1 text-center text-[10px] py-1.5 font-medium" style={{ color: h >= 13 && h < 20 ? '#B26A00' : colors.primary.light, borderLeft: '1px solid #f1f5f9', backgroundColor: h >= 13 && h < 20 ? '#fffaf0' : undefined }}>{String(h % 24).padStart(2, '0')}</div>)}
           </div>
         </div>
-        <div className="flex" style={{ borderBottom: `2px solid ${colors.primary.bg}`, backgroundColor: '#fbfcfe' }}>
-          <div className="w-56 shrink-0 px-3 py-1 flex flex-col justify-center">
-            <p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Potrzeba / obsada</p>
-            <p className="text-[9px]" style={{ color: colors.primary.light }}>krzywa celu · <span style={{ color: '#B7362A' }}>■ brakuje</span> <span style={{ color: '#12655B' }}>■ ok</span> <span style={{ color: '#2F6FB5' }}>■ zapas</span></p>
-          </div>
-          <div className="flex-1 flex">
-            {godzinyOsi.map((h) => {
-              const i1 = sl(h), i2 = sl(h) + 1;
-              const need = Math.max(demand[i1] || 0, demand[i2] || 0);
-              const have = Math.min(coverPlan[i1] || 0, coverPlan[i2] || 0);
-              const kol = have < need ? '#B7362A' : have > need ? '#2F6FB5' : '#12655B';
-              const bg = have < need ? '#fbe9e7' : have > need ? '#e8f1fb' : '#e9f7ef';
-              return (
-                <div key={h} className="flex-1 text-center py-0.5 border-l" style={{ borderColor: '#f1f5f9', backgroundColor: need || have ? bg : undefined }} title={`${String(h % 24).padStart(2, '0')}:00 — potrzeba ${need}, w planie ${have}`}>
-                  <span className="block text-[9px] font-bold leading-tight" style={{ color: kol }}>{have}/{need}</span>
-                </div>
-              );
-            })}
-          </div>
+        <div style={{ borderBottom: `2px solid ${colors.primary.bg}`, backgroundColor: '#fbfcfe' }}>
+          {[
+            { l: 'Praca pośrednia', arr: demInd, typ: 'n' },
+            { l: 'Praca bezpośrednia', arr: demDir, typ: 'n' },
+            { l: 'Personal Ideal', arr: demand, typ: 'b' },
+            { l: 'Obsada w planie', arr: coverPlan, typ: 'p' },
+          ].map((rw, ri) => (
+            <div key={ri} className="flex" style={{ borderTop: ri ? '1px solid #eef2f7' : 'none' }}>
+              <div className="w-56 shrink-0 px-3 flex items-center justify-between">
+                <span className={`text-[10px] ${rw.typ === 'n' ? '' : 'font-bold'}`} style={{ color: rw.typ === 'n' ? colors.primary.light : colors.primary.dark }}>{rw.l}</span>
+                {ri === 3 && <span className="text-[9px]" style={{ color: colors.primary.light }}>{sprzedazDnia ? 'wg sprzedaży · SPLH 420' : 'wg krzywej celu'}</span>}
+              </div>
+              <div className="flex-1 flex">
+                {godzinyOsi.map((h) => {
+                  const i1 = sl(h), v = Math.max(rw.arr[i1] || 0, rw.arr[i1 + 1] || 0);
+                  let bg, kol = colors.primary.dark;
+                  if (rw.typ === 'p') { const need = Math.max(demand[i1] || 0, demand[i1 + 1] || 0); kol = v < need ? '#B7362A' : v > need ? '#2F6FB5' : '#12655B'; bg = v < need ? '#fbe9e7' : v > need ? '#e8f1fb' : '#e9f7ef'; }
+                  return <div key={h} className="flex-1 text-center border-l" style={{ borderColor: '#f1f5f9', backgroundColor: bg }} title={`${String(h % 24).padStart(2, '0')}:00 — ${rw.l}: ${v}`}><span className={`block text-[9px] leading-4 ${rw.typ === 'n' ? '' : 'font-bold'}`} style={{ color: rw.typ === 'n' ? '#94a3b8' : kol }}>{v || ''}</span></div>;
+                })}
+              </div>
+            </div>
+          ))}
         </div>
         <div className="max-h-[520px] overflow-y-auto">
           {wiersze.map((w) => (
@@ -3069,8 +3132,8 @@ export default function App() {
     import: <ImportPage data={data} />,
     wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
     print: <PrintPage data={data} />,
-    plan: <BudgetPlan data={data} setPage={setPage} />,
-    forecast: <ForecastPlan data={data} setPage={setPage} />,
+    forecast: <PlanFinanse data={data} setPage={setPage} />,
+    plan: <PlanFinanse data={data} setPage={setPage} />,
     emps: <AdminEmployees data={data} />,
     swaps: <AdminSwaps data={data} />,
     settings: <SettingsPage data={data} />
