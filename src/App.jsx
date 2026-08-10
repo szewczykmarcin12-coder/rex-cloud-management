@@ -2072,6 +2072,239 @@ const WTBreaks = ({ actual, onSave, locked, onClose }) => {
   );
 };
 
+
+
+// ===================== SZABLONY TYGODNIOWE (Plantillas de Turnos Semanales) =====================
+const WTTemplates = ({ data, weeks }) => {
+  const [saveFor, setSaveFor] = useState(weeks.length ? weeks[weeks.length - 1].start : '');
+  const [tplName, setTplName] = useState('');
+  const [tplNotes, setTplNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [applyT, setApplyT] = useState(null);       // pełny szablon do przypisania
+  const [applyWeek, setApplyWeek] = useState('');
+  const [przyp, setPrzyp] = useState({});           // slotId -> nazwa
+  const [applying, setApplying] = useState(false);
+
+  const nastepnyPon = () => { const d = new Date(); const off = (8 - d.getDay()) % 7 || 7; d.setDate(d.getDate() + off); return ymd(d); };
+  const otworzApply = async (t) => {
+    const det = await data.templateDetail(t.id);
+    if (!det) return;
+    setApplyT(det); setApplyWeek(nastepnyPon());
+    const p = {}; det.sloty.forEach((sl) => { p[sl.id] = sl.hint || ''; }); setPrzyp(p);
+  };
+  const wyslij = async () => {
+    if (!applyT) return;
+    const przypisania = {};
+    Object.entries(przyp).forEach(([k, v]) => { if (String(v).trim()) { const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(v).trim().toUpperCase())); przypisania[k] = { name: String(v).trim(), accountId: konto ? konto.id : undefined }; } });
+    setApplying(true);
+    const ok = await data.applyTemplate(applyT.id, applyWeek, przypisania);
+    setApplying(false);
+    if (ok) setApplyT(null);
+  };
+
+  return (
+    <div className="mt-3 bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})` }}>
+        <span className="text-sm font-semibold text-white">Szablony tygodniowe (Plantillas)</span>
+        <span className="text-xs text-white/70">zapisz wzorcowy tydzień i nakładaj go na kolejne</span>
+      </div>
+      <div className="p-4 space-y-4">
+        {(data.templates || []).length > 0 && (
+          <div className="space-y-1.5">
+            {data.templates.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
+                <span className="font-semibold text-sm" style={{ color: colors.primary.darkest }}>{t.name}</span>
+                {t.notes && <span className="text-xs" style={{ color: colors.primary.light }}>{t.notes}</span>}
+                <span className="text-xs" style={{ color: colors.primary.light }}>{t.sloty} slotów · {t.zmian} zmian · {Number(t.godzin).toFixed(0)} h/tydz.</span>
+                <span className="ml-auto flex gap-2">
+                  <button onClick={() => otworzApply(t)} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zastosuj</button>
+                  <button onClick={() => window.confirm(`Usunąć szablon „${t.name}"?`) && data.deleteTemplate(t.id)} className="text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>Usuń</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-3 pt-1 border-t" style={{ borderColor: '#eef2f7' }}>
+          <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Tydzień źródłowy</label>
+            <select value={saveFor} onChange={(e) => setSaveFor(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+              {weeks.map((w) => { const e2 = new Date(w.start); e2.setDate(e2.getDate() + 6); return <option key={w.start} value={w.start}>{w.start.slice(8)}.{w.start.slice(5, 7)} – {ymd(e2).slice(8)}.{ymd(e2).slice(5, 7)}</option>; })}
+            </select></div>
+          <div className="flex-1 min-w-[160px]"><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Nazwa szablonu</label>
+            <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="np. Tydzień standardowy" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+          <div className="flex-1 min-w-[160px]"><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Uwagi (opcjonalnie)</label>
+            <input value={tplNotes} onChange={(e) => setTplNotes(e.target.value)} placeholder="np. obsada wakacyjna" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+          <button disabled={saving || !tplName.trim() || !saveFor} onClick={async () => { setSaving(true); const ok = await data.saveTemplate(saveFor, tplName.trim(), tplNotes.trim()); setSaving(false); if (ok) { setTplName(''); setTplNotes(''); } }}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{saving ? 'Zapisuję…' : 'Zapisz tydzień jako szablon'}</button>
+        </div>
+      </div>
+
+      {applyT && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,.45)' }} onClick={() => !applying && setApplyT(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold" style={{ color: colors.primary.darkest }}>Zastosuj szablon — {applyT.name}</h3>
+              <button onClick={() => setApplyT(null)} className="text-slate-400"><X size={18} /></button>
+            </div>
+            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Przypisz osoby do slotów (puste pole = slot pominięty). Zmiany trafią do grafiku i wykonania.</p>
+            <div className="mb-4"><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Tydzień docelowy (poniedziałek)</label>
+              <input type="date" value={applyWeek} onChange={(e) => { const d = new Date(e.target.value); const pon = new Date(d); pon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); setApplyWeek(ymd(pon)); }} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+            <div className="space-y-2">
+              {applyT.sloty.map((sl) => (
+                <div key={sl.id} className="grid grid-cols-[1fr_1fr] gap-3 items-center px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{sl.label}</p>
+                    <p className="text-[11px]" style={{ color: colors.primary.light }}>{sl.shifts.length} zmian · {sl.shifts.reduce((a, x) => a + x.hours, 0).toFixed(0)} h · {sl.shifts.map((x) => `${D3[(x.dow + 6) % 7]} ${x.start}`).join(', ')}</p>
+                  </div>
+                  <input list="tpl-lista-kont" value={przyp[sl.id] || ''} onChange={(e) => setPrzyp((p) => ({ ...p, [sl.id]: e.target.value }))} placeholder={`ostatnio: ${sl.hint || '—'}`} className="px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: colors.primary.bg }} />
+                </div>
+              ))}
+              <datalist id="tpl-lista-kont">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button disabled={applying} onClick={() => setApplyT(null)} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
+              <button disabled={applying} onClick={wyslij} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{applying ? 'Stosuję…' : 'Zastosuj szablon'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===================== PLANER DNIA (styl MAPAL Scheduler 2.0) =====================
+// Wiersze = pracownicy, oś = doba operacyjna 06:00→06:00. Klik w pusty obszar dodaje
+// zmianę (start = kliknięta godzina), klik w pasek otwiera edycję. Wszystko zapisuje
+// się przez backend (add/update/remove) i od razu tworzy wpisy wykonania.
+const PLN_H0 = 6, PLN_HN = 30;                              // 06 → 06 następnego dnia
+const plnMin = (t) => { const [h, m] = String(t).split(':').map(Number); let x = h * 60 + (m || 0); if (x < PLN_H0 * 60) x += 1440; return x; };
+const plnPct = (t) => ((plnMin(t) - PLN_H0 * 60) / ((PLN_HN - PLN_H0) * 60)) * 100;
+const plnClock = (min) => `${String(Math.floor((min % 1440) / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+const DayPlanner = ({ data, day, locked }) => {
+  const [modal, setModal] = useState(null);   // {tryb:'nowa'|'edycja', osoba, accountId, station, start, end, ident}
+  const [saving, setSaving] = useState(false);
+
+  const zmianyDnia = data.shifts.filter((x) => x.date === day);
+  const konta = data.accounts || [];
+  const stacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
+
+  // wiersze: wszystkie konta + osoby z grafiku bez konta
+  const wiersze = useMemo(() => {
+    const zKont = konta.map((a) => ({ key: `a:${a.id}`, id: a.id, label: a.name, grafik: a.grafikName || a.name, funkcja: a.funkcja, moje: zmianyDnia.filter((x) => x.accountId === a.id) }));
+    const znane = new Set(zmianyDnia.filter((x) => x.accountId).map((x) => x.accountId));
+    const bezKonta = [...new Set(zmianyDnia.filter((x) => !x.accountId).map((x) => String(x.name).toUpperCase()))]
+      .map((n) => ({ key: `n:${n}`, id: null, label: n, grafik: n, funkcja: null, moje: zmianyDnia.filter((x) => !x.accountId && String(x.name).toUpperCase() === n) }));
+    const rows = [...zKont, ...bezKonta];
+    rows.sort((a, b) => (b.moje.length - a.moje.length) || a.label.localeCompare(b.label));
+    return rows;
+  }, [konta, zmianyDnia]);
+
+  const godzinyOsi = Array.from({ length: PLN_HN - PLN_H0 }, (_, i) => PLN_H0 + i);
+
+  const klikTlo = (w, e) => {
+    if (locked) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const frac = Math.min(Math.max((e.clientX - box.left) / box.width, 0), 1);
+    const minuty = PLN_H0 * 60 + Math.floor(frac * (PLN_HN - PLN_H0) * 60 / 30) * 30;   // przyciąganie do 30 min
+    setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER', start: plnClock(minuty), end: plnClock(Math.min(minuty + 480, PLN_HN * 60)) });
+  };
+  const klikPasek = (w, x, e) => {
+    e.stopPropagation();
+    if (locked) return;
+    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, ident: { date: x.date, name: x.name, start: x.start, end: x.end } });
+  };
+  const zapisz = async () => {
+    if (!modal) return;
+    setSaving(true);
+    let ok;
+    if (modal.tryb === 'nowa') ok = await data.addShiftManual({ date: day, name: modal.osoba, station: modal.station, start: modal.start, end: modal.end, accountId: modal.accountId || undefined });
+    else ok = await data.updateShiftManual(modal.ident, { station: modal.station, start: modal.start, end: modal.end });
+    setSaving(false);
+    if (ok) setModal(null);
+  };
+  const usun = async () => {
+    if (!modal || modal.tryb !== 'edycja') return;
+    setSaving(true);
+    const ok = await data.removeShiftManual(modal.ident);
+    setSaving(false);
+    if (ok) setModal(null);
+  };
+
+  const sumaDnia = zmianyDnia.filter((x) => !jestInstruktor(x)).reduce((a, x) => a + godzZ(x), 0);
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})` }}>
+        <span className="text-sm font-semibold text-white">Planowanie zmian — siatka dnia</span>
+        <span className="text-xs text-white/70">{f0(sumaDnia)} h zaplanowane · kliknij w pusty obszar, aby dodać zmianę</span>
+      </div>
+      <div className="overflow-x-auto"><div className="min-w-[1080px]">
+        <div className="flex" style={{ borderBottom: `1px solid ${colors.primary.bg}` }}>
+          <div className="w-56 shrink-0 px-3 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.dark }}>Pracownik</div>
+          <div className="flex-1 flex">
+            {godzinyOsi.map((h) => <div key={h} className="flex-1 text-center text-[10px] py-1.5 font-medium" style={{ color: h >= 13 && h < 20 ? '#B26A00' : colors.primary.light, borderLeft: '1px solid #f1f5f9', backgroundColor: h >= 13 && h < 20 ? '#fffaf0' : undefined }}>{String(h % 24).padStart(2, '0')}</div>)}
+          </div>
+        </div>
+        <div className="max-h-[520px] overflow-y-auto">
+          {wiersze.map((w) => (
+            <div key={w.key} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#f1f5f9' }}>
+              <div className="w-56 shrink-0 px-3 py-2 flex flex-col justify-center">
+                <p className="text-[13px] font-semibold truncate" style={{ color: colors.primary.darkest }}>{w.label}</p>
+                <p className="text-[10px]" style={{ color: colors.primary.light }}>{w.funkcja ? funkcjaLabel(w.funkcja) : '⚠ brak konta'}{w.moje.length ? ` · ${w.moje.reduce((a, x) => a + godzZ(x), 0).toFixed(1).replace('.', ',')} h` : ''}</p>
+              </div>
+              <div className="relative flex-1 cursor-pointer" style={{ minHeight: 44 }} onClick={(e) => klikTlo(w, e)} title={locked ? '' : 'Kliknij, aby dodać zmianę'}>
+                {godzinyOsi.map((h, i) => <div key={h} className="absolute top-0 bottom-0" style={{ left: `${(i / godzinyOsi.length) * 100}%`, width: 1, backgroundColor: h >= 13 && h < 20 ? '#f5e6c8' : '#f1f5f9' }} />)}
+                {w.moje.map((x, i) => {
+                  const L = plnPct(x.start); const Wd = Math.max(plnPct(x.end) - L, 2);
+                  const kol = stationColor(x.station);
+                  return (
+                    <button key={i} onClick={(e) => klikPasek(w, x, e)} className="absolute rounded-md text-left px-1.5 overflow-hidden shadow-sm hover:brightness-95"
+                      style={{ left: `${L}%`, width: `${Wd}%`, top: 7, bottom: 7, backgroundColor: `${kol}22`, borderLeft: `3px solid ${kol}` }}
+                      title={`${x.station} ${x.start}–${x.end}${x.dodana ? ' (ręczna)' : ''} — kliknij, aby edytować`}>
+                      <span className="block text-[10px] font-bold leading-tight truncate" style={{ color: kol }}>{x.station}</span>
+                      <span className="block text-[10px] leading-tight" style={{ color: colors.primary.dark }}>{x.start}–{x.end}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {wiersze.length === 0 && <p className="text-center text-slate-400 py-8 text-sm">Brak kont i zmian. Dodaj pracowników w module Pracownicy.</p>}
+        </div>
+      </div></div>
+
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,.45)' }} onClick={() => !saving && setModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold" style={{ color: colors.primary.darkest }}>{modal.tryb === 'nowa' ? 'Nowa zmiana' : 'Edytuj zmianę'}</h3>
+              <button onClick={() => setModal(null)} className="text-slate-400"><X size={18} /></button>
+            </div>
+            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>{modal.osoba} · {dniPelne[new Date(day).getDay()]}, {day}</p>
+            <div className="space-y-3">
+              <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Stanowisko (aktywność)</label>
+                <select value={modal.station} onChange={(e) => setModal({ ...modal, station: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>{stacje.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Początek</label><input type="time" step="900" value={modal.start} onChange={(e) => setModal({ ...modal, start: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+                <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Koniec</label><input type="time" step="900" value={modal.end} onChange={(e) => setModal({ ...modal, end: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+              </div>
+              <p className="text-xs" style={{ color: colors.primary.light }}>Czas trwania: <b style={{ color: colors.primary.darkest }}>{(() => { let a = plnMin(modal.start), b = plnMin(modal.end); if (b <= a) b += 1440; return ((b - a) / 60).toFixed(2).replace('.', ','); })()} h</b>{plnMin(modal.end) <= plnMin(modal.start) ? ' (przez północ)' : ''}</p>
+            </div>
+            <div className="flex items-center gap-2 mt-5">
+              {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>Usuń zmianę</button>}
+              <div className="ml-auto flex gap-2">
+                <button disabled={saving} onClick={() => setModal(null)} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
+                <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{saving ? 'Zapisuję…' : 'Zatwierdź'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const WorkingTime = ({ data, canEdit }) => {
   const ts = data.ts || { actuals: {}, completed: {}, weekStatus: {} };
   const [view, setView] = useState('list');
@@ -2080,6 +2313,7 @@ const WorkingTime = ({ data, canEdit }) => {
   const [fStation, setFStation] = useState('');
   const [order, setOrder] = useState('entry');
   const [brkFor, setBrkFor] = useState(null);
+  const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
   const [addOsoba, setAddOsoba] = useState('');
   const [addStacja, setAddStacja] = useState('MANAGER');
@@ -2166,6 +2400,7 @@ const WorkingTime = ({ data, canEdit }) => {
               <span className="text-xs text-slate-400">Także dzień bez zmian — możesz od razu dodać tam pierwszą zmianę (np. managera na nowy miesiąc).</span>
             </div>
           )}
+          {canEdit && <WTTemplates data={data} weeks={weeks} />}
           {!canEdit && <p className="text-xs text-slate-400 mt-3">Widok kierownika zmiany — podgląd. Zamykanie i korekty wykonuje ASM.</p>}
         </div>
       </div>
@@ -2195,6 +2430,14 @@ const WorkingTime = ({ data, canEdit }) => {
             <button key={d} onClick={() => setDay(d)} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ backgroundColor: day === d ? colors.primary.medium : 'white', color: day === d ? 'white' : n ? colors.primary.dark : '#94a3b8', border: `1px solid ${day === d ? colors.primary.medium : colors.primary.bg}` }}>{dc && <Check size={12} style={{ color: day === d ? 'white' : '#2E9E5B' }} />}{nm} {dt.getDate()}<span className="text-xs opacity-70">({n})</span></button>
           ); })}
         </div>
+        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
+          {[['plan', 'Planowanie'], ['wykonanie', 'Wykonanie (Working Time)']].map(([k, l]) => (
+            <button key={k} onClick={() => setTrybDnia(k)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: trybDnia === k ? colors.primary.medium : 'transparent', color: trybDnia === k ? 'white' : colors.primary.dark }}>{l}</button>
+          ))}
+        </div>
+
+        {trybDnia === 'plan' && <DayPlanner data={data} day={day} locked={locked} />}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(plannedMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Plan (h)</p></div>
           <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(actualMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Wykonanie (h)</p></div>
@@ -2208,7 +2451,7 @@ const WorkingTime = ({ data, canEdit }) => {
           </>)}
         </div>
 
-        {canEdit && !locked && (
+        {trybDnia === 'wykonanie' && canEdit && !locked && (
           <div className="bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
             <button onClick={() => setAddOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style={{ color: colors.primary.darkest }}>
               <span className="flex items-center gap-2"><Plus size={16} style={{ color: colors.primary.medium }} />Dodaj zmianę — {dateLabel(day)}</span>
@@ -2250,6 +2493,7 @@ const WorkingTime = ({ data, canEdit }) => {
             )}
           </div>
         )}
+        {trybDnia === 'wykonanie' && (<>
         <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl p-3 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
           <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
           <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
@@ -2292,6 +2536,7 @@ const WorkingTime = ({ data, canEdit }) => {
           </div>
         </div>
         <p className="text-xs text-slate-400">Górny pasek = plan (Shift), dolny = wykonanie (Actual); czerwony segment = przerwa niepłatna. Korekty nanoś po zakończeniu zmiany pracownika. Tolerancja 5 min (micros ↔ girnet).</p>
+        </>)}
       </div>
       {brkFor && <WTBreaks actual={act(brkFor)} locked={locked} onSave={(breaks) => data.tsPutActual(wtKey(brkFor), { ...act(brkFor), breaks })} onClose={() => setBrkFor(null)} />}
     </div>
@@ -2315,6 +2560,7 @@ const useData = () => {
   const [accounts, setAccounts] = useState([]);
   const [budget, setBudget] = useState(null);
   const [salesData, setSalesData] = useState(null);
+  const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
@@ -2336,6 +2582,8 @@ const useData = () => {
       if (rb.success) setBudget(rb.data || { employees: [], settings: null, sprzedaz: {}, transakcje: {}, dniS: {} });
       const rsl = await api('/sales');
       if (rsl.success) setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null });
+      const rtpl = await api('/templates');
+      if (rtpl.success) setTemplates(rtpl.templates || []);
     } catch { show('Błąd synchronizacji', 'error'); }
     setLoading(false);
   }, []);
@@ -2442,6 +2690,14 @@ const useData = () => {
     return true;
   }, [sync, tsPutActual]);
 
+  const updateShiftManual = useCallback(async (ident, nowe) => {
+    const r = await api('/schedule?action=update', 'POST', { ...ident, nowe });
+    if (!r.success) { show(r.error || 'Nie udało się zapisać zmiany', 'error'); return false; }
+    await sync();
+    show(`Zapisano: ${r.shift.name} ${r.shift.start}–${r.shift.end}`);
+    return true;
+  }, [sync]);
+
   const removeShiftManual = useCallback(async (payload) => {
     const r = await api('/schedule?action=remove', 'POST', payload);
     if (!r.success) { show(r.error || 'Nie udało się usunąć', 'error'); return false; }
@@ -2449,6 +2705,35 @@ const useData = () => {
     show('Usunięto zmianę');
     return true;
   }, [sync]);
+
+  // ── Szablony tygodniowe (Plantillas) ──
+  const saveTemplate = useCallback(async (weekStart, name, notes) => {
+    const r = await api('/templates?action=save', 'POST', { weekStart, name, notes });
+    if (!r.success) { show(r.error || 'Nie udało się zapisać szablonu', 'error'); return false; }
+    const rt = await api('/templates'); if (rt.success) setTemplates(rt.templates || []);
+    show(`Szablon „${r.template.name}" zapisany (${r.template.sloty} slotów, ${r.template.zmian} zmian)`);
+    return true;
+  }, []);
+  const templateDetail = useCallback(async (id) => {
+    const r = await api('/templates?action=detail', 'POST', { id });
+    return r.success ? r.template : null;
+  }, []);
+  const applyTemplate = useCallback(async (id, weekStart, przypisania) => {
+    const r = await api('/templates?action=apply', 'POST', { id, weekStart, przypisania });
+    if (!r.success) { show(r.error || 'Nie udało się zastosować szablonu', 'error'); return false; }
+    const mapAct = {};
+    (r.dodane || []).forEach((sh) => { mapAct[wtKey(sh)] = { start: sh.start, end: sh.end, breaks: [] }; });
+    await tsPutActualsBulk(mapAct);
+    await sync();
+    show(`Zastosowano szablon: ${r.dodane.length} zmian (grafik + wykonanie)`);
+    return true;
+  }, [sync, tsPutActualsBulk]);
+  const deleteTemplate = useCallback(async (id) => {
+    const r = await api(`/templates?id=${encodeURIComponent(id)}`, 'DELETE');
+    if (!r.success) { show(r.error || 'Nie udało się usunąć', 'error'); return; }
+    const rt = await api('/templates'); if (rt.success) setTemplates(rt.templates || []);
+    show('Szablon usunięty');
+  }, []);
 
   const przypiszZmiany = useCallback(async () => {
     const r = await api('/schedule?action=przypisz', 'POST', {});
@@ -2475,7 +2760,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate };
 };
 
 // ===================== MAIN =====================
