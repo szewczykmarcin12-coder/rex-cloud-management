@@ -11,7 +11,7 @@ const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
 // ^ Zmień na URL swojego backendu po wdrożeniu
 
 const colors = {
-  primary: { darkest: '#16302B', dark: '#264A43', medium: '#59807c', light: '#7FA39B', bg: '#DCE7E3', bgLight: '#F0F5F3' },
+  primary: { darkest: '#12423f', dark: '#39615c', medium: '#59807c', light: '#96aaa9', bg: '#d7d7d7', bgLight: '#f1f3f3' },
   accent: { dark: '#101815', medium: '#2A3B37', light: '#59807c', bg: '#EDF1EF' }
 };
 
@@ -19,7 +19,7 @@ const stationColors = {
   'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#E74C3C', 'KANAPKI / WRAPY': '#00A3E0',
   'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
   'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#64748B',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#16302B', 'MGR FUNKCYJNE': '#455A64',
+  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#12423f', 'MGR FUNKCYJNE': '#455A64',
   'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#00796B'
 };
 const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
@@ -163,7 +163,7 @@ const Login = ({ onLogin }) => {
     <button type="button" onClick={() => { setTryb(id); setErr(''); }} className="flex-1 py-2 rounded-lg text-sm font-medium transition-all" style={{ backgroundColor: tryb === id ? colors.primary.medium : 'transparent', color: tryb === id ? 'white' : colors.primary.light }}>{txt}</button>
   );
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0E211E, ${colors.primary.darkest})` }}>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0A2A27, ${colors.primary.darkest})` }}>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-12"><div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-8 h-8 text-white" /></div><div><span className="text-white text-3xl font-light">REX</span><span className="text-3xl font-light ml-2" style={{ color: colors.primary.bg }}>Cloud</span></div></div>
         <div className="bg-white rounded-2xl p-8">
@@ -195,7 +195,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
   const [zwiniety, setZwiniety] = useState(false);
   const SEKCJE = [
     { naglowek: 'Główne', items: [
-      { id: 'dashboard', label: 'Pulpit', icon: Home },
+      { id: 'dashboard', label: 'Dashboard', icon: Home },
       { id: 'forecast', label: 'Planowanie i popyt', icon: Clock },
     ] },
     { naglowek: 'WorkRhythm', items: [
@@ -221,7 +221,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
     .filter((g) => g.items.length > 0);
 
   return (
-    <div className="relative h-screen flex flex-col shrink-0 transition-all duration-200" style={{ width: zwiniety ? 76 : 272, background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, #0E211E 100%)` }}>
+    <div className="relative h-screen flex flex-col shrink-0 transition-all duration-200" style={{ width: zwiniety ? 76 : 272, background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, #0A2A27 100%)` }}>
       {/* zwijanie — okrągły przycisk na krawędzi */}
       <button onClick={() => setZwiniety((v) => !v)} title={zwiniety ? 'Rozwiń menu' : 'Zwiń menu'}
         className="absolute -right-3 top-16 z-40 w-6 h-6 rounded-full flex items-center justify-center bg-white shadow-md border"
@@ -305,7 +305,7 @@ const Dashboard = ({ data, setPage }) => {
     { label: 'Młodsi kierownicy zmiany', val: ile('JSM'), color: '#7A5FB0' },
     { label: 'Kierownicy zmiany', val: ile('SM'), color: '#5C4B8A' },
     { label: 'Zastępcy kierownika', val: ile('ASM'), color: '#2F6FB5' },
-    { label: 'Kierownik restauracji', val: ile('RGM'), color: '#16302B' },
+    { label: 'Kierownik restauracji', val: ile('RGM'), color: '#12423f' },
   ];
   // Wykresy z Pulpitu — na danych bieżącego miesiąca
   const sales = ((data.salesData || {}).sales) || {};
@@ -697,14 +697,14 @@ const SettingsPage = ({ data }) => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #16302B` }}>
+        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #12423f` }}>
           <h3 className="text-lg font-bold mb-1" style={{ color: colors.primary.darkest }}>Login i hasło ASM</h3>
           <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Pełny dostęp (układanie i import grafiku, plan godzin). Zmienić może wyłącznie ASM, podając obecne hasło.</p>
           <div className="space-y-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Login ASM</label><input type="text" value={asmLogin} onChange={e => setAsmLogin(e.target.value)} placeholder="login" className={inp} style={{ borderColor: colors.primary.bg }} /></div>
             <input type="password" value={asmNew} onChange={e => setAsmNew(e.target.value)} placeholder="Nowe hasło ASM (min. 6 znaków, puste = bez zmiany)" className={inp} style={{ borderColor: colors.primary.bg }} />
             <input type="password" value={asmNew2} onChange={e => setAsmNew2(e.target.value)} placeholder="Powtórz nowe hasło" className={inp} style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#16302B' }} />
+            <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#12423f' }} />
             <Btn onClick={changeAsm}>Zapisz poświadczenia ASM</Btn>
           </div>
         </div>
@@ -1196,7 +1196,7 @@ const ForecastPlan = ({ data, setPage }) => {
               </div>
             </Sekcja>
 
-            <Sekcja kolor="#16302B" tytul="Sterowanie prognozą">
+            <Sekcja kolor="#12423f" tytul="Sterowanie prognozą">
               <div className="grid md:grid-cols-2 gap-6">
                 <OptSuw label="Okno historii" value={oknoTyg} min={2} max={26} step={1} unit="tyg." onChange={setOknoTyg} />
                 <OptSuw label="Ręczna korekta (np. wydarzenie, remont)" value={korekta} min={-30} max={30} step={1} unit="%" onChange={setKorekta} />
@@ -1227,7 +1227,7 @@ const ForecastPlan = ({ data, setPage }) => {
         </>)}
 
         {tab === "zaloga" && (
-          <Sekcja kolor="#16302B" tytul={`Załoga — godziny pracowników w miesiącu (${months[mIdx]} ${year})`}>
+          <Sekcja kolor="#12423f" tytul={`Załoga — godziny pracowników w miesiącu (${months[mIdx]} ${year})`}>
             {(() => {
               const pre = `${year}-${String(mIdx + 1).padStart(2, "0")}`;
               const mies = data.shifts.filter((s) => (s.date || "").slice(0, 7) === pre && !jestInstruktor(s));
@@ -1566,7 +1566,7 @@ const BP_POZ = ['RGM', 'ASM', 'SM', 'JSM', 'CREW'];
 const BP_NORMY = [160, 160, 176, 168, 160, 168, 184, 160, 176, 176, 160, 160];
 const bpMgr = (p) => p !== 'CREW';
 const bpKat = (e) => (e.pozycja === 'RGM' || e.pozycja === 'ASM') ? 'kier' : (e.pozycja === 'SM' || e.pozycja === 'JSM') ? 'mgr' : (e.instruktor ? 'instr' : 'prac');
-const BP_KAT = { prac: { label: 'Pracownicy', color: '#3A6EA5' }, instr: { label: 'Instruktorzy', color: '#F5B000' }, mgr: { label: 'Mgr (SM/JSM)', color: '#7A5FB0' }, kier: { label: 'Kierownictwo (RGM/ASM)', color: '#16302B' } };
+const BP_KAT = { prac: { label: 'Pracownicy', color: '#3A6EA5' }, instr: { label: 'Instruktorzy', color: '#F5B000' }, mgr: { label: 'Mgr (SM/JSM)', color: '#7A5FB0' }, kier: { label: 'Kierownictwo (RGM/ASM)', color: '#12423f' } };
 const zl = (n) => (Math.round((n || 0) * 100) / 100).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const bpDefSettings = { zusRate: 0.1948, zusPPK: 0.2098, nocnyBonus: 0.2, minWage: 4806, normy: [...BP_NORMY] };
 
@@ -1765,7 +1765,7 @@ const BudgetPlan = ({ data, setPage }) => {
             <Stat v={mpt.toFixed(2)} l="MPT (min)" sub="godziny×60 / transakcje" />
             <Stat v={`${nom} h`} l="Etat (norma m-ca)" />
           </div>
-          <Sekcja kolor="#16302B" tytul="COL wg kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
+          <Sekcja kolor="#12423f" tytul="COL wg kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
           <Sekcja kolor="#455A64" tytul="Podgląd kosztów (rozbicie P&amp;L)">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
               {[['Płace podstawowe', linia((k) => k.base)], ['Premie', linia((k) => k.premia)], ['Nadgodziny/nocne', linia((k) => k.nocne)], ['Wynagr. urlopowe', linia((k) => k.urlop)], ['Wynagr. chorobowe', linia((k) => k.chorobowe)], ['Ekwiwalent BHP', linia((k) => k.bhp)], ['Koszt PPK', linia((k) => k.ppk)], ['ZUS pracodawcy', linia((k) => k.zus)], ['PFRON', linia((k) => k.pfron)]].map(([l, v]) => (
@@ -1827,7 +1827,7 @@ const BudgetPlan = ({ data, setPage }) => {
         {tab === 'analiza' && (<>
           <p className="text-sm" style={{ color: colors.primary.light }}>Analityka dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]} {year}</b> — dane dzienne z grafiku.</p>
           <Sekcja kolor={colors.primary.medium} tytul="Grafik: godziny plan vs wykonanie (dni miesiąca)"><BPLine labels={dayLabels} unit="h" series={[{ name: 'Plan', color: colors.primary.bg, data: planDaily, fill: true }, { name: 'Wykonanie', color: colors.primary.medium, data: actualDaily }]} /></Sekcja>
-          <Sekcja kolor="#16302B" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#16302B', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
+          <Sekcja kolor="#12423f" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#12423f', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
           <Sekcja kolor="#455A64" tytul="Cost of Labour — udział kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
 
           <Sekcja kolor="#12655B" tytul="Produktywność (SPLH) — okres vs poprzedni">
@@ -1880,7 +1880,7 @@ const BudgetPlan = ({ data, setPage }) => {
 
         {tab === 'ust' && (
           <div className="grid md:grid-cols-2 gap-4">
-            <Sekcja kolor="#16302B" tytul="Składki i stawki">
+            <Sekcja kolor="#12423f" tytul="Składki i stawki">
               <div className="space-y-3">
                 {[['ZUS pracodawcy (%)', settings.zusRate * 100, (v) => setSettings((s) => ({ ...s, zusRate: (Number(v) || 0) / 100 }))], ['ZUS z PPK (%)', settings.zusPPK * 100, (v) => setSettings((s) => ({ ...s, zusPPK: (Number(v) || 0) / 100 }))], ['Dodatek nocny (%)', settings.nocnyBonus * 100, (v) => setSettings((s) => ({ ...s, nocnyBonus: (Number(v) || 0) / 100 }))], ['Płaca minimalna (zł)', settings.minWage, (v) => setSettings((s) => ({ ...s, minWage: Number(v) || 0 }))]].map(([l, val, on]) => (
                   <div key={l} className="flex items-center justify-between gap-3"><span className="text-sm" style={{ color: colors.primary.dark }}>{l}</span>{numIn(val, on, 'w-32')}</div>
@@ -2092,7 +2092,7 @@ const PlanPage = ({ data }) => {
           </div>
         </Sekcja>
 
-        <Sekcja kolor="#16302B" tytul="Godziny MGR (ręcznie)" ikona={Clock}>
+        <Sekcja kolor="#12423f" tytul="Godziny MGR (ręcznie)" ikona={Clock}>
           <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Dodaj godziny managera do sumy RAZEM — w wybrany dzień albo w każdy dzień miesiąca. Ręcznie dodane: <b>{p.mgrManual.toFixed(1)} h</b> ({Object.keys((data.planowanie[ym] || {}).mgr || {}).length} dni).</p>
           <div className="flex flex-wrap items-end gap-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Godziny</label><input type="number" value={mgrH} onChange={e => setMgrH(e.target.value)} className="w-24 px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
