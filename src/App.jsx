@@ -2822,15 +2822,14 @@ const WorkingTime = ({ data, canEdit }) => {
   const st = weekStart ? wsOf(weekStart) : { reviewed: false, closed: false };
   const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#f1f5f9', color: on ? kol.fg : '#94a3b8' }}>{txt}</span>;
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       <Header title="Grafik" subtitle={dateLabel(day)}>
         {chip(weekDone(curWeek()), 'Completed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
         {chip(st.reviewed, 'Reviewed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
         {chip(st.closed, 'Closed', { bg: '#fdecea', fg: '#E74C3C' })}
         <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: ts.completed[day] ? '#2E9E5B' : 'white', color: ts.completed[day] ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}><Check size={15} />{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>
       </Header>
-      <div className="flex-1 p-8 space-y-4 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="sticky top-0 z-30 -mx-8 -mt-8 px-8 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-b shadow-sm" style={{ backgroundColor: 'rgba(255,255,255,.94)', backdropFilter: 'blur(6px)', borderColor: colors.primary.bg }}>
+      <div className="px-5 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b bg-white shadow-sm shrink-0" style={{ borderColor: colors.primary.bg }}>
           <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm shrink-0" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Tygodnie</button>
           <div className="flex items-center gap-1 shrink-0">
             <button onClick={() => zmienTydzien(-7)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-100" style={{ color: colors.primary.dark }}><ChevronLeft size={15} /></button>
@@ -2839,7 +2838,7 @@ const WorkingTime = ({ data, canEdit }) => {
           </div>
           <div className="flex gap-0.5">
             {weekDays.map((d, i) => { const akt = zakresTyg === 'dzien' && day === d; return (
-              <button key={d} onClick={() => { setDay(d); setZakresTyg('dzien'); }} className="px-2 py-1 rounded-md text-[11px] font-bold" style={{ backgroundColor: akt ? colors.primary.medium : 'transparent', color: akt ? 'white' : i >= 5 ? '#B7362A' : colors.primary.dark, border: `1px solid ${akt ? colors.primary.medium : colors.primary.bg}` }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]}</button>
+              <button key={d} onClick={() => { setDay(d); setZakresTyg('dzien'); }} className="px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1" style={{ backgroundColor: akt ? colors.primary.medium : 'transparent', color: akt ? 'white' : i >= 5 ? '#B7362A' : colors.primary.dark, border: `1px solid ${akt ? colors.primary.medium : colors.primary.bg}` }}>{ts.completed[d] && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: akt ? 'white' : '#2E9E5B' }} />}{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}<span className="font-normal opacity-60">{dayShifts(d).length}</span></button>
             ); })}
             <button onClick={() => setZakresTyg('siatka')} className="ml-1 px-2.5 py-1 rounded-md text-[11px] font-bold" style={{ backgroundColor: zakresTyg === 'siatka' ? colors.primary.medium : 'transparent', color: zakresTyg === 'siatka' ? 'white' : colors.primary.dark, border: `1px solid ${zakresTyg === 'siatka' ? colors.primary.medium : colors.primary.bg}` }}>Tydzień</button>
           </div>
@@ -2848,16 +2847,12 @@ const WorkingTime = ({ data, canEdit }) => {
             <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
             <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
           </div>
-        </div>
+      </div>
 
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ backgroundColor: colors.primary.bgLight }}>
         {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} />}
 
         {zakresTyg === 'dzien' && (<>
-        <div className="flex gap-1 flex-wrap">
-          {weekDays.map((d) => { const n = dayShifts(d).length; const dt = new Date(d); const nm = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]; const dc = ts.completed[d]; return (
-            <button key={d} onClick={() => setDay(d)} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ backgroundColor: day === d ? colors.primary.medium : 'white', color: day === d ? 'white' : n ? colors.primary.dark : '#94a3b8', border: `1px solid ${day === d ? colors.primary.medium : colors.primary.bg}` }}>{dc && <Check size={12} style={{ color: day === d ? 'white' : '#2E9E5B' }} />}{nm} {dt.getDate()}<span className="text-xs opacity-70">({n})</span></button>
-          ); })}
-        </div>
         <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
           {[['plan', 'Planowanie'], ['wykonanie', 'Wykonanie (Working Time)']].map(([k, l]) => (
             <button key={k} onClick={() => setTrybDnia(k)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: trybDnia === k ? colors.primary.medium : 'transparent', color: trybDnia === k ? 'white' : colors.primary.dark }}>{l}</button>
@@ -2966,23 +2961,24 @@ const WorkingTime = ({ data, canEdit }) => {
         <p className="text-xs text-slate-400">Górny pasek = plan (Shift), dolny = wykonanie (Actual); czerwony segment = przerwa niepłatna. Korekty nanoś po zakończeniu zmiany pracownika. Tolerancja 5 min (micros ↔ girnet).</p>
         </>)}
         </>)}
+      </div>
 
-        <div className="sticky bottom-0 z-30 -mx-8 -mb-8 px-8 py-2 flex flex-wrap items-center gap-x-5 gap-y-1 border-t shadow-[0_-4px_12px_rgba(15,23,42,.06)]" style={{ backgroundColor: 'rgba(255,255,255,.96)', backdropFilter: 'blur(6px)', borderColor: colors.primary.bg }}>
+      <div className="px-5 py-1.5 flex flex-wrap items-center gap-x-6 gap-y-1 border-t bg-white shrink-0" style={{ borderColor: colors.primary.bg }}>
           {[
-            { i: '💰', l: 'Koszt (szac.)', v: `${f0(kpiTyg.koszt)} zł`, k: '#12655B' },
-            { i: '%', l: 'Koszt / sprzedaż', v: kpiTyg.sprzedaz ? `${(kpiTyg.koszt / kpiTyg.sprzedaz * 100).toFixed(2).replace('.', ',')}%` : '—', k: kpiTyg.sprzedaz && kpiTyg.koszt / kpiTyg.sprzedaz > 0.2 ? '#B7362A' : '#12655B' },
-            { i: '🕐', l: 'Godziny', v: `${kpiTyg.h.toFixed(1).replace('.', ',')} h`, k: colors.primary.medium },
-            { i: '▲', l: 'Nadmiar (h)', v: kpiTyg.exceso.toFixed(1).replace('.', ','), k: '#2F6FB5' },
-            { i: '▼', l: 'Niedobór (h)', v: kpiTyg.defecto.toFixed(1).replace('.', ','), k: '#B7362A' },
-            { i: '⚡', l: 'Sprzedaż / rbh', v: kpiTyg.sprzedaz && kpiTyg.h ? f0(kpiTyg.sprzedaz / kpiTyg.h) : '—', k: '#D08700' },
+            { l: 'Koszt (szac.)', v: `${f0(kpiTyg.koszt)} zł`, k: '#12655B' },
+            { l: 'Koszt / sprzedaż', v: kpiTyg.sprzedaz ? `${(kpiTyg.koszt / kpiTyg.sprzedaz * 100).toFixed(2).replace('.', ',')}%` : '—', k: kpiTyg.sprzedaz && kpiTyg.koszt / kpiTyg.sprzedaz > 0.2 ? '#B7362A' : '#12655B' },
+            { l: 'Godziny', v: `${kpiTyg.h.toFixed(1).replace('.', ',')} h`, k: colors.primary.medium },
+            { l: 'Nadmiar (h)', v: kpiTyg.exceso.toFixed(1).replace('.', ','), k: '#2F6FB5' },
+            { l: 'Niedobór (h)', v: kpiTyg.defecto.toFixed(1).replace('.', ','), k: '#B7362A' },
+            { l: 'Sprzedaż / rbh', v: kpiTyg.sprzedaz && kpiTyg.h ? f0(kpiTyg.sprzedaz / kpiTyg.h) : '—', k: '#D08700' },
           ].map((x, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ backgroundColor: x.k }}>{x.i}</span>
-              <div className="leading-tight"><p className="text-[9px] uppercase font-semibold" style={{ color: colors.primary.light }}>{x.l}</p><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{x.v}</p></div>
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: x.k }} />
+              <span className="text-[9px] uppercase font-semibold" style={{ color: colors.primary.light }}>{x.l}</span>
+              <span className="text-[12.5px] font-bold" style={{ color: colors.primary.darkest }}>{x.v}</span>
             </div>
           ))}
-          <span className="ml-auto text-[10px]" style={{ color: colors.primary.light }}>tydzień {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} · nadmiar/niedobór vs zapotrzebowanie{Object.keys(((data.salesData || {}).sales) || {}).some((d) => weekDays.includes(d)) ? ' ze sprzedaży' : ' z krzywej celu'}</span>
-        </div>
+          <span className="ml-auto text-[10px]" style={{ color: colors.primary.light }}>{weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} · vs zapotrzebowanie{Object.keys(((data.salesData || {}).sales) || {}).some((d) => weekDays.includes(d)) ? ' ze sprzedaży' : ' z krzywej'}</span>
       </div>
       {brkFor && <WTBreaks actual={act(brkFor)} locked={locked} onSave={(breaks) => data.tsPutActual(wtKey(brkFor), { ...act(brkFor), breaks })} onClose={() => setBrkFor(null)} />}
     </div>
@@ -3243,7 +3239,7 @@ export default function App() {
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
       <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} />
-      <div className="flex-1 flex flex-col overflow-hidden"><div className="flex-1 overflow-y-auto">{pages[widok] || pages.print}</div></div>
+      <div className="flex-1 flex flex-col overflow-hidden"><div className={widok === 'wt' ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 overflow-y-auto"}>{pages[widok] || pages.print}</div></div>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </div>
   );
