@@ -192,71 +192,95 @@ const Login = ({ onLogin }) => {
 // ===================== SIDEBAR =====================
 
 const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr }) => {
-  const pelne = [
-    { gid: 'pulpit', grupa: 'Dashboard', icon: Home, items: [ { id: 'dashboard', label: 'Dashboard', icon: Home } ] },
-    { gid: 'workrhythm', grupa: 'WorkRhythm', icon: LayoutGrid, items: [
+  const [zwiniety, setZwiniety] = useState(false);
+  const SEKCJE = [
+    { naglowek: 'Główne', items: [
+      { id: 'dashboard', label: 'Pulpit', icon: Home },
+      { id: 'forecast', label: 'Planowanie i popyt', icon: Clock },
+    ] },
+    { naglowek: 'WorkRhythm', items: [
       { id: 'wr-schedule', page: 'wt', wr: 'schedule', label: 'Schedule', icon: Calendar },
       { id: 'wr-actual', page: 'wt', wr: 'actual', label: 'Actual', icon: Clock },
       { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: FileSpreadsheet },
       { id: 'wr-cycles', page: 'wt', wr: 'cycles', label: 'ShiftCycles', icon: RefreshCw },
       { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Check },
     ] },
-    { gid: 'planowanie', grupa: 'Planowanie', icon: Clock, items: [ { id: 'forecast', label: 'Optymalizacja i budżet', icon: Clock } ] },
-    { gid: 'narzedzia', grupa: 'Narzędzia', icon: Upload, items: [
-      { id: 'import', label: 'Import z Excel', icon: Upload },
-      { id: 'print', label: 'Wydruk grafiku', icon: Printer },
-    ] },
-    { gid: 'zespol', grupa: 'Zespół', icon: Users, items: [
+    { naglowek: 'Zespół', items: [
       { id: 'emps', label: 'Pracownicy i konta', icon: Users },
       { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
     ] },
-    { gid: 'system', grupa: 'System', icon: Settings, items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
+    { naglowek: 'Narzędzia', items: [
+      { id: 'import', label: 'Import z Excel', icon: Upload },
+      { id: 'print', label: 'Wydruk grafiku', icon: Printer },
+    ] },
+    { naglowek: 'System', items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
   ];
   const widoczne = role === 'asm' ? null : ['dashboard', 'wt', 'print'];
-  const grupyMenu = pelne
+  const sekcje = SEKCJE
     .map((g) => ({ ...g, items: g.items.filter((m) => !widoczne || widoczne.includes(m.page || m.id)) }))
     .filter((g) => g.items.length > 0);
-  const [openG, setOpenG] = useState(null);
-  const aktywnaGrupa = grupyMenu.find((g) => g.items.some((m) => (m.page || m.id) === page));
-  return (
-    <div className="h-screen flex" onMouseLeave={() => setOpenG(null)}>
-    <div className="w-[68px] h-screen flex flex-col rail" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
-      <div className="py-4 flex justify-center border-b border-white/10"><div className="w-11 h-11 rounded-xl flex items-center justify-center" title={`REX Cloud · ${role === 'asm' ? 'ASM' : 'Kierownik zmiany'}`} style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-6 h-6 text-white" /></div></div>
-      <nav className="flex-1 py-3 flex flex-col items-center gap-1.5 overflow-y-auto">
-        {grupyMenu.map((g) => {
-          const aktywna = aktywnaGrupa && aktywnaGrupa.gid === g.gid;
-          const badge = g.items.reduce((a, m) => a + (m.badge || 0), 0);
-          return (
-            <button key={g.gid} onClick={() => setOpenG(openG === g.gid ? null : g.gid)} title={g.grupa}
-              className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${aktywna || openG === g.gid ? 'bg-white/15 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'}`}
-              style={aktywna ? { boxShadow: 'inset 3px 0 0 #E2571E' } : undefined}>
-              <g.icon className="w-[21px] h-[21px]" />
-              {badge > 0 && <span className="absolute -top-0.5 -right-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{badge}</span>}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="py-3 border-t border-white/10 flex justify-center"><button onClick={logout} title="Wyloguj się" className="w-12 h-12 rounded-xl flex items-center justify-center text-red-400 hover:bg-white/5"><LogOut className="w-5 h-5" /></button></div>
-    </div>
 
-    {openG && (() => { const g = grupyMenu.find((x) => x.gid === openG); if (!g) return null; return (
-      <div className="w-60 h-screen flex flex-col shadow-2xl" style={{ backgroundColor: colors.primary.darkest, borderLeft: '1px solid rgba(255,255,255,.08)' }}>
-        <div className="px-4 py-4 border-b border-white/10"><p className="text-[10px] font-bold uppercase tracking-wider text-white/40">{g.grupa}</p><p className="text-white text-sm font-semibold mt-0.5">REX Cloud</p></div>
-        <div className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {g.items.map((m) => (
-            <button key={m.id} onClick={() => { if (m.wr) { setWrTab && setWrTab(m.wr); bumpWr && bumpWr(); } setPage(m.page || m.id); setOpenG(null); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all ${page === (m.page || m.id) && (!m.wr || wrTab === m.wr) ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
-              <m.icon className="w-4 h-4" /><span className="text-[13px] font-medium">{m.label}</span>
-              {m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}
-            </button>
-          ))}
-        </div>
+  return (
+    <div className="relative h-screen flex flex-col shrink-0 transition-all duration-200" style={{ width: zwiniety ? 76 : 272, background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, #0E211E 100%)` }}>
+      {/* zwijanie — okrągły przycisk na krawędzi */}
+      <button onClick={() => setZwiniety((v) => !v)} title={zwiniety ? 'Rozwiń menu' : 'Zwiń menu'}
+        className="absolute -right-3 top-16 z-40 w-6 h-6 rounded-full flex items-center justify-center bg-white shadow-md border"
+        style={{ borderColor: colors.primary.bg, color: colors.primary.dark }}>
+        {zwiniety ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+      </button>
+
+      {/* logo */}
+      <div className={`flex items-center gap-3 px-4 pt-5 pb-4 ${zwiniety ? 'justify-center px-0' : ''}`}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(255,255,255,.10)' }}><Cloud className="w-[22px] h-[22px] text-white" /></div>
+        {!zwiniety && <div className="leading-tight"><p className="text-white text-lg"><b className="font-bold">REX</b> <span className="font-light">Cloud</span></p><p className="text-[9px] font-bold tracking-[0.3em] text-white/40">WORKRHYTHM</p></div>}
       </div>
-    ); })()}
+
+      {/* restauracja */}
+      {!zwiniety && (
+        <div className="mx-3 mb-2 px-3 py-2.5 rounded-xl flex items-center gap-2.5" style={{ backgroundColor: 'rgba(255,255,255,.07)' }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ backgroundColor: colors.primary.medium }}>PL</div>
+          <div className="leading-tight min-w-0"><p className="text-[9px] font-bold tracking-wider text-white/40 uppercase">Restauracja</p><p className="text-[13px] font-semibold text-white truncate">PLK 201043 · Galeria Krakowska</p></div>
+        </div>
+      )}
+
+      {/* nawigacja */}
+      <nav className="flex-1 overflow-y-auto px-3 pb-2 space-y-3">
+        {sekcje.map((g) => (
+          <div key={g.naglowek}>
+            {!zwiniety && <p className="px-2 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-[0.14em] text-white/35">{g.naglowek}</p>}
+            {zwiniety && <div className="my-2 mx-3 border-t border-white/10" />}
+            <div className="space-y-0.5">
+              {g.items.map((m) => {
+                const aktywny = page === (m.page || m.id) && (!m.wr || wrTab === m.wr);
+                return (
+                  <button key={m.id} title={zwiniety ? m.label : undefined}
+                    onClick={() => { if (m.wr) { setWrTab && setWrTab(m.wr); bumpWr && bumpWr(); } setPage(m.page || m.id); }}
+                    className={`w-full flex items-center gap-2.5 rounded-xl text-left transition-all ${zwiniety ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'} ${aktywny ? 'text-white shadow-sm' : 'text-white/65 hover:bg-white/5 hover:text-white'}`}
+                    style={aktywny ? { backgroundColor: 'rgba(255,255,255,.13)', boxShadow: `inset 3px 0 0 ${colors.primary.bg}` } : undefined}>
+                    <m.icon className="w-[18px] h-[18px] shrink-0" />
+                    {!zwiniety && <span className="text-[13.5px] font-medium truncate">{m.label}</span>}
+                    {m.badge > 0 && !zwiniety && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E2571E' }}>{m.badge}</span>}
+                    {m.badge > 0 && zwiniety && <span className="absolute translate-x-3 -translate-y-2 w-2 h-2 rounded-full" style={{ backgroundColor: '#E2571E' }} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* użytkownik */}
+      <div className={`m-3 mt-0 px-3 py-2.5 rounded-xl flex items-center gap-2.5 ${zwiniety ? 'justify-center px-0' : ''}`} style={{ backgroundColor: 'rgba(255,255,255,.07)' }}>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0" style={{ backgroundColor: colors.primary.medium }}>{role === 'asm' ? 'AS' : 'KZ'}</div>
+        {!zwiniety && (<>
+          <div className="leading-tight min-w-0 flex-1"><p className="text-[13px] font-semibold text-white truncate">{role === 'asm' ? 'ASM' : 'Kierownik zmiany'}</p><p className="text-[10px] text-white/45">{role === 'asm' ? 'pełny dostęp' : 'grafik i wydruk'}</p></div>
+          <button onClick={logout} title="Wyloguj się" className="text-red-300 hover:text-red-400 shrink-0"><LogOut className="w-[17px] h-[17px]" /></button>
+        </>)}
+      </div>
+      {zwiniety && <button onClick={logout} title="Wyloguj się" className="mb-3 mx-auto text-red-300 hover:text-red-400"><LogOut className="w-[17px] h-[17px]" /></button>}
     </div>
   );
 };
-
-// ===================== DASHBOARD =====================
 
 const Dashboard = ({ data, setPage }) => {
   const [mkeyS, setMkeyS] = useState(null);
@@ -313,7 +337,7 @@ const Dashboard = ({ data, setPage }) => {
   ];
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Dashboard" subtitle="Przegląd systemu REX Cloud · WorkRhythm v4" />
+      <Header title="Dashboard" subtitle="Przegląd systemu REX Cloud · WorkRhythm" />
       <div className="flex-1 p-8 space-y-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="grid grid-cols-3 gap-6">{stats.map((s, i) => <StatCard key={i} label={s.label} value={s.val} icon={s.icon} color={s.color} />)}</div>
 
@@ -2916,7 +2940,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const dateLabel = (d) => { const dt = new Date(d); return `${dniPelne[dt.getDay()]}, ${dt.getDate()} ${monthsGen[dt.getMonth()]} ${dt.getFullYear()}`; };
 
   if (view === 'list') {
-    const wcLabel = '107044 · PLK Kraków Galeria Krakowska';
+    const wcLabel = 'PLK 201043 · Kraków Galeria Krakowska';
     const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
     return (
       <div className="flex-1 flex flex-col">
