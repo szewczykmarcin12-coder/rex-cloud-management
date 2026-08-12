@@ -11,15 +11,15 @@ const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
 // ^ Zmień na URL swojego backendu po wdrożeniu
 
 const colors = {
-  primary: { darkest: '#082567', dark: '#213b76', medium: '#395185', light: '#526695', bg: '#e8edf5', bgLight: '#f1f4f9' },
+  primary: { darkest: '#16302B', dark: '#264A43', medium: '#59807c', light: '#7FA39B', bg: '#DCE7E3', bgLight: '#F0F5F3' },
   accent: { dark: '#FDA785', medium: '#FFBF99', light: '#FBCEB1', bg: '#FFF5EE' }
 };
 
 const stationColors = {
   'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#E74C3C', 'KANAPKI / WRAPY': '#00A3E0',
-  'KONTROLER': '#1E3A8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
+  'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
   'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#64748B',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#082567', 'MGR FUNKCYJNE': '#455A64',
+  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#16302B', 'MGR FUNKCYJNE': '#455A64',
   'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#00796B'
 };
 const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
@@ -163,7 +163,7 @@ const Login = ({ onLogin }) => {
     <button type="button" onClick={() => { setTryb(id); setErr(''); }} className="flex-1 py-2 rounded-lg text-sm font-medium transition-all" style={{ backgroundColor: tryb === id ? colors.primary.medium : 'transparent', color: tryb === id ? 'white' : colors.primary.light }}>{txt}</button>
   );
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #051845, ${colors.primary.darkest})` }}>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0E211E, ${colors.primary.darkest})` }}>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-12"><div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-8 h-8 text-white" /></div><div><span className="text-white text-3xl font-light">REX</span><span className="text-3xl font-light ml-2" style={{ color: colors.primary.bg }}>Cloud</span></div></div>
         <div className="bg-white rounded-2xl p-8">
@@ -195,7 +195,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
   const pelne = [
     { gid: 'pulpit', grupa: 'Pulpit', icon: Home, items: [ { id: 'dashboard', label: 'Strona domowa', icon: Home } ] },
     { gid: 'workforce', grupa: 'Workforce', icon: LayoutGrid, items: [
-      { id: 'wt', label: 'Grafik i czas pracy', icon: LayoutGrid },
+      { id: 'wt', label: 'WorkRhythm — grafik i czas pracy', icon: LayoutGrid },
       { id: 'forecast', label: 'Planowanie: optymalizacja + budżet', icon: Clock },
       { id: 'import', label: 'Import z Excel', icon: Upload },
       { id: 'print', label: 'Wydruk grafiku', icon: Printer },
@@ -275,7 +275,7 @@ const Dashboard = ({ data, setPage }) => {
     { label: 'Młodsi kierownicy zmiany', val: ile('JSM'), color: '#7A5FB0' },
     { label: 'Kierownicy zmiany', val: ile('SM'), color: '#5C4B8A' },
     { label: 'Zastępcy kierownika', val: ile('ASM'), color: '#2F6FB5' },
-    { label: 'Kierownik restauracji', val: ile('RGM'), color: '#082567' },
+    { label: 'Kierownik restauracji', val: ile('RGM'), color: '#16302B' },
   ];
   // Wykresy z Pulpitu — na danych bieżącego miesiąca
   const sales = ((data.salesData || {}).sales) || {};
@@ -667,14 +667,14 @@ const SettingsPage = ({ data }) => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #082567` }}>
+        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #16302B` }}>
           <h3 className="text-lg font-bold mb-1" style={{ color: colors.primary.darkest }}>Login i hasło ASM</h3>
           <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Pełny dostęp (układanie i import grafiku, plan godzin). Zmienić może wyłącznie ASM, podając obecne hasło.</p>
           <div className="space-y-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Login ASM</label><input type="text" value={asmLogin} onChange={e => setAsmLogin(e.target.value)} placeholder="login" className={inp} style={{ borderColor: colors.primary.bg }} /></div>
             <input type="password" value={asmNew} onChange={e => setAsmNew(e.target.value)} placeholder="Nowe hasło ASM (min. 6 znaków, puste = bez zmiany)" className={inp} style={{ borderColor: colors.primary.bg }} />
             <input type="password" value={asmNew2} onChange={e => setAsmNew2(e.target.value)} placeholder="Powtórz nowe hasło" className={inp} style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#082567' }} />
+            <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#16302B' }} />
             <Btn onClick={changeAsm}>Zapisz poświadczenia ASM</Btn>
           </div>
         </div>
@@ -1166,7 +1166,7 @@ const ForecastPlan = ({ data, setPage }) => {
               </div>
             </Sekcja>
 
-            <Sekcja kolor="#082567" tytul="Sterowanie prognozą">
+            <Sekcja kolor="#16302B" tytul="Sterowanie prognozą">
               <div className="grid md:grid-cols-2 gap-6">
                 <OptSuw label="Okno historii" value={oknoTyg} min={2} max={26} step={1} unit="tyg." onChange={setOknoTyg} />
                 <OptSuw label="Ręczna korekta (np. wydarzenie, remont)" value={korekta} min={-30} max={30} step={1} unit="%" onChange={setKorekta} />
@@ -1197,7 +1197,7 @@ const ForecastPlan = ({ data, setPage }) => {
         </>)}
 
         {tab === "zaloga" && (
-          <Sekcja kolor="#082567" tytul={`Załoga — godziny pracowników w miesiącu (${months[mIdx]} ${year})`}>
+          <Sekcja kolor="#16302B" tytul={`Załoga — godziny pracowników w miesiącu (${months[mIdx]} ${year})`}>
             {(() => {
               const pre = `${year}-${String(mIdx + 1).padStart(2, "0")}`;
               const mies = data.shifts.filter((s) => (s.date || "").slice(0, 7) === pre && !jestInstruktor(s));
@@ -1536,7 +1536,7 @@ const BP_POZ = ['RGM', 'ASM', 'SM', 'JSM', 'CREW'];
 const BP_NORMY = [160, 160, 176, 168, 160, 168, 184, 160, 176, 176, 160, 160];
 const bpMgr = (p) => p !== 'CREW';
 const bpKat = (e) => (e.pozycja === 'RGM' || e.pozycja === 'ASM') ? 'kier' : (e.pozycja === 'SM' || e.pozycja === 'JSM') ? 'mgr' : (e.instruktor ? 'instr' : 'prac');
-const BP_KAT = { prac: { label: 'Pracownicy', color: '#3A6EA5' }, instr: { label: 'Instruktorzy', color: '#F5B000' }, mgr: { label: 'Mgr (SM/JSM)', color: '#7A5FB0' }, kier: { label: 'Kierownictwo (RGM/ASM)', color: '#082567' } };
+const BP_KAT = { prac: { label: 'Pracownicy', color: '#3A6EA5' }, instr: { label: 'Instruktorzy', color: '#F5B000' }, mgr: { label: 'Mgr (SM/JSM)', color: '#7A5FB0' }, kier: { label: 'Kierownictwo (RGM/ASM)', color: '#16302B' } };
 const zl = (n) => (Math.round((n || 0) * 100) / 100).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const bpDefSettings = { zusRate: 0.1948, zusPPK: 0.2098, nocnyBonus: 0.2, minWage: 4806, normy: [...BP_NORMY] };
 
@@ -1735,7 +1735,7 @@ const BudgetPlan = ({ data, setPage }) => {
             <Stat v={mpt.toFixed(2)} l="MPT (min)" sub="godziny×60 / transakcje" />
             <Stat v={`${nom} h`} l="Etat (norma m-ca)" />
           </div>
-          <Sekcja kolor="#082567" tytul="COL wg kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
+          <Sekcja kolor="#16302B" tytul="COL wg kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
           <Sekcja kolor="#455A64" tytul="Podgląd kosztów (rozbicie P&amp;L)">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
               {[['Płace podstawowe', linia((k) => k.base)], ['Premie', linia((k) => k.premia)], ['Nadgodziny/nocne', linia((k) => k.nocne)], ['Wynagr. urlopowe', linia((k) => k.urlop)], ['Wynagr. chorobowe', linia((k) => k.chorobowe)], ['Ekwiwalent BHP', linia((k) => k.bhp)], ['Koszt PPK', linia((k) => k.ppk)], ['ZUS pracodawcy', linia((k) => k.zus)], ['PFRON', linia((k) => k.pfron)]].map(([l, v]) => (
@@ -1797,7 +1797,7 @@ const BudgetPlan = ({ data, setPage }) => {
         {tab === 'analiza' && (<>
           <p className="text-sm" style={{ color: colors.primary.light }}>Analityka dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]} {year}</b> — dane dzienne z grafiku.</p>
           <Sekcja kolor={colors.primary.medium} tytul="Grafik: godziny plan vs wykonanie (dni miesiąca)"><BPLine labels={dayLabels} unit="h" series={[{ name: 'Plan', color: colors.primary.bg, data: planDaily, fill: true }, { name: 'Wykonanie', color: colors.primary.medium, data: actualDaily }]} /></Sekcja>
-          <Sekcja kolor="#082567" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#082567', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
+          <Sekcja kolor="#16302B" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#16302B', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
           <Sekcja kolor="#455A64" tytul="Cost of Labour — udział kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
 
           <Sekcja kolor="#12655B" tytul="Produktywność (SPLH) — okres vs poprzedni">
@@ -1850,7 +1850,7 @@ const BudgetPlan = ({ data, setPage }) => {
 
         {tab === 'ust' && (
           <div className="grid md:grid-cols-2 gap-4">
-            <Sekcja kolor="#082567" tytul="Składki i stawki">
+            <Sekcja kolor="#16302B" tytul="Składki i stawki">
               <div className="space-y-3">
                 {[['ZUS pracodawcy (%)', settings.zusRate * 100, (v) => setSettings((s) => ({ ...s, zusRate: (Number(v) || 0) / 100 }))], ['ZUS z PPK (%)', settings.zusPPK * 100, (v) => setSettings((s) => ({ ...s, zusPPK: (Number(v) || 0) / 100 }))], ['Dodatek nocny (%)', settings.nocnyBonus * 100, (v) => setSettings((s) => ({ ...s, nocnyBonus: (Number(v) || 0) / 100 }))], ['Płaca minimalna (zł)', settings.minWage, (v) => setSettings((s) => ({ ...s, minWage: Number(v) || 0 }))]].map(([l, val, on]) => (
                   <div key={l} className="flex items-center justify-between gap-3"><span className="text-sm" style={{ color: colors.primary.dark }}>{l}</span>{numIn(val, on, 'w-32')}</div>
@@ -2062,7 +2062,7 @@ const PlanPage = ({ data }) => {
           </div>
         </Sekcja>
 
-        <Sekcja kolor="#082567" tytul="Godziny MGR (ręcznie)" ikona={Clock}>
+        <Sekcja kolor="#16302B" tytul="Godziny MGR (ręcznie)" ikona={Clock}>
           <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Dodaj godziny managera do sumy RAZEM — w wybrany dzień albo w każdy dzień miesiąca. Ręcznie dodane: <b>{p.mgrManual.toFixed(1)} h</b> ({Object.keys((data.planowanie[ym] || {}).mgr || {}).length} dni).</p>
           <div className="flex flex-wrap items-end gap-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Godziny</label><input type="number" value={mgrH} onChange={e => setMgrH(e.target.value)} className="w-24 px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
@@ -2214,6 +2214,81 @@ const WTBreaks = ({ actual, onSave, locked, onClose }) => {
 };
 
 
+
+
+// ===================== SHIFTCYCLES — cykle rotacyjne (rota) na bazie Blueprints =====================
+const ShiftCycles = ({ data }) => {
+  const [tplId, setTplId] = useState('');
+  const [det, setDet] = useState(null);
+  const [startTyg, setStartTyg] = useState('');
+  const [ileTyg, setIleTyg] = useState(4);
+  const [przyp, setPrzyp] = useState({});
+  const [robi, setRobi] = useState(false);
+  const [wynik, setWynik] = useState(null);
+
+  const nastepnyPon = () => { const d = new Date(); const off = (8 - d.getDay()) % 7 || 7; d.setDate(d.getDate() + off); return ymd(d); };
+  useEffect(() => { setStartTyg(nastepnyPon()); }, []);
+  const wybierz = async (id) => {
+    setTplId(id); setDet(null); setWynik(null);
+    if (!id) return;
+    const t = await data.templateDetail(id);
+    if (t) { setDet(t); const p = {}; t.sloty.forEach((sl) => { p[sl.id] = sl.hint || ''; }); setPrzyp(p); }
+  };
+  const uruchom = async () => {
+    if (!det || !startTyg) return;
+    const przypisania = {};
+    Object.entries(przyp).forEach(([k, v]) => { if (String(v).trim()) { const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(v).trim().toUpperCase())); przypisania[k] = { name: String(v).trim(), accountId: konto ? konto.id : undefined }; } });
+    if (!Object.keys(przypisania).length) return data.show('Przypisz co najmniej jedną osobę', 'error');
+    setRobi(true); let ok = 0;
+    for (let i = 0; i < ileTyg; i++) {
+      const d = new Date(startTyg); d.setDate(d.getDate() + i * 7);
+      const r = await data.applyTemplate(det.id, ymd(d), przypisania);
+      if (r) ok++;
+    }
+    setRobi(false);
+    setWynik({ ok, start: startTyg });
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs" style={{ color: colors.primary.light }}>ShiftCycles — powtarzalny rytm pracy: wybierz Blueprint, osoby i liczbę tygodni, a system ułoży cykl na kolejne tygodnie (grafik + wykonanie, z przypisaniem do kont).</p>
+      <div className="bg-white rounded-xl shadow-sm border p-5 space-y-4" style={{ borderColor: colors.primary.bg }}>
+        <div className="grid md:grid-cols-3 gap-4">
+          <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Blueprint (wzorcowy tydzień)</label>
+            <select value={tplId} onChange={(e) => wybierz(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+              <option value="">— wybierz —</option>
+              {(data.templates || []).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.sloty} slotów, {Number(t.godzin).toFixed(0)} h)</option>)}
+            </select></div>
+          <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Pierwszy tydzień (poniedziałek)</label>
+            <input type="date" value={startTyg} onChange={(e) => { const d = new Date(e.target.value); const pon = new Date(d); pon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); setStartTyg(ymd(pon)); }} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+          <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Długość cyklu</label>
+            <select value={ileTyg} onChange={(e) => setIleTyg(+e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>{[1, 2, 3, 4, 5, 6, 8].map((n) => <option key={n} value={n}>{n} {n === 1 ? 'tydzień' : 'tygodnie/tygodni'}</option>)}</select></div>
+        </div>
+
+        {det && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold" style={{ color: colors.primary.dark }}>Obsada cyklu (puste pole = slot pominięty):</p>
+            {det.sloty.map((sl) => (
+              <div key={sl.id} className="grid grid-cols-[1fr_1fr] gap-3 items-center px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{sl.label}</p>
+                  <p className="text-[11px]" style={{ color: colors.primary.light }}>{sl.shifts.length} zmian/tydz. · {sl.shifts.reduce((a, x) => a + x.hours, 0).toFixed(0)} h · {sl.shifts.map((x) => `${D3[(x.dow + 6) % 7]} ${x.start}`).join(', ')}</p>
+                </div>
+                <input list="sc-lista-kont" value={przyp[sl.id] || ''} onChange={(e) => setPrzyp((pv) => ({ ...pv, [sl.id]: e.target.value }))} placeholder={`ostatnio: ${sl.hint || '—'}`} className="px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: colors.primary.bg }} />
+              </div>
+            ))}
+            <datalist id="sc-lista-kont">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist>
+            <div className="flex items-center gap-3 pt-1">
+              <button disabled={robi} onClick={uruchom} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{robi ? 'Układam cykl…' : `Zastosuj cykl na ${ileTyg} tyg.`}</button>
+              <span className="text-xs" style={{ color: colors.primary.light }}>Tygodnie: {Array.from({ length: ileTyg }, (_, i) => { const d = new Date(startTyg); d.setDate(d.getDate() + i * 7); return `${ymd(d).slice(8)}.${ymd(d).slice(5, 7)}`; }).join(' · ')}</span>
+            </div>
+            {wynik && <p className="text-sm font-medium" style={{ color: '#12655B' }}>✓ Cykl ułożony: {wynik.ok}/{ileTyg} tygodni od {wynik.start}. Sprawdź w Schedule.</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ===================== SZABLONY TYGODNIOWE (Plantillas de Turnos Semanales) =====================
 const WTTemplates = ({ data, weeks }) => {
@@ -2800,7 +2875,12 @@ const WorkingTime = ({ data, canEdit }) => {
     return { h, koszt, sprzedaz, exceso, defecto };
   }, [data.shifts, data.accounts, data.salesData, weekDays]);
 
-  const openWeek = (w) => { setWeekStart(w.start); setDay(w.days[0]); setView('week'); };
+  const [wrTab, setWrTab] = useState('schedule');   // WorkRhythm: schedule|actual|blueprints|cycles|tna
+  const openWeek = (w, tryb) => {
+    setWeekStart(w.start); setDay(w.days[0]); setView('week');
+    if (tryb === 'wykonanie') { setZakresTyg('dzien'); setTrybDnia('wykonanie'); }
+    else { setZakresTyg('siatka'); }
+  };
 
   const stacje = [...new Set(dayShifts(day || '').map((s) => s.station))];
   let rows = dayShifts(day || '');
@@ -2834,9 +2914,18 @@ const WorkingTime = ({ data, canEdit }) => {
     const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
     return (
       <div className="flex-1 flex flex-col">
-        <Header title="Grafik" subtitle="Timesheety tygodniowe — plan vs wykonanie, przerwy, zamykanie tygodni" />
+        <Header title="WorkRhythm" subtitle="Schedule · Actual · Blueprints · ShiftCycles · Time & Attendance" />
+        <div className="px-8 pt-3 flex gap-1 bg-white border-b" style={{ borderColor: colors.primary.bg }}>
+          {[['schedule', 'Schedule'], ['actual', 'Actual'], ['blueprints', 'Blueprints'], ['cycles', 'ShiftCycles'], ['tna', 'Time & Attendance']].map(([k, l]) => (
+            <button key={k} onClick={() => setWrTab(k)} className="px-4 py-2 rounded-t-lg text-sm font-semibold" style={{ backgroundColor: wrTab === k ? colors.primary.bgLight : 'transparent', color: wrTab === k ? colors.primary.darkest : colors.primary.light, borderBottom: wrTab === k ? `3px solid ${colors.primary.medium}` : '3px solid transparent' }}>{l}</button>
+          ))}
+        </div>
         <div className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+          {wrTab === 'schedule' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Planowanie obsady — kliknij tydzień, aby otworzyć siatkę planowania.</p>}
+          {wrTab === 'actual' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Wykonanie (Working Time) — kliknij tydzień, aby rozliczyć wbicia, przerwy i korekty.</p>}
+          {wrTab === 'tna' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Time & Attendance — statusy tygodni: oznaczaj dni jako Completed, potem Reviewed i Closed (blokada edycji).</p>}
           <div className="flex items-center gap-2 mb-3"><span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: colors.primary.light }}>Work Center</span><div className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{wcLabel}</div></div>
+          {['schedule', 'actual', 'tna'].includes(wrTab) && (<>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border" style={{ borderColor: colors.primary.bg }}>
             <div className="grid grid-cols-[1fr_110px_110px_110px_56px] px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})`, color: 'white' }}><span>Week</span><span className="text-center">Completed</span><span className="text-center">Reviewed</span><span className="text-center">Closed</span><span /></div>
             {weeks.length === 0 ? <div className="p-8 text-center text-slate-400">Brak grafiku. Zaimportuj miesiąc.</div> : weeks.map((w, idx) => {
@@ -2845,11 +2934,11 @@ const WorkingTime = ({ data, canEdit }) => {
               const toggleClosed = (e) => { e.stopPropagation(); if (!canEdit) return; if (st.closed) { data.tsSetWeek(w.start, { ...st, closed: false }); data.show('Tydzień otwarty ponownie'); return; } if (!done) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsSetWeek(w.start, { reviewed: true, closed: true }); data.show('Tydzień zamknięty'); };
               return (
                 <div key={w.start} className="grid grid-cols-[1fr_110px_110px_110px_56px] px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#eef2f7', backgroundColor: idx % 2 ? '#f8fafc' : 'white' }}>
-                  <button onClick={() => openWeek(w)} className="text-left font-medium hover:underline" style={{ color: colors.primary.darkest }}>{range(w)}<span className="text-xs text-slate-400 ml-2">({w.days.length} dni)</span></button>
+                  <button onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')} className="text-left font-medium hover:underline" style={{ color: colors.primary.darkest }}>{range(w)}<span className="text-xs text-slate-400 ml-2">({w.days.length} dni)</span></button>
                   <span className="flex justify-center">{done ? <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e9f7ef' }}><Check size={15} style={{ color: '#2E9E5B' }} /></span> : <span className="text-slate-300">…</span>}</span>
                   <span className="flex justify-center"><button onClick={toggleReviewed} title="Reviewed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.reviewed ? '#2E9E5B' : colors.primary.bg, backgroundColor: st.reviewed ? '#e9f7ef' : 'white' }}>{st.reviewed && <Check size={14} style={{ color: '#2E9E5B' }} />}</button></span>
                   <span className="flex justify-center"><button onClick={toggleClosed} title="Closed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.closed ? '#E74C3C' : colors.primary.bg, backgroundColor: st.closed ? '#fdecea' : 'white' }}>{st.closed && <Check size={14} style={{ color: '#E74C3C' }} />}</button></span>
-                  <span className="flex justify-center"><button onClick={() => openWeek(w)} className="w-7 h-7 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: colors.primary.medium }}><ChevronRight size={16} /></button></span>
+                  <span className="flex justify-center"><button onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')} className="w-7 h-7 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: colors.primary.medium }}><ChevronRight size={16} /></button></span>
                 </div>
               );
             })}
@@ -2863,7 +2952,12 @@ const WorkingTime = ({ data, canEdit }) => {
               <span className="text-xs text-slate-400">Także dzień bez zmian — możesz od razu dodać tam pierwszą zmianę (np. managera na nowy miesiąc).</span>
             </div>
           )}
-          {canEdit && <WTTemplates data={data} weeks={weeks} />}
+          </>)}
+          {wrTab === 'blueprints' && canEdit && (<>
+            <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Blueprints — wzorcowe tygodnie z generycznymi slotami. Zapisz najlepszy tydzień i nakładaj go na kolejne z przypisaniem osób.</p>
+            <WTTemplates data={data} weeks={weeks} />
+          </>)}
+          {wrTab === 'cycles' && canEdit && <ShiftCycles data={data} />}
           {!canEdit && <p className="text-xs text-slate-400 mt-3">Widok kierownika zmiany — podgląd. Zamykanie i korekty wykonuje ASM.</p>}
         </div>
       </div>
@@ -2879,7 +2973,7 @@ const WorkingTime = ({ data, canEdit }) => {
   const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#f1f5f9', color: on ? kol.fg : '#94a3b8' }}>{txt}</span>;
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <Header title="Grafik" subtitle={dateLabel(day)}>
+      <Header title="WorkRhythm" subtitle={dateLabel(day)}>
         {chip(weekDone(curWeek()), 'Completed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
         {chip(st.reviewed, 'Reviewed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
         {chip(st.closed, 'Closed', { bg: '#fdecea', fg: '#E74C3C' })}
