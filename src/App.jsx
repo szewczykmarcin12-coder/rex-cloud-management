@@ -2697,25 +2697,6 @@ const WorkingTime = ({ data, canEdit }) => {
   const [brkFor, setBrkFor] = useState(null);
   const [zakresTyg, setZakresTyg] = useState('siatka');   // 'siatka' (cały tydzień) | 'dzien'
   const zmienTydzien = (dni) => { const d = new Date(weekStart); d.setDate(d.getDate() + dni); const nowy = ymd(d); setWeekStart(nowy); setDay(nowy); };
-  const kpiTyg = useMemo(() => {
-    const zt = data.shifts.filter((x) => weekDays.includes(x.date) && !jestInstruktor(x));
-    const poId = new Map((data.accounts || []).map((a) => [a.id, a]));
-    const poNazwie = new Map((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
-    let h = 0, koszt = 0;
-    zt.forEach((x) => { const g = godzZ(x); h += g; const k = (x.accountId && poId.get(x.accountId)) || poNazwie.get(String(x.name || '').toUpperCase().trim()); koszt += kosztGodzin(k, g); });
-    const sales = ((data.salesData || {}).sales) || {};
-    const sprzedaz = weekDays.reduce((a, d) => a + (sales[d] || 0), 0);
-    let exceso = 0, defecto = 0;
-    weekDays.forEach((d) => {
-      const dw = new Date(d).getDay();
-      const sp = sales[d] || 0;
-      const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', dw);
-      const ideal = dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2;
-      const hd = zt.filter((x) => x.date === d).reduce((a, x) => a + godzZ(x), 0);
-      if (hd > ideal) exceso += hd - ideal; else defecto += ideal - hd;
-    });
-    return { h, koszt, sprzedaz, exceso, defecto };
-  }, [data.shifts, data.accounts, data.salesData, weekDays]);
   const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
   const [addOsoba, setAddOsoba] = useState('');
@@ -2742,6 +2723,27 @@ const WorkingTime = ({ data, canEdit }) => {
   const dayShifts = (d) => data.shifts.filter((s) => s.date === d && !jestInstruktor(s));
 
   const weekDays = weekStart ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return ymd(d); }) : [];
+
+  const kpiTyg = useMemo(() => {
+    const zt = data.shifts.filter((x) => weekDays.includes(x.date) && !jestInstruktor(x));
+    const poId = new Map((data.accounts || []).map((a) => [a.id, a]));
+    const poNazwie = new Map((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+    let h = 0, koszt = 0;
+    zt.forEach((x) => { const g = godzZ(x); h += g; const k = (x.accountId && poId.get(x.accountId)) || poNazwie.get(String(x.name || '').toUpperCase().trim()); koszt += kosztGodzin(k, g); });
+    const sales = ((data.salesData || {}).sales) || {};
+    const sprzedaz = weekDays.reduce((a, d) => a + (sales[d] || 0), 0);
+    let exceso = 0, defecto = 0;
+    weekDays.forEach((d) => {
+      const dw = new Date(d).getDay();
+      const sp = sales[d] || 0;
+      const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', dw);
+      const ideal = dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2;
+      const hd = zt.filter((x) => x.date === d).reduce((a, x) => a + godzZ(x), 0);
+      if (hd > ideal) exceso += hd - ideal; else defecto += ideal - hd;
+    });
+    return { h, koszt, sprzedaz, exceso, defecto };
+  }, [data.shifts, data.accounts, data.salesData, weekDays]);
+
   const openWeek = (w) => { setWeekStart(w.start); setDay(w.days[0]); setView('week'); };
 
   const stacje = [...new Set(dayShifts(day || '').map((s) => s.station))];
