@@ -13,12 +13,12 @@ const KOLORY = {
   'PANIEROWANIE':[124,179,66],'SMAŻENIE':[231,76,60],'KANAPKI / WRAPY':[0,163,224],
   'KONTROLER':[30,58,138],'WSPARCIE WIECZORNE / FLEX':[156,39,176],'DISPATCHER':[255,112,67],
   'PHU':[0,137,123],'DESERY / NAPOJE':[236,64,122],'FRYTKI':[245,176,0],'ZMYWAK':[100,116,139],
-  'PREP':[141,110,99],'DOSTAWA':[92,107,192],'SZKOLENIA':[38,166,154],'TRAINING':[38,166,154],'INSTRUKTOR':[0,121,107],'MANAGER':[8,37,103],'MGR FUNKCYJNE':[69,90,100]
+  'PREP':[141,110,99],'DOSTAWA':[92,107,192],'SZKOLENIA':[38,166,154],'TRAINING':[38,166,154],'INSTRUKTOR':[0,121,107],'MANAGER':[16,24,21],'MGR FUNKCYJNE':[69,90,100]
 };
-const kolor = (s) => KOLORY[(s||'').toUpperCase()] || [57,81,133];
+const kolor = (s) => KOLORY[(s||'').toUpperCase()] || [89,128,124];
 
-const NAVY = [8,37,103], NAVY2 = [33,59,118], STAL = [57,81,133], LIGHT = [232,237,245];
-const PEACH = [253,167,133], INK = [30,37,50], GREY = [120,130,145];
+const NAVY = [16,24,21], NAVY2 = [38,52,48], STAL = [89,128,124], LIGHT = [234,239,237];   // onyks + butelkowa zieleń
+const PEACH = [89,128,124], INK = [24,30,28], GREY = [118,130,126];   // akcent = szałwia (brzoskwinia usunięta)
 
 const UWAGI = [
   'Wbicia i wybicia kartą o planowanych godzinach rozpoczęcia i zakończenia.',
@@ -228,7 +228,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
     doc.setFont('Lib','bold'); doc.setTextColor(...(mocny ? NAVY : STAL));
     doc.text(`${val.toFixed(1)} h`, planR, baseline, { align:'right' });
     // pole realizacji — linia do wpisania ręcznego
-    doc.setDrawColor(...(mocny ? STAL : [198,208,224]));
+    doc.setDrawColor(...(mocny ? STAL : [203,212,208]));
     doc.setLineWidth(mocny ? 0.45 : 0.3);
     doc.line(realL, baseline + 0.6, realR, baseline + 0.6);
     ry += rowH1;

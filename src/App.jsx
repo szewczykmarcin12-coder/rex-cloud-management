@@ -12,7 +12,7 @@ const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
 
 const colors = {
   primary: { darkest: '#16302B', dark: '#264A43', medium: '#59807c', light: '#7FA39B', bg: '#DCE7E3', bgLight: '#F0F5F3' },
-  accent: { dark: '#FDA785', medium: '#FFBF99', light: '#FBCEB1', bg: '#FFF5EE' }
+  accent: { dark: '#101815', medium: '#2A3B37', light: '#59807c', bg: '#EDF1EF' }
 };
 
 const stationColors = {
