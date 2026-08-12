@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock } from 'lucide-react';
+import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
+import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik } from './parseGrafik.js';
 import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
@@ -2511,6 +2513,17 @@ const DayPlanner = ({ data, day, locked }) => {
     });
     return c;
   }, [zmianyDnia]);
+  const [slotSel, setSlotSel] = useState(null);
+
+  // ── Silnik v4.0: 96 slotów po 15 min (planning/) ──
+  const sch96 = new Float64Array(V4_NSLOT);
+  zmianyDnia.filter((x) => !jestInstruktor(x)).forEach((x) => v4AddCoverage(sch96, x.start, x.end));
+  const cov96 = v4Coverage(v4Up96(demand), sch96);
+  const poIdK = new Map(konta.map((a) => [a.id, a]));
+  const poNazwieK = new Map(konta.flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((nn) => [String(nn).toUpperCase().trim(), a])));
+  let planHDnia = 0, kosztDnia = 0;
+  zmianyDnia.filter((x) => !jestInstruktor(x)).forEach((x) => { const g = godzZ(x); planHDnia += g; kosztDnia += kosztGodzin(poIdK.get(x.accountId) || poNazwieK.get(String(x.name || '').toUpperCase().trim()), g); });
+  const slotSwieci = (x, i) => { let a = plnMin(x.start), b = plnMin(x.end); if (b <= a) b += 1440; const s0 = 360 + i * 15; return a < s0 + 15 && b > s0; };
   const stacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
 
   // Para praca+instruktor (te same/nachodzące godziny) = JEDEN pasek ze znacznikiem szkolenia.
@@ -2589,7 +2602,22 @@ const DayPlanner = ({ data, day, locked }) => {
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
       <div className="flex items-center justify-between px-4 py-2.5" style={{ background: `linear-gradient(180deg, ${colors.primary.dark}, ${colors.primary.darkest})` }}>
         <span className="text-sm font-semibold text-white">Planowanie zmian — siatka dnia</span>
-        <span className="text-xs text-white/70">{f0(sumaDnia)} h zaplanowane · kliknij w pusty obszar, aby dodać zmianę</span>
+        <span className="text-xs text-white/70">kliknij pusty obszar lub przeciągnij = nowa zmiana · kliknij pasek = edycja</span>
+      </div>
+      <div className="px-4 py-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 border-b bg-white" style={{ borderColor: colors.primary.bg }}>
+        {[
+          ['Plan (h)', planHDnia.toFixed(2).replace('.', ','), colors.primary.darkest],
+          ['Wymagane (h)', cov96.requiredH.toFixed(2).replace('.', ','), colors.primary.darkest],
+          ['Nadmiar', cov96.excessH.toFixed(2).replace('.', ','), cov96.excessH > 0.01 ? '#B26A00' : '#94a3b8'],
+          ['Niedobór', cov96.deficitH.toFixed(2).replace('.', ','), cov96.deficitH > 0.01 ? '#B7362A' : '#94a3b8'],
+          ['Pokrycie', `${cov96.coveragePct.toFixed(0)}%`, cov96.coveragePct >= 95 ? '#12655B' : '#B7362A'],
+          ['SPLH', sprzedazDnia && planHDnia ? f0(sprzedazDnia / planHDnia) : '—', sprzedazDnia && planHDnia && sprzedazDnia / planHDnia >= 420 ? '#12655B' : colors.primary.dark],
+          ['Koszt', `${f0(kosztDnia)} zł`, colors.primary.dark],
+          ['COL', sprzedazDnia ? `${(kosztDnia / sprzedazDnia * 100).toFixed(1).replace('.', ',')}%` : '—', sprzedazDnia && kosztDnia / sprzedazDnia > 0.2 ? '#B7362A' : colors.primary.dark],
+        ].map(([l, v, k], i) => (
+          <span key={i} className="flex items-baseline gap-1.5"><span className="text-[9px] uppercase font-semibold" style={{ color: colors.primary.light }}>{l}</span><span className="text-[13px] font-bold" style={{ color: k }}>{v}</span></span>
+        ))}
+        <span className="ml-auto text-[9px]" style={{ color: colors.primary.light }}>silnik 15 min · Excess/Deficit per slot</span>
       </div>
       <div className="overflow-x-auto"><div className="min-w-[1080px]">
         <div className="flex" style={{ borderBottom: `1px solid ${colors.primary.bg}` }}>
@@ -2621,9 +2649,34 @@ const DayPlanner = ({ data, day, locked }) => {
             </div>
           ))}
         </div>
+        <div className="flex items-center" style={{ borderBottom: '1px solid #eef2f7', backgroundColor: '#fbfcfe' }}>
+          <div className="w-56 shrink-0 px-3 py-1"><p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Pokrycie co 15 min</p><p className="text-[9px]" style={{ color: colors.primary.light }}>{slotSel != null ? `${v4SlotLabel(slotSel)} — podświetlono pracujących · kliknij ponownie, by wyczyścić` : 'kliknij slot, aby podświetlić osoby'}</p></div>
+          <div className="flex-1 flex py-1.5 pr-1">
+            {cov96.perSlot.map((sl2, i) => {
+              const kol = sl2.def > 0.01 ? '#B7362A' : sl2.exc > 0.01 ? '#E8A13A' : sl2.req > 0 ? '#2E9E5B' : '#e2e8f0';
+              return <button key={i} onClick={() => setSlotSel(slotSel === i ? null : i)} className="flex-1 mx-px rounded-sm" style={{ height: 12, backgroundColor: kol, outline: slotSel === i ? `2px solid ${colors.primary.darkest}` : 'none' }} title={`${v4SlotLabel(i)} — potrzeba ${sl2.req.toFixed(1)}, plan ${sl2.sch.toFixed(1)}, Δ ${(sl2.sch - sl2.req).toFixed(1)}`} />;
+            })}
+          </div>
+        </div>
+        <div className="flex" style={{ borderBottom: `2px solid ${colors.primary.bg}`, backgroundColor: 'white' }}>
+          <div className="w-56 shrink-0 px-3 py-1 flex flex-col justify-center"><p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Zapotrzebowanie vs plan</p><p className="text-[9px]" style={{ color: colors.primary.light }}><span style={{ color: colors.primary.darkest }}>■ wymagane</span> · <span style={{ color: '#E2571E' }}>■ w planie</span></p></div>
+          <div className="flex-1 pr-1">
+            {(() => {
+              const mx = Math.max(1, ...cov96.perSlot.map((q) => Math.max(q.req, q.sch)));
+              const pt = (v, i) => `${(i / (V4_NSLOT - 1)) * 960},${56 - (v / mx) * 50}`;
+              return (
+                <svg viewBox="0 0 960 60" preserveAspectRatio="none" className="w-full" style={{ height: 60 }}>
+                  {[0, 16, 32, 48, 64, 80].map((g) => <line key={g} x1={(g / 95) * 960} y1="4" x2={(g / 95) * 960} y2="56" stroke="#eef2f7" strokeWidth="1" />)}
+                  <polyline points={cov96.perSlot.map((q, i) => pt(q.req, i)).join(' ')} fill="none" stroke={colors.primary.darkest} strokeWidth="1.6" />
+                  <polyline points={cov96.perSlot.map((q, i) => pt(q.sch, i)).join(' ')} fill="none" stroke="#E2571E" strokeWidth="1.6" />
+                </svg>
+              );
+            })()}
+          </div>
+        </div>
         <div className="max-h-[520px] overflow-y-auto">
           {wiersze.map((w) => (
-            <div key={w.key} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#f1f5f9' }}>
+            <div key={w.key} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#f1f5f9', backgroundColor: slotSel != null && w.moje.some((x) => slotSwieci(x, slotSel)) ? '#fff8e1' : undefined }}>
               <div className="w-56 shrink-0 px-3 py-2 flex flex-col justify-center">
                 <p className="text-[13px] font-semibold truncate" style={{ color: colors.primary.darkest }}>{w.label}</p>
                 <p className="text-[10px]" style={{ color: colors.primary.light }}>{w.funkcja ? funkcjaLabel(w.funkcja) : '⚠ brak konta'}{w.moje.length ? ` · ${w.moje.reduce((a, x) => a + godzZ(x), 0).toFixed(1).replace('.', ',')} h` : ''}</p>
@@ -2732,14 +2785,17 @@ const WorkingTime = ({ data, canEdit }) => {
     zt.forEach((x) => { const g = godzZ(x); h += g; const k = (x.accountId && poId.get(x.accountId)) || poNazwie.get(String(x.name || '').toUpperCase().trim()); koszt += kosztGodzin(k, g); });
     const sales = ((data.salesData || {}).sales) || {};
     const sprzedaz = weekDays.reduce((a, d) => a + (sales[d] || 0), 0);
+    // v4.0: nadmiar/niedobór liczone PER SLOT 15 min (spójnie z widokiem dnia), potem sumowane po dniach
     let exceso = 0, defecto = 0;
     weekDays.forEach((d) => {
       const dw = new Date(d).getDay();
       const sp = sales[d] || 0;
       const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', dw);
-      const ideal = dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2;
-      const hd = zt.filter((x) => x.date === d).reduce((a, x) => a + godzZ(x), 0);
-      if (hd > ideal) exceso += hd - ideal; else defecto += ideal - hd;
+      const req96 = v4Up96(dir.map((v, i) => Math.max(v, ind[i])));
+      const s96 = new Float64Array(V4_NSLOT);
+      zt.filter((x) => x.date === d).forEach((x) => v4AddCoverage(s96, x.start, x.end));
+      const cs = v4Coverage(req96, s96);
+      exceso += cs.excessH; defecto += cs.deficitH;
     });
     return { h, koszt, sprzedaz, exceso, defecto };
   }, [data.shifts, data.accounts, data.salesData, weekDays]);
