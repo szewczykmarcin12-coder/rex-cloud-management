@@ -191,12 +191,18 @@ const Login = ({ onLogin }) => {
 
 // ===================== SIDEBAR =====================
 
-const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
+const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr }) => {
   const pelne = [
-    { gid: 'pulpit', grupa: 'Pulpit', icon: Home, items: [ { id: 'dashboard', label: 'Strona domowa', icon: Home } ] },
-    { gid: 'workforce', grupa: 'Workforce', icon: LayoutGrid, items: [
-      { id: 'wt', label: 'WorkRhythm — grafik i czas pracy', icon: LayoutGrid },
-      { id: 'forecast', label: 'Planowanie: optymalizacja + budżet', icon: Clock },
+    { gid: 'pulpit', grupa: 'Dashboard', icon: Home, items: [ { id: 'dashboard', label: 'Dashboard', icon: Home } ] },
+    { gid: 'workrhythm', grupa: 'WorkRhythm', icon: LayoutGrid, items: [
+      { id: 'wr-schedule', page: 'wt', wr: 'schedule', label: 'Schedule', icon: Calendar },
+      { id: 'wr-actual', page: 'wt', wr: 'actual', label: 'Actual', icon: Clock },
+      { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: FileSpreadsheet },
+      { id: 'wr-cycles', page: 'wt', wr: 'cycles', label: 'ShiftCycles', icon: RefreshCw },
+      { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Check },
+    ] },
+    { gid: 'planowanie', grupa: 'Planowanie', icon: Clock, items: [ { id: 'forecast', label: 'Optymalizacja i budżet', icon: Clock } ] },
+    { gid: 'narzedzia', grupa: 'Narzędzia', icon: Upload, items: [
       { id: 'import', label: 'Import z Excel', icon: Upload },
       { id: 'print', label: 'Wydruk grafiku', icon: Printer },
     ] },
@@ -208,10 +214,10 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
   ];
   const widoczne = role === 'asm' ? null : ['dashboard', 'wt', 'print'];
   const grupyMenu = pelne
-    .map((g) => ({ ...g, items: g.items.filter((m) => !widoczne || widoczne.includes(m.id)) }))
+    .map((g) => ({ ...g, items: g.items.filter((m) => !widoczne || widoczne.includes(m.page || m.id)) }))
     .filter((g) => g.items.length > 0);
   const [openG, setOpenG] = useState(null);
-  const aktywnaGrupa = grupyMenu.find((g) => g.items.some((m) => m.id === page));
+  const aktywnaGrupa = grupyMenu.find((g) => g.items.some((m) => (m.page || m.id) === page));
   return (
     <div className="h-screen flex" onMouseLeave={() => setOpenG(null)}>
     <div className="w-[68px] h-screen flex flex-col rail" style={{ background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, ${colors.primary.dark} 100%)` }}>
@@ -238,7 +244,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0 }) => {
         <div className="px-4 py-4 border-b border-white/10"><p className="text-[10px] font-bold uppercase tracking-wider text-white/40">{g.grupa}</p><p className="text-white text-sm font-semibold mt-0.5">REX Cloud</p></div>
         <div className="flex-1 p-2 space-y-0.5 overflow-y-auto">
           {g.items.map((m) => (
-            <button key={m.id} onClick={() => { setPage(m.id); setOpenG(null); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all ${page === m.id ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
+            <button key={m.id} onClick={() => { if (m.wr) { setWrTab && setWrTab(m.wr); bumpWr && bumpWr(); } setPage(m.page || m.id); setOpenG(null); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all ${page === (m.page || m.id) && (!m.wr || wrTab === m.wr) ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'}`}>
               <m.icon className="w-4 h-4" /><span className="text-[13px] font-medium">{m.label}</span>
               {m.badge > 0 && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E74C3C' }}>{m.badge}</span>}
             </button>
@@ -307,7 +313,7 @@ const Dashboard = ({ data, setPage }) => {
   ];
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Strona domowa" subtitle="Przegląd systemu REX Cloud" />
+      <Header title="Dashboard" subtitle="Przegląd systemu REX Cloud · WorkRhythm v4" />
       <div className="flex-1 p-8 space-y-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="grid grid-cols-3 gap-6">{stats.map((s, i) => <StatCard key={i} label={s.label} value={s.val} icon={s.icon} color={s.color} />)}</div>
 
@@ -2815,7 +2821,7 @@ const DayPlanner = ({ data, day, locked }) => {
   );
 };
 
-const WorkingTime = ({ data, canEdit }) => {
+const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const ts = data.ts || { actuals: {}, completed: {}, weekStatus: {} };
   const [view, setView] = useState('list');
   const [weekStart, setWeekStart] = useState(null);
@@ -2875,7 +2881,7 @@ const WorkingTime = ({ data, canEdit }) => {
     return { h, koszt, sprzedaz, exceso, defecto };
   }, [data.shifts, data.accounts, data.salesData, weekDays]);
 
-  const [wrTab, setWrTab] = useState('schedule');   // WorkRhythm: schedule|actual|blueprints|cycles|tna
+  useEffect(() => { if (wrNonce) setView('list'); }, [wrNonce]);   // klik w menu WorkRhythm wraca do listy zakładki
   const openWeek = (w, tryb) => {
     setWeekStart(w.start); setDay(w.days[0]); setView('week');
     if (tryb === 'wykonanie') { setZakresTyg('dzien'); setTrybDnia('wykonanie'); }
@@ -3011,18 +3017,6 @@ const WorkingTime = ({ data, canEdit }) => {
 
         {trybDnia === 'plan' && <DayPlanner data={data} day={day} locked={locked} />}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(plannedMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Plan (h)</p></div>
-          <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{wtHours(actualMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Wykonanie (h)</p></div>
-          <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: (actualMin - plannedMin) > 0 ? '#E74C3C' : '#2E9E5B' }}>{actualMin - plannedMin >= 0 ? '+' : ''}{wtHours(actualMin - plannedMin)}</p><p className="text-xs" style={{ color: colors.primary.light }}>Różnica (h)</p></div>
-          <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: colors.primary.darkest }}><p className="text-2xl font-bold text-white">{eff}%</p><p className="text-xs text-white/70">Work Efficiency</p></div>
-          {sprzDnia != null && (<>
-            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{f0(sprzDnia)} zł</p><p className="text-xs" style={{ color: colors.primary.light }}>Sprzedaż dnia</p></div>
-            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{plannedMin ? f0(sprzDnia / (plannedMin / 60)) : '—'}</p><p className="text-xs" style={{ color: colors.primary.light }}>SPLH plan (zł/rbh)</p></div>
-            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: actualMin && sprzDnia / (actualMin / 60) >= 420 ? '#2E9E5B' : colors.primary.darkest }}>{actualMin ? f0(sprzDnia / (actualMin / 60)) : '—'}</p><p className="text-xs" style={{ color: colors.primary.light }}>SPLH wykonanie</p></div>
-            <div className="rounded-xl p-3 text-center bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{parDnia && actualMin ? (actualMin / parDnia).toFixed(1).replace('.', ',') : '—'}</p><p className="text-xs" style={{ color: colors.primary.light }}>Min. na transakcję</p></div>
-          </>)}
-        </div>
 
         {trybDnia === 'wykonanie' && canEdit && !locked && (
           <div className="bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
@@ -3364,6 +3358,8 @@ export default function App() {
   const [authed, setAuthed] = useState(() => !!sesja);
   const [role, setRole] = useState(() => (sesja && sesja.role) || 'kierownik');
   const [page, setPage] = useState('dashboard');
+  const [wrTab, setWrTab] = useState('schedule');
+  const [wrNonce, setWrNonce] = useState(0);
   const data = useData();
   const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setPage('dashboard'); };
   const onLogin = (r) => { setRole(r); setAuthed(true); setPage('dashboard'); };
@@ -3373,7 +3369,7 @@ export default function App() {
   const pages = {
     dashboard: <Dashboard data={data} setPage={setPage} />,
     import: <ImportPage data={data} />,
-    wt: <WorkingTime data={data} canEdit={role === 'asm'} />,
+    wt: <WorkingTime data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
     print: <PrintPage data={data} />,
     forecast: <PlanFinanse data={data} setPage={setPage} />,
     plan: <PlanFinanse data={data} setPage={setPage} />,
@@ -3388,7 +3384,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
-      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} />
+      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} />
       <div className="flex-1 flex flex-col overflow-hidden"><div className={widok === 'wt' ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 overflow-y-auto"}>{pages[widok] || pages.print}</div></div>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </div>
