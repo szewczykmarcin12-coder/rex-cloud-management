@@ -2696,6 +2696,26 @@ const WorkingTime = ({ data, canEdit }) => {
   const [order, setOrder] = useState('entry');
   const [brkFor, setBrkFor] = useState(null);
   const [zakresTyg, setZakresTyg] = useState('siatka');   // 'siatka' (cały tydzień) | 'dzien'
+  const zmienTydzien = (dni) => { const d = new Date(weekStart); d.setDate(d.getDate() + dni); const nowy = ymd(d); setWeekStart(nowy); setDay(nowy); };
+  const kpiTyg = useMemo(() => {
+    const zt = data.shifts.filter((x) => weekDays.includes(x.date) && !jestInstruktor(x));
+    const poId = new Map((data.accounts || []).map((a) => [a.id, a]));
+    const poNazwie = new Map((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+    let h = 0, koszt = 0;
+    zt.forEach((x) => { const g = godzZ(x); h += g; const k = (x.accountId && poId.get(x.accountId)) || poNazwie.get(String(x.name || '').toUpperCase().trim()); koszt += kosztGodzin(k, g); });
+    const sales = ((data.salesData || {}).sales) || {};
+    const sprzedaz = weekDays.reduce((a, d) => a + (sales[d] || 0), 0);
+    let exceso = 0, defecto = 0;
+    weekDays.forEach((d) => {
+      const dw = new Date(d).getDay();
+      const sp = sales[d] || 0;
+      const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', dw);
+      const ideal = dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2;
+      const hd = zt.filter((x) => x.date === d).reduce((a, x) => a + godzZ(x), 0);
+      if (hd > ideal) exceso += hd - ideal; else defecto += ideal - hd;
+    });
+    return { h, koszt, sprzedaz, exceso, defecto };
+  }, [data.shifts, data.accounts, data.salesData, weekDays]);
   const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
   const [addOsoba, setAddOsoba] = useState('');
@@ -2808,13 +2828,24 @@ const WorkingTime = ({ data, canEdit }) => {
         <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: ts.completed[day] ? '#2E9E5B' : 'white', color: ts.completed[day] ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}><Check size={15} />{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>
       </Header>
       <div className="flex-1 p-8 space-y-4 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Wróć do tygodni</button>
-        {locked && <div className="rounded-lg px-4 py-2 text-sm font-medium" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>{canEdit ? 'Tydzień zamknięty (Closed) — widok tylko do podglądu. Odblokuj na liście tygodni, aby edytować.' : 'Widok tylko do podglądu (kierownik zmiany).'}</div>}
-
-        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
-          {[['siatka', 'Tydzień — siatka planowania'], ['dzien', 'Widok dnia']].map(([k, l]) => (
-            <button key={k} onClick={() => setZakresTyg(k)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: zakresTyg === k ? colors.primary.medium : 'transparent', color: zakresTyg === k ? 'white' : colors.primary.dark }}>{l}</button>
-          ))}
+        <div className="sticky top-0 z-30 -mx-8 -mt-8 px-8 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 border-b shadow-sm" style={{ backgroundColor: 'rgba(255,255,255,.94)', backdropFilter: 'blur(6px)', borderColor: colors.primary.bg }}>
+          <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm shrink-0" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Tygodnie</button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => zmienTydzien(-7)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-100" style={{ color: colors.primary.dark }}><ChevronLeft size={15} /></button>
+            <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)} – {weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)}</span>
+            <button onClick={() => zmienTydzien(7)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-100" style={{ color: colors.primary.dark }}><ChevronRight size={15} /></button>
+          </div>
+          <div className="flex gap-0.5">
+            {weekDays.map((d, i) => { const akt = zakresTyg === 'dzien' && day === d; return (
+              <button key={d} onClick={() => { setDay(d); setZakresTyg('dzien'); }} className="px-2 py-1 rounded-md text-[11px] font-bold" style={{ backgroundColor: akt ? colors.primary.medium : 'transparent', color: akt ? 'white' : i >= 5 ? '#B7362A' : colors.primary.dark, border: `1px solid ${akt ? colors.primary.medium : colors.primary.bg}` }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]}</button>
+            ); })}
+            <button onClick={() => setZakresTyg('siatka')} className="ml-1 px-2.5 py-1 rounded-md text-[11px] font-bold" style={{ backgroundColor: zakresTyg === 'siatka' ? colors.primary.medium : 'transparent', color: zakresTyg === 'siatka' ? 'white' : colors.primary.dark, border: `1px solid ${zakresTyg === 'siatka' ? colors.primary.medium : colors.primary.bg}` }}>Tydzień</button>
+          </div>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>🔒 tylko podgląd</span>}
+            <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
+            <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
+          </div>
         </div>
 
         {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} />}
@@ -2933,6 +2964,23 @@ const WorkingTime = ({ data, canEdit }) => {
         <p className="text-xs text-slate-400">Górny pasek = plan (Shift), dolny = wykonanie (Actual); czerwony segment = przerwa niepłatna. Korekty nanoś po zakończeniu zmiany pracownika. Tolerancja 5 min (micros ↔ girnet).</p>
         </>)}
         </>)}
+
+        <div className="sticky bottom-0 z-30 -mx-8 -mb-8 px-8 py-2 flex flex-wrap items-center gap-x-5 gap-y-1 border-t shadow-[0_-4px_12px_rgba(15,23,42,.06)]" style={{ backgroundColor: 'rgba(255,255,255,.96)', backdropFilter: 'blur(6px)', borderColor: colors.primary.bg }}>
+          {[
+            { i: '💰', l: 'Koszt (szac.)', v: `${f0(kpiTyg.koszt)} zł`, k: '#12655B' },
+            { i: '%', l: 'Koszt / sprzedaż', v: kpiTyg.sprzedaz ? `${(kpiTyg.koszt / kpiTyg.sprzedaz * 100).toFixed(2).replace('.', ',')}%` : '—', k: kpiTyg.sprzedaz && kpiTyg.koszt / kpiTyg.sprzedaz > 0.2 ? '#B7362A' : '#12655B' },
+            { i: '🕐', l: 'Godziny', v: `${kpiTyg.h.toFixed(1).replace('.', ',')} h`, k: colors.primary.medium },
+            { i: '▲', l: 'Nadmiar (h)', v: kpiTyg.exceso.toFixed(1).replace('.', ','), k: '#2F6FB5' },
+            { i: '▼', l: 'Niedobór (h)', v: kpiTyg.defecto.toFixed(1).replace('.', ','), k: '#B7362A' },
+            { i: '⚡', l: 'Sprzedaż / rbh', v: kpiTyg.sprzedaz && kpiTyg.h ? f0(kpiTyg.sprzedaz / kpiTyg.h) : '—', k: '#D08700' },
+          ].map((x, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ backgroundColor: x.k }}>{x.i}</span>
+              <div className="leading-tight"><p className="text-[9px] uppercase font-semibold" style={{ color: colors.primary.light }}>{x.l}</p><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{x.v}</p></div>
+            </div>
+          ))}
+          <span className="ml-auto text-[10px]" style={{ color: colors.primary.light }}>tydzień {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} · nadmiar/niedobór vs zapotrzebowanie{Object.keys(((data.salesData || {}).sales) || {}).some((d) => weekDays.includes(d)) ? ' ze sprzedaży' : ' z krzywej celu'}</span>
+        </div>
       </div>
       {brkFor && <WTBreaks actual={act(brkFor)} locked={locked} onSave={(breaks) => data.tsPutActual(wtKey(brkFor), { ...act(brkFor), breaks })} onClose={() => setBrkFor(null)} />}
     </div>
@@ -2957,6 +3005,7 @@ const useData = () => {
   const [budget, setBudget] = useState(null);
   const [salesData, setSalesData] = useState(null);
   const [templates, setTemplates] = useState([]);
+  const [lastSync, setLastSync] = useState(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const show = (m, t = 'success') => setToast({ message: m, type: t });
@@ -2981,6 +3030,7 @@ const useData = () => {
       const rtpl = await api('/templates');
       if (rtpl.success) setTemplates(rtpl.templates || []);
     } catch { show('Błąd synchronizacji', 'error'); }
+    setLastSync(new Date());
     setLoading(false);
   }, []);
 
@@ -3156,7 +3206,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate };
 };
 
 // ===================== MAIN =====================
