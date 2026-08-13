@@ -912,8 +912,8 @@ const SettingsPage = ({ data }) => {
         )}
 
         <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #59807c` }}>
-          <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Jeden profil — uprawnienia panelu per konto</h3>
-          <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Konto pracownicze z przypisaną rolą loguje się do panelu tym samym loginem i PIN-em/hasłem co do aplikacji pracownika. Poziom dostępu (ASM lub kierownik zmiany) wynika z roli konta. Zapasowy login ASM nadal działa.</p>
+          <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Uprawnienia panelu — automatyczne z funkcji + nadpisania</h3>
+          <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Rola panelu wynika AUTOMATYCZNIE z funkcji konta: Zastępca kierownika (ASM) i Kierownik restauracji (RGM) mają pełny dostęp, Kierownik zmiany (SM) i Młodszy kierownik (JSM) — grafik i wydruk. Poniższe powiązania to NADPISANIA dla wyjątków (np. wspólne konto kierowników z funkcją CREW). Logowanie zawsze tym samym loginem i PIN-em/hasłem co do aplikacji pracownika; zapasowy login ASM nadal działa.</p>
           <div className="space-y-2">
             {(linked || []).map((l) => (
               <div key={l.login || l} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
