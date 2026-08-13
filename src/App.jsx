@@ -2090,13 +2090,14 @@ const EmpForm = ({ init, onSave, onClose }) => {
   const [f, setF] = useState(init);
   const set = (patch) => setF((p) => ({ ...p, ...patch }));
   const rest = f.funkcja === 'REST';
-  const valid = rest ? (f.name.trim().length >= 3 && (init.id || (String(f.login || '').trim().length >= 3 && String(f.pin || '').trim().length >= 4))) : f.name.trim().split(/\s+/).length >= 2;
+  const valid = rest ? (init.id || (String(f.login || '').trim().length >= 3 && String(f.pin || '').trim().length >= 4)) : f.name.trim().split(/\s+/).length >= 2;
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl">
         <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>{init.id ? 'Edytuj pracownika' : 'Nowy pracownik'}</h3><button onClick={onClose}><X size={20} className="text-slate-400" /></button></div>
         <div className="space-y-3">
+          {!rest && (<>
           <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Imię i nazwisko</label><input value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="np. Jan Kowalski" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: valid || !f.name ? colors.primary.bg : '#E74C3C' }} /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Nazwa w grafiku</label>
@@ -2106,10 +2107,11 @@ const EmpForm = ({ init, onSave, onClose }) => {
               <input value={f.aliasy} onChange={(e) => set({ aliasy: e.target.value })} placeholder="np. MATI KOSKI, KOSKI" className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} />
               <p className="text-[10px] text-slate-400 mt-0.5">Literówki i warianty, oddzielone przecinkiem</p></div>
           </div>
+          </>)}
           <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Funkcja</label><select value={f.funkcja} onChange={(e) => set({ funkcja: e.target.value })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{FUNKCJE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></div>
           {rest && (
             <div className="rounded-lg p-3 space-y-3" style={{ backgroundColor: colors.primary.bgLight }}>
-              <p className="text-[11px]" style={{ color: colors.primary.light }}>Konto restauracji: bez umowy i stawki, uprawnienia kierownika zmiany w panelu (grafik + wydruk). Logowanie loginem i PIN-em — tu i w aplikacji pracownika.</p>
+              <p className="text-[11px]" style={{ color: colors.primary.light }}>Konto restauracji: bez imienia i nazwiska, umowy i stawki. Nazwa konta = login. Uprawnienia kierownika zmiany w panelu (grafik + wydruk); logowanie loginem i PIN-em — tu i w aplikacji pracownika.</p>
               {!init.id && (
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Login</label><input value={f.login || ''} onChange={(e) => set({ login: e.target.value.toUpperCase() })} placeholder="PLPLK201043" className="w-full px-3 py-2 rounded-lg border font-mono" style={{ borderColor: colors.primary.bg }} /></div>
@@ -2141,6 +2143,7 @@ const AdminEmployees = ({ data }) => {
 
   const save = async (f) => {
     const payload = { ...f, grafikName: (f.grafikName || '').trim(), aliasy: String(f.aliasy || '').split(',').map((x) => x.trim()).filter(Boolean) };
+    if (f.funkcja === 'REST' && !String(payload.name || '').trim()) payload.name = String(payload.login || '').trim().toUpperCase();
     if (form.id) { await data.updateAccount(form.id, payload); data.show('Zapisano zmiany'); }
     else { const c = await data.addAccount(payload); if (c) { if (c.haslo) setCred(c); else data.show(`Konto ${c.login} utworzone — loguje się własnym PIN-em`, 'success'); } }
     setForm(null);
