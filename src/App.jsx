@@ -832,37 +832,6 @@ const SettingsPage = ({ data }) => {
       if (r.success) { setLinked(r.linked); data.show('Konto odpięte', 'success'); } else data.show(r.error || 'Błąd', 'error');
     } catch (e) { data.show((e && e.message) || 'Błąd', 'error'); }
   };
-  // Zmiana PIN kierownika zmiany — wymaga hasła ASM
-  const [pinNew, setPinNew] = useState('');
-  const [pinNew2, setPinNew2] = useState('');
-  const [pinAsmPass, setPinAsmPass] = useState('');
-  // Zmiana poświadczeń ASM — wymaga obecnego hasła ASM
-  const [asmLogin, setAsmLogin] = useState('');
-  const [asmCur, setAsmCur] = useState('');
-  const [asmNew, setAsmNew] = useState('');
-  const [asmNew2, setAsmNew2] = useState('');
-  useEffect(() => { api('/admin-auth').then(r => { if (r.success && r.asmLogin) setAsmLogin(r.asmLogin); }).catch(() => {}); }, []);
-
-  const changePin = async () => {
-    if (!pinAsmPass) { data.show('Podaj hasło ASM', 'error'); return; }
-    if (!/^\d{6}$/.test(pinNew)) { data.show('PIN musi mieć dokładnie 6 cyfr', 'error'); return; }
-    if (pinNew !== pinNew2) { data.show('Nowe PINy się różnią', 'error'); return; }
-    const r = await api('/admin-auth', 'PUT', { newPin: pinNew, asmPassword: pinAsmPass });
-    if (r.success) { data.show('PIN kierownika zmieniony'); setPinNew(''); setPinNew2(''); setPinAsmPass(''); }
-    else data.show(r.error || 'Błąd', 'error');
-  };
-  const changeAsm = async () => {
-    if (!asmCur) { data.show('Podaj obecne hasło ASM', 'error'); return; }
-    if (asmNew && asmNew.length < 6) { data.show('Nowe hasło min. 6 znaków', 'error'); return; }
-    if (asmNew !== asmNew2) { data.show('Nowe hasła się różnią', 'error'); return; }
-    if (!asmNew && !asmLogin.trim()) { data.show('Nic do zmiany', 'error'); return; }
-    const body = { currentPassword: asmCur };
-    if (asmLogin.trim()) body.newLogin = asmLogin.trim();
-    if (asmNew) body.newPassword = asmNew;
-    const r = await api('/admin-auth', 'PUT', body);
-    if (r.success) { data.show('Poświadczenia ASM zaktualizowane'); setAsmCur(''); setAsmNew(''); setAsmNew2(''); }
-    else data.show(r.error || 'Błąd', 'error');
-  };
   const clearSchedule = async () => {
     if (!confirm('Usunąć cały grafik z systemu? Pracownicy nie zobaczą żadnych zmian.')) return;
     await data.clearSchedule();
@@ -872,28 +841,6 @@ const SettingsPage = ({ data }) => {
     <div className="flex-1 flex flex-col">
       <Header title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid ${colors.primary.medium}` }}>
-          <h3 className="text-lg font-bold mb-1" style={{ color: colors.primary.darkest }}>PIN kierownika zmiany</h3>
-          <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Kierownicy zmiany logują się PIN-em i mają dostęp tylko do wydruku grafiku. Zmiana wymaga hasła ASM.</p>
-          <div className="space-y-3">
-            <input type="password" value={pinNew} onChange={e => setPinNew(e.target.value)} placeholder="Nowy PIN (6 cyfr)" maxLength={6} inputMode="numeric" className={inp + " tracking-widest"} style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={pinNew2} onChange={e => setPinNew2(e.target.value)} placeholder="Powtórz nowy PIN" maxLength={6} inputMode="numeric" className={inp + " tracking-widest"} style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={pinAsmPass} onChange={e => setPinAsmPass(e.target.value)} placeholder="Hasło ASM (potwierdzenie)" className={inp} style={{ borderColor: colors.primary.bg }} />
-            <Btn onClick={changePin}>Zapisz PIN kierownika</Btn>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #12423f` }}>
-          <h3 className="text-lg font-bold mb-1" style={{ color: colors.primary.darkest }}>Login i hasło ASM</h3>
-          <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Pełny dostęp (układanie i import grafiku, plan godzin). Zmienić może wyłącznie ASM, podając obecne hasło.</p>
-          <div className="space-y-3">
-            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Login ASM</label><input type="text" value={asmLogin} onChange={e => setAsmLogin(e.target.value)} placeholder="login" className={inp} style={{ borderColor: colors.primary.bg }} /></div>
-            <input type="password" value={asmNew} onChange={e => setAsmNew(e.target.value)} placeholder="Nowe hasło ASM (min. 6 znaków, puste = bez zmiany)" className={inp} style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={asmNew2} onChange={e => setAsmNew2(e.target.value)} placeholder="Powtórz nowe hasło" className={inp} style={{ borderColor: colors.primary.bg }} />
-            <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#12423f' }} />
-            <Btn onClick={changeAsm}>Zapisz poświadczenia ASM</Btn>
-          </div>
-        </div>
 
         {resetReqs.length > 0 && (
           <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #d67943` }}>
@@ -2124,6 +2071,7 @@ const BudgetPlan = ({ data, setPage }) => {
 // ===================== PRACOWNICY (konta użytkowników) =====================
 const FUNKCJE = [
   { id: 'CREW', label: 'Pracownik restauracji' },
+  { id: 'REST', label: 'Konto restauracji (login + PIN, bez umowy)' },
   { id: 'JSM', label: 'Młodszy kierownik zmiany' },
   { id: 'SM', label: 'Kierownik zmiany' },
   { id: 'ASM', label: 'Zastępca kierownika' },
@@ -2141,7 +2089,8 @@ const CopyField = ({ label, value }) => {
 const EmpForm = ({ init, onSave, onClose }) => {
   const [f, setF] = useState(init);
   const set = (patch) => setF((p) => ({ ...p, ...patch }));
-  const valid = f.name.trim().split(/\s+/).length >= 2;
+  const rest = f.funkcja === 'REST';
+  const valid = rest ? (f.name.trim().length >= 3 && (init.id || (String(f.login || '').trim().length >= 3 && String(f.pin || '').trim().length >= 4))) : f.name.trim().split(/\s+/).length >= 2;
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -2158,11 +2107,24 @@ const EmpForm = ({ init, onSave, onClose }) => {
               <p className="text-[10px] text-slate-400 mt-0.5">Literówki i warianty, oddzielone przecinkiem</p></div>
           </div>
           <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Funkcja</label><select value={f.funkcja} onChange={(e) => set({ funkcja: e.target.value })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{FUNKCJE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></div>
+          {rest && (
+            <div className="rounded-lg p-3 space-y-3" style={{ backgroundColor: colors.primary.bgLight }}>
+              <p className="text-[11px]" style={{ color: colors.primary.light }}>Konto restauracji: bez umowy i stawki, uprawnienia kierownika zmiany w panelu (grafik + wydruk). Logowanie loginem i PIN-em — tu i w aplikacji pracownika.</p>
+              {!init.id && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Login</label><input value={f.login || ''} onChange={(e) => set({ login: e.target.value.toUpperCase() })} placeholder="PLPLK201043" className="w-full px-3 py-2 rounded-lg border font-mono" style={{ borderColor: colors.primary.bg }} /></div>
+                  <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>PIN (min. 4 cyfry)</label><input value={f.pin || ''} onChange={(e) => set({ pin: e.target.value })} maxLength={8} inputMode="numeric" className="w-full px-3 py-2 rounded-lg border tracking-widest font-mono" style={{ borderColor: colors.primary.bg }} placeholder="••••••" /></div>
+                </div>
+              )}
+            </div>
+          )}
+          {!rest && (<>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Typ umowy</label><select value={f.umowa} onChange={(e) => set({ umowa: e.target.value })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}><option value="UOP">UOP (etat)</option><option value="UZ">UZ (zlecenie)</option></select></div>
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>{f.umowa === 'UOP' ? 'Wynagr. mies. (zł)' : 'Stawka (zł/h)'}</label><input type="number" value={f.stawka} onChange={(e) => set({ stawka: Number(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
           </div>
           <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={f.zus} onChange={(e) => set({ zus: e.target.checked })} />Pracownik oskładkowany (ZUS){f.umowa === 'UOP' ? ' — dla UOP zawsze' : ''}</label>
+          </>)}
           {f.funkcja === 'CREW' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={!!f.instruktor} onChange={(e) => set({ instruktor: e.target.checked })} />Instruktor (szkoli innych pracowników)</label>}
         </div>
         <div className="flex justify-end gap-2 mt-5"><button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button><button disabled={!valid} onClick={() => onSave(f)} className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{init.id ? 'Zapisz' : 'Dodaj i utwórz konto'}</button></div>
@@ -2180,7 +2142,7 @@ const AdminEmployees = ({ data }) => {
   const save = async (f) => {
     const payload = { ...f, grafikName: (f.grafikName || '').trim(), aliasy: String(f.aliasy || '').split(',').map((x) => x.trim()).filter(Boolean) };
     if (form.id) { await data.updateAccount(form.id, payload); data.show('Zapisano zmiany'); }
-    else { const c = await data.addAccount(payload); if (c) setCred(c); }
+    else { const c = await data.addAccount(payload); if (c) { if (c.haslo) setCred(c); else data.show(`Konto ${c.login} utworzone — loguje się własnym PIN-em`, 'success'); } }
     setForm(null);
   };
   const reset = async (e) => { const c = await data.resetAccountPassword(e.id); if (c) setCred(c); };
