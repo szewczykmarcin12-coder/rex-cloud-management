@@ -11,7 +11,7 @@ const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
 // ^ Zmień na URL swojego backendu po wdrożeniu
 
 const colors = {
-  primary: { darkest: '#12423f', dark: '#39615c', medium: '#59807c', light: '#96aaa9', bg: '#d7d7d7', bgLight: '#f1f3f3' },
+  primary: { darkest: '#12423f', dark: '#315f5b', medium: '#59807c', light: '#96aaa9', bg: '#dfe6e5', bgLight: '#f4f7f6' },
   accent: { dark: '#101815', medium: '#2A3B37', light: '#59807c', bg: '#EDF1EF' }
 };
 
@@ -138,7 +138,14 @@ const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setT
 
 const StatCard = ({ label, value, icon: Icon, color }) => (<div className="bg-white rounded-2xl p-5 shadow-sm" style={{ borderLeft: `4px solid ${color}` }}><div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: color + '15', color }}><Icon className="w-5 h-5" /></div><p className="text-3xl font-bold mt-3" style={{ color: colors.primary.darkest }}>{value}</p><p className="text-sm mt-1" style={{ color: colors.primary.light }}>{label}</p></div>);
 
-const Header = ({ title, subtitle, children }) => (<div className="bg-white/90 backdrop-blur-xl border-b px-8 py-5 flex items-center justify-between sticky top-0 z-10" style={{ borderColor: colors.primary.bg }}><div><h1 className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{title}</h1>{subtitle && <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>{subtitle}</p>}</div><div className="flex items-center gap-3">{children}</div></div>);
+const Header = ({ title, subtitle, children }) => (
+  <div className="border-b px-6 sticky top-0 z-10 flex items-center justify-between shrink-0" style={{ height: 62, backgroundColor: 'rgba(255,255,255,.94)', backdropFilter: 'blur(14px)', borderColor: '#dfe6e5' }}>
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-[11px]"><span style={{ color: '#8a9997' }}>REX Cloud</span><ChevronRight size={11} style={{ color: '#b3bebf' }} /><strong className="font-semibold" style={{ color: '#344c49' }}>{title}</strong></div>
+      {subtitle && <p className="text-[11px] mt-0.5 truncate" style={{ color: '#71817f' }}>{subtitle}</p>}
+    </div>
+    <div className="flex items-center gap-2.5 shrink-0">{children}</div>
+  </div>);
 
 // ===================== LOGIN =====================
 
@@ -163,7 +170,7 @@ const Login = ({ onLogin }) => {
     <button type="button" onClick={() => { setTryb(id); setErr(''); }} className="flex-1 py-2 rounded-lg text-sm font-medium transition-all" style={{ backgroundColor: tryb === id ? colors.primary.medium : 'transparent', color: tryb === id ? 'white' : colors.primary.light }}>{txt}</button>
   );
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0A2A27, ${colors.primary.darkest})` }}>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0d3431, ${colors.primary.darkest})` }}>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-12"><div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-8 h-8 text-white" /></div><div><span className="text-white text-3xl font-light">REX</span><span className="text-3xl font-light ml-2" style={{ color: colors.primary.bg }}>Cloud</span></div></div>
         <div className="bg-white rounded-2xl p-8">
@@ -221,7 +228,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
     .filter((g) => g.items.length > 0);
 
   return (
-    <div className="relative h-screen flex flex-col shrink-0 transition-all duration-200" style={{ width: zwiniety ? 76 : 272, background: `linear-gradient(180deg, ${colors.primary.darkest} 0%, #0A2A27 100%)` }}>
+    <div className="relative h-screen flex flex-col shrink-0 transition-all duration-200" style={{ width: zwiniety ? 72 : 248, background: `linear-gradient(180deg, #12423f 0%, #0d3431 100%)` }}>
       {/* zwijanie — okrągły przycisk na krawędzi */}
       <button onClick={() => setZwiniety((v) => !v)} title={zwiniety ? 'Rozwiń menu' : 'Zwiń menu'}
         className="absolute -right-3 top-16 z-40 w-6 h-6 rounded-full flex items-center justify-center bg-white shadow-md border"
@@ -231,14 +238,14 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
 
       {/* logo */}
       <div className={`flex items-center gap-3 px-4 pt-5 pb-4 ${zwiniety ? 'justify-center px-0' : ''}`}>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(255,255,255,.10)' }}><Cloud className="w-[22px] h-[22px] text-white" /></div>
+        <div className="w-[37px] h-[37px] rounded-[11px] flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.16)' }}><Cloud className="w-[20px] h-[20px] text-white" /></div>
         {!zwiniety && <div className="leading-tight"><p className="text-white text-lg"><b className="font-bold">REX</b> <span className="font-light">Cloud</span></p><p className="text-[9px] font-bold tracking-[0.3em] text-white/40">WORKRHYTHM</p></div>}
       </div>
 
       {/* restauracja */}
       {!zwiniety && (
         <div className="mx-3 mb-2 px-3 py-2.5 rounded-xl flex items-center gap-2.5" style={{ backgroundColor: 'rgba(255,255,255,.07)' }}>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ backgroundColor: colors.primary.medium }}>PL</div>
+          <div className="w-[31px] h-[31px] rounded-[9px] flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ backgroundColor: '#fff', color: '#12423f' }}>PL</div>
           <div className="leading-tight min-w-0"><p className="text-[9px] font-bold tracking-wider text-white/40 uppercase">Restauracja</p><p className="text-[13px] font-semibold text-white truncate">PLK 201043 · Galeria Krakowska</p></div>
         </div>
       )}
@@ -247,7 +254,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
       <nav className="flex-1 overflow-y-auto px-3 pb-2 space-y-3">
         {sekcje.map((g) => (
           <div key={g.naglowek}>
-            {!zwiniety && <p className="px-2 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-[0.14em] text-white/35">{g.naglowek}</p>}
+            {!zwiniety && <p className="px-2 pt-3 pb-1 text-[8.5px] font-bold uppercase" style={{ letterSpacing: '1.25px', color: '#779a97' }}>{g.naglowek}</p>}
             {zwiniety && <div className="my-2 mx-3 border-t border-white/10" />}
             <div className="space-y-0.5">
               {g.items.map((m) => {
@@ -255,12 +262,14 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
                 return (
                   <button key={m.id} title={zwiniety ? m.label : undefined}
                     onClick={() => { if (m.wr) { setWrTab && setWrTab(m.wr); bumpWr && bumpWr(); } setPage(m.page || m.id); }}
-                    className={`w-full flex items-center gap-2.5 rounded-xl text-left transition-all ${zwiniety ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'} ${aktywny ? 'text-white shadow-sm' : 'text-white/65 hover:bg-white/5 hover:text-white'}`}
-                    style={aktywny ? { backgroundColor: 'rgba(255,255,255,.13)', boxShadow: `inset 3px 0 0 ${colors.primary.bg}` } : undefined}>
+                    className={`w-full flex items-center gap-2.5 text-left transition-all ${zwiniety ? 'justify-center px-0' : 'px-3'}`} 
+                    style={{ height: 41, borderRadius: 9, fontSize: 12.5, color: aktywny ? '#fff' : '#a9c0be', backgroundColor: aktywny ? 'rgba(255,255,255,.12)' : 'transparent', boxShadow: aktywny ? 'inset 3px 0 0 #b8d0cd' : 'none' }}
+                    onMouseEnter={(e) => { if (!aktywny) { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,.06)'; e.currentTarget.style.color = '#fff'; } }}
+                    onMouseLeave={(e) => { if (!aktywny) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#a9c0be'; } }}>
                     <m.icon className="w-[18px] h-[18px] shrink-0" />
                     {!zwiniety && <span className="text-[13.5px] font-medium truncate">{m.label}</span>}
-                    {m.badge > 0 && !zwiniety && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#E2571E' }}>{m.badge}</span>}
-                    {m.badge > 0 && zwiniety && <span className="absolute translate-x-3 -translate-y-2 w-2 h-2 rounded-full" style={{ backgroundColor: '#E2571E' }} />}
+                    {m.badge > 0 && !zwiniety && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#d87b52' }}>{m.badge}</span>}
+                    {m.badge > 0 && zwiniety && <span className="absolute translate-x-3 -translate-y-2 w-2 h-2 rounded-full" style={{ backgroundColor: '#d87b52' }} />}
                   </button>
                 );
               })}
@@ -270,8 +279,8 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
       </nav>
 
       {/* użytkownik */}
-      <div className={`m-3 mt-0 px-3 py-2.5 rounded-xl flex items-center gap-2.5 ${zwiniety ? 'justify-center px-0' : ''}`} style={{ backgroundColor: 'rgba(255,255,255,.07)' }}>
-        <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0" style={{ backgroundColor: colors.primary.medium }}>{role === 'asm' ? 'AS' : 'KZ'}</div>
+      <div className={`mx-3 mt-0 px-2 pt-3 pb-2 flex items-center gap-2.5 ${zwiniety ? 'justify-center px-0' : ''}`} style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
+        <div className="w-[31px] h-[31px] rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ backgroundColor: '#d4e1df', color: '#12423f' }}>{role === 'asm' ? 'AS' : 'KZ'}</div>
         {!zwiniety && (<>
           <div className="leading-tight min-w-0 flex-1"><p className="text-[13px] font-semibold text-white truncate">{role === 'asm' ? 'ASM' : 'Kierownik zmiany'}</p><p className="text-[10px] text-white/45">{role === 'asm' ? 'pełny dostęp' : 'grafik i wydruk'}</p></div>
           <button onClick={logout} title="Wyloguj się" className="text-red-300 hover:text-red-400 shrink-0"><LogOut className="w-[17px] h-[17px]" /></button>
