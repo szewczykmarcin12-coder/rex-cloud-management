@@ -153,30 +153,53 @@ const Login = ({ onLogin }) => {
   const [login, setLogin] = useState('');
   const [haslo, setHaslo] = useState('');
   const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
+  const [reset, setReset] = useState(false);
   const [loading, setLoading] = useState(false);
   const submit = async (e) => {
-    e.preventDefault(); setErr(''); setLoading(true);
+    e.preventDefault(); setErr(''); setInfo(''); setLoading(true);
     try {
-      const r = await api('/admin-auth', 'POST', { login, password: haslo });
-      if (r.success) { const un = r.userName || login.trim() || 'ASM'; store.set('admin_session', { at: Date.now(), role: r.role, userName: un }); onLogin(r.role, un); }
-      else setErr(r.error || 'Błąd logowania');
-    } catch { setErr('Błąd połączenia z serwerem'); }
+      if (reset) {
+        const r = await api('/admin-auth', 'POST', { action: 'reset-request', login });
+        if (r.success) { setInfo(r.message || 'Zgłoszenie wysłane do ASM.'); setReset(false); }
+        else setErr(r.error || 'Błąd zgłoszenia');
+      } else {
+        const r = await api('/admin-auth', 'POST', { login, password: haslo });
+        if (r.success) { const un = r.userName || login.trim() || 'ASM'; store.set('admin_session', { at: Date.now(), role: r.role, userName: un }); onLogin(r.role, un); }
+        else setErr(r.error || 'Błąd logowania');
+      }
+    } catch (e2) { setErr((e2 && e2.message) || 'Błąd połączenia z serwerem'); }
     setLoading(false);
   };
+  const pole = "w-full pl-11 pr-4 py-3.5 rounded-lg border bg-white text-[15px] focus:outline-none focus:ring-2";
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0d3431, ${colors.primary.darkest})` }}>
-      <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center gap-3 mb-12"><div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-8 h-8 text-white" /></div><div><span className="text-white text-3xl font-light">REX</span><span className="text-3xl font-light ml-2" style={{ color: colors.primary.bg }}>Cloud</span></div></div>
-        <div className="bg-white rounded-2xl p-8">
-          <div className="flex items-center justify-center gap-2 mb-2"><Lock className="w-5 h-5" style={{ color: colors.primary.medium }} /><h2 className="text-2xl font-semibold" style={{ color: colors.primary.darkest }}>Panel Administratora</h2></div>
-          <p className="text-center text-sm mb-5" style={{ color: colors.primary.light }}>Zaloguj się kontem — poziom dostępu wynika z uprawnień konta.</p>
-          {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
-          <form onSubmit={submit} className="space-y-4">
-            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>Login</label><input type="text" value={login} onChange={e => setLogin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="np. PLPLK201043" disabled={loading} autoFocus /></div>
-            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN / hasło</label><input type="password" value={haslo} onChange={e => setHaslo(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="••••••" disabled={loading} /></div>
-            <button type="submit" disabled={loading} className="w-full text-white font-semibold py-3 rounded-xl" style={{ backgroundColor: loading ? colors.primary.light : colors.primary.medium }}>{loading ? 'Sprawdzam...' : 'Zaloguj się'}</button>
-          </form>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#f0f2f2' }}>
+      <div className="w-full max-w-md">
+        <div className="flex items-center justify-center gap-3 mb-10">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#12423f' }}><Cloud className="w-7 h-7 text-white" /></div>
+          <span className="text-[26px] font-bold tracking-[0.35em]" style={{ color: '#12423f' }}>REX</span>
         </div>
+        {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
+        {info && <div className="p-3 rounded-lg mb-4 text-sm" style={{ backgroundColor: '#e8f2ef', color: '#12655B' }}>{info}</div>}
+        <form onSubmit={submit} className="space-y-4">
+          <div className="relative">
+            <Users className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#b3bebf' }} />
+            <input type="text" value={login} onChange={(e) => setLogin(e.target.value)} className={pole} style={{ borderColor: '#dfe6e5', color: '#162523' }} placeholder="Login" disabled={loading} autoFocus />
+          </div>
+          {!reset && (
+            <div className="relative">
+              <Lock className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#b3bebf' }} />
+              <input type="password" value={haslo} onChange={(e) => setHaslo(e.target.value)} className={pole} style={{ borderColor: '#dfe6e5', color: '#162523' }} placeholder="PIN / hasło" disabled={loading} />
+            </div>
+          )}
+          <button type="button" onClick={() => { setReset(!reset); setErr(''); setInfo(''); }} className="text-[13.5px] font-medium" style={{ color: '#315f5b' }}>
+            {reset ? '← Wróć do logowania' : 'Nie pamiętasz hasła?'}
+          </button>
+          <button type="submit" disabled={loading || !login.trim()} className="w-full text-white font-semibold py-3.5 rounded-lg text-[15px] disabled:opacity-50" style={{ backgroundColor: '#12423f' }}>
+            {loading ? 'Chwila…' : reset ? 'Wyślij zgłoszenie resetu do ASM' : 'Zaloguj się'}
+          </button>
+          {reset && <p className="text-[12px] text-center" style={{ color: '#71817f' }}>ASM zobaczy Twoje zgłoszenie w panelu, zresetuje hasło i przekaże Ci tymczasowy PIN. Przy pierwszym logowaniu w aplikacji pracownika ustawisz własny.</p>}
+        </form>
       </div>
     </div>
   );
@@ -277,6 +300,8 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
 
 const Dashboard = ({ data, setPage, userName }) => {
   const [mkeyS, setMkeyS] = useState(null);
+  const [resetReqsN, setResetReqsN] = useState(0);
+  useEffect(() => { api('/admin-auth', 'GET').then((r) => { if (r && r.success) setResetReqsN((r.resetReqs || []).length); }).catch(() => {}); }, []);
   const msc = data.months || [];
   const mkey = mkeyS || (msc.length ? msc[msc.length - 1].key : null);
   const mShifts = mkey ? data.shifts.filter(s => (s.date || '').slice(0, 7) === mkey) : data.shifts;
@@ -371,6 +396,7 @@ const Dashboard = ({ data, setPage, userName }) => {
     otwarteZamiany > 0 && { ik: 'Z', txt: `Rozpatrz ${otwarteZamiany} zgłoszeń na giełdzie zamian`, tag: 'Zespół', go: 'swaps' },
     bezKontaN > 0 && { ik: 'K', txt: `Przypisz ${bezKontaN} nazw z grafiku do kont`, tag: 'Pracownicy', go: 'emps' },
     dniDoZamkniecia > 0 && { ik: 'T', txt: `Oznacz ${dniDoZamkniecia} minione dni jako Completed`, tag: 'Time & Attendance', go: 'wt' },
+    resetReqsN > 0 && { ik: 'H', txt: `${resetReqsN} ${resetReqsN === 1 ? 'zgłoszenie resetu hasła' : 'zgłoszenia resetu hasła'}`, tag: 'Ustawienia', go: 'settings', pilne: true },
   ].filter(Boolean);
 
   const stats = [
@@ -775,7 +801,24 @@ const SettingsPage = ({ data }) => {
   const [linkLogin, setLinkLogin] = useState('');
   const [linkPass, setLinkPass] = useState('');
   const [linkRola, setLinkRola] = useState('asm');
-  useEffect(() => { api('/admin-auth', 'GET').then((r) => { if (r && r.success) setLinked(r.linked || []); }).catch(() => {}); }, []);
+  const [resetReqs, setResetReqs] = useState([]);
+  useEffect(() => { api('/admin-auth', 'GET').then((r) => { if (r && r.success) { setLinked(r.linked || []); setResetReqs(r.resetReqs || []); } }).catch(() => {}); }, []);
+  const zresetujHaslo = async (rq) => {
+    const konto = (data.accounts || []).find((a) => String(a.login || '').toUpperCase() === rq.login);
+    if (!konto) return data.show('Nie znaleziono konta ' + rq.login, 'error');
+    if (!confirm(`Zresetować hasło konta ${rq.login} (${rq.name || konto.name})?`)) return;
+    try {
+      const r = await api('/accounts?action=reset', 'POST', { id: konto.id });
+      if (!r.success) return data.show(r.error || 'Błąd resetu', 'error');
+      await api('/admin-auth', 'POST', { action: 'reset-done', login: rq.login });
+      setResetReqs((v) => v.filter((x) => x.login !== rq.login));
+      alert(`Tymczasowe hasło dla ${r.login}: ${r.haslo}\nPrzekaż je pracownikowi — przy pierwszym logowaniu ustawi własne.`);
+      data.show('Hasło zresetowane', 'success');
+    } catch (e) { data.show((e && e.message) || 'Błąd', 'error'); }
+  };
+  const zamknijReq = async (rq) => {
+    try { await api('/admin-auth', 'POST', { action: 'reset-done', login: rq.login }); setResetReqs((v) => v.filter((x) => x.login !== rq.login)); } catch {}
+  };
   const powiaz = async () => {
     if (!linkLogin.trim() || !linkPass) return data.show('Podaj login konta i hasło ASM', 'error');
     try { const r = await api('/admin-auth', 'POST', { action: 'link', accountLogin: linkLogin.trim(), asmPassword: linkPass, role: linkRola });
@@ -851,6 +894,22 @@ const SettingsPage = ({ data }) => {
             <Btn onClick={changeAsm}>Zapisz poświadczenia ASM</Btn>
           </div>
         </div>
+
+        {resetReqs.length > 0 && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #d67943` }}>
+            <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Zgłoszenia resetu hasła <span className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white ml-1" style={{ backgroundColor: '#d87b52' }}>{resetReqs.length}</span></h3>
+            <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Zgłoszone z ekranu logowania. Reset generuje tymczasowe hasło do przekazania — pracownik ustawi własne przy pierwszym logowaniu.</p>
+            <div className="space-y-2">
+              {resetReqs.map((rq) => (
+                <div key={rq.login} className="flex items-center gap-3 px-3 py-2 rounded-lg flex-wrap" style={{ backgroundColor: '#fff2e8' }}>
+                  <div className="min-w-0 flex-1"><p className="text-sm font-mono font-bold" style={{ color: colors.primary.darkest }}>{rq.login}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{rq.name || '—'} · {new Date(rq.at).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p></div>
+                  <button onClick={() => zresetujHaslo(rq)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: '#12423f' }}>Resetuj hasło</button>
+                  <button onClick={() => zamknijReq(rq)} className="text-xs font-semibold" style={{ color: '#bd4f45' }}>Odrzuć</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #59807c` }}>
           <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Jeden profil — uprawnienia panelu per konto</h3>
