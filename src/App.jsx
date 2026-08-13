@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
-import { parseGrafik } from './parseGrafik.js';
+import { parseGrafik, exportPoziomy } from './parseGrafik.js';
 import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
 
@@ -16,7 +16,7 @@ const colors = {
 };
 
 const stationColors = {
-  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#E74C3C', 'KANAPKI / WRAPY': '#00A3E0',
+  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#bd4f45', 'KANAPKI / WRAPY': '#00A3E0',
   'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
   'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#64748B',
   'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#12423f', 'MGR FUNKCYJNE': '#455A64',
@@ -99,8 +99,8 @@ const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
 const dfmt = (ds) => { const d = new Date(ds); const dni = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb']; return `${dni[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const opisZmiany = (s) => `${dfmt(s.date)} · ${s.station} · ${s.start}–${s.end} (${s.hours}h)`;
 const statusZamiany = (s) => {
-  if (s.status === 'approved') return { txt: `Zatwierdzona — przejęła: ${s.approvedVolunteer}`, kol: '#2E9E5B', bg: '#e9f7ef' };
-  if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#E74C3C', bg: '#fdecea' };
+  if (s.status === 'approved') return { txt: `Zatwierdzona — przejęła: ${s.approvedVolunteer}`, kol: '#347363', bg: '#e8f2ef' };
+  if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#bd4f45', bg: '#fff0ed' };
   if (s.status === 'cancelled') return { txt: 'Anulowana', kol: '#94a3b8', bg: '#f1f5f9' };
   return s.volunteers.length ? { txt: `Zgłoszeń: ${s.volunteers.length}`, kol: '#F5B000', bg: '#fff8e6' } : { txt: 'Otwarta', kol: colors.primary.medium, bg: colors.primary.bgLight };
 };
@@ -125,7 +125,7 @@ const Btn = ({ children, variant = 'primary', icon: Icon, onClick, disabled, loa
   const vars = {
     primary: { bg: `linear-gradient(135deg, ${colors.primary.medium}, ${colors.primary.dark})`, text: 'white' },
     secondary: { bg: colors.primary.bg, text: colors.primary.dark },
-    danger: { bg: 'linear-gradient(135deg, #E74C3C, #c0392b)', text: 'white' },
+    danger: { bg: 'linear-gradient(135deg, #bd4f45, #c0392b)', text: 'white' },
     ghost: { bg: 'transparent', text: colors.primary.light },
     accent: { bg: `linear-gradient(135deg, ${colors.accent.dark}, ${colors.accent.medium})`, text: 'white' },
     success: { bg: 'linear-gradient(135deg, #7CB342, #558B2F)', text: 'white' }
@@ -134,7 +134,7 @@ const Btn = ({ children, variant = 'primary', icon: Icon, onClick, disabled, loa
   return <button onClick={onClick} disabled={disabled || loading} className={`px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-all hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-sm ${className}`} style={{ background: v.bg, color: v.text }}>{loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : Icon && <Icon className="w-4 h-4" />}{children}</button>;
 };
 
-const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]); const bg = { success: '#7CB342', error: '#E74C3C', info: colors.primary.medium }[type] || colors.primary.medium; return <div className="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-lg z-50 flex items-center gap-2" style={{ backgroundColor: bg }}>{type === 'success' ? <Check className="w-5 h-5" /> : type === 'error' ? <X className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}{message}</div>; };
+const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]); const bg = { success: '#7CB342', error: '#bd4f45', info: colors.primary.medium }[type] || colors.primary.medium; return <div className="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-lg z-50 flex items-center gap-2" style={{ backgroundColor: bg }}>{type === 'success' ? <Check className="w-5 h-5" /> : type === 'error' ? <X className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}{message}</div>; };
 
 const StatCard = ({ label, value, icon: Icon, color }) => (<div className="bg-white rounded-2xl p-5 shadow-sm" style={{ borderLeft: `4px solid ${color}` }}><div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: color + '15', color }}><Icon className="w-5 h-5" /></div><p className="text-3xl font-bold mt-3" style={{ color: colors.primary.darkest }}>{value}</p><p className="text-sm mt-1" style={{ color: colors.primary.light }}>{label}</p></div>);
 
@@ -184,7 +184,7 @@ const Login = ({ onLogin }) => {
           <span className="text-[26px] font-bold tracking-[0.35em]" style={{ color: '#12423f' }}>REX</span>
         </div>
         {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
-        {info && <div className="p-3 rounded-lg mb-4 text-sm" style={{ backgroundColor: '#e8f2ef', color: '#12655B' }}>{info}</div>}
+        {info && <div className="p-3 rounded-lg mb-4 text-sm" style={{ backgroundColor: '#e8f2ef', color: '#315f5b' }}>{info}</div>}
         <form onSubmit={submit} className="space-y-4">
           <div className="relative">
             <Users className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#b3bebf' }} />
@@ -228,7 +228,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
       { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
     ] },
     { naglowek: 'Narzędzia', items: [
-      { id: 'import', label: 'Import z Excel', icon: Upload },
+      { id: 'import', label: 'Import / eksport godzin', icon: Upload },
       { id: 'print', label: 'Wydruk grafiku', icon: Printer },
     ] },
     { naglowek: 'System', items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
@@ -326,7 +326,7 @@ const Dashboard = ({ data, setPage, userName }) => {
     { label: 'Pracownicy restauracji', val: nCrew, sub: `w tym instruktorów: ${nInstr}`, color: '#3A6EA5' },
     { label: 'Młodsi kierownicy zmiany', val: ile('JSM'), color: '#7A5FB0' },
     { label: 'Kierownicy zmiany', val: ile('SM'), color: '#5C4B8A' },
-    { label: 'Zastępcy kierownika', val: ile('ASM'), color: '#2F6FB5' },
+    { label: 'Zastępcy kierownika', val: ile('ASM'), color: '#3f6f91' },
     { label: 'Kierownik restauracji', val: ile('RGM'), color: '#12423f' },
   ];
   // Wykresy z Pulpitu — na danych bieżącego miesiąca
@@ -402,6 +402,54 @@ const Dashboard = ({ data, setPage, userName }) => {
     dniDoZamkniecia > 0 && { ik: 'T', txt: `Oznacz ${dniDoZamkniecia} minione dni jako Completed`, tag: 'Time & Attendance', go: 'wt' },
     resetReqsN > 0 && { ik: 'H', txt: `${resetReqsN} ${resetReqsN === 1 ? 'zgłoszenie resetu hasła' : 'zgłoszenia resetu hasła'}`, tag: 'Ustawienia', go: 'settings', pilne: true },
   ].filter(Boolean);
+
+  const [zakresD, setZakresD] = useState('tydzien');   // dzien | tydzien | miesiac
+  const [clockDzis, setClockDzis] = useState(null);
+  useEffect(() => { api('/clock', 'GET').then((r) => { if (r && r.success) setClockDzis(r); }).catch(() => {}); }, []);
+  const dniMies = (() => { const [Y, M] = dzis.slice(0, 7).split('-').map(Number); const n = new Date(Y, M, 0).getDate(); return Array.from({ length: n }, (_, i) => `${Y}-${String(M).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`); })();
+  const oknoDni = zakresD === 'dzien' ? [dzis] : zakresD === 'tydzien' ? tydzien : dniMies;
+  const aktNetto = (sx) => {
+    const rec = ((data.ts || {}).actuals || {})[wtKey(sx)];
+    const a = rec || { start: sx.start, end: sx.end, breaks: [] };
+    let sp = wtToMin(a.end) - wtToMin(a.start); if (sp <= 0) sp += 1440;
+    let br = 0; (a.breaks || []).forEach((b) => { if (!b.platna) { let x = wtToMin(b.do) - wtToMin(b.od); if (x < 0) x += 1440; br += x; } });
+    return Math.max(sp - br, 0) / 60;
+  };
+  const complMap = (data.ts || {}).completed || {};
+  const dStat = oknoDni.map((d) => {
+    const zs = data.shifts.filter((x) => x.date === d && !jestInstruktor(x));
+    const plan = zs.reduce((a, x) => a + godzZ(x), 0);
+    const zamkniety = !!complMap[d];
+    const akt = (d < dzis || zamkniety) && plan > 0 ? zs.reduce((a, x) => a + aktNetto(x), 0) : null;
+    const sp = salesAll[d] || 0;
+    return { d, plan, akt, sp, splh: sp && plan ? sp / plan : null, zamkniety };
+  });
+  const maxBar = Math.max(1, ...dStat.map((x) => Math.max(x.plan, x.akt || 0)));
+  const etD = (d, i) => (oknoDni.length <= 1 ? d.slice(8) + '.' + d.slice(5, 7) : oknoDni.length <= 7 ? ['Pn', 'Wt', 'Sr', 'Cz', 'Pt', 'So', 'Nd'][i] : String(+d.slice(8)));
+  // SPLH lista (dni z danymi sprzedazy; max 10 ostatnich)
+  const splhDni = dStat.filter((x) => x.splh).slice(-10);
+  const maxSplh = Math.max(420, ...splhDni.map((x) => x.splh));
+  const najSplh = splhDni.reduce((a, x) => (!a || x.splh > a.splh ? x : a), null);
+  // struktura godzin okna wg funkcji kont
+  const struktH = {};
+  data.shifts.filter((x) => oknoDni.includes(x.date)).forEach((x) => {
+    if (jestInstruktor(x)) return;
+    let kat;
+    if (x.partner) kat = 'Szkolenia';
+    else { const k = poIdA.get(x.accountId) || poNazA.get(String(x.name || '').toUpperCase().trim()); const f = k && k.funkcja; kat = f === 'CREW' ? 'Crew' : (f === 'SM' || f === 'JSM') ? 'Kierownicy zmiany' : (f === 'ASM' || f === 'RGM') ? 'Management' : 'Bez konta'; }
+    struktH[kat] = (struktH[kat] || 0) + godzZ(x);
+  });
+  const struktKol = { Crew: '#315f5b', 'Kierownicy zmiany': '#59807c', Management: '#12423f', Szkolenia: '#96aaa9', 'Bez konta': '#d67943' };
+  const struktSuma = Object.values(struktH).reduce((a, v) => a + v, 0);
+  // status wykonania okna + odbicia z REX Clock (dzis)
+  const dniMinione = oknoDni.filter((d) => d <= dzis);
+  const dniZamkn = dniMinione.filter((d) => complMap[d]);
+  const pctWyk = dniMinione.length ? (dniZamkn.length / dniMinione.length) * 100 : 0;
+  const zamknZmian = data.shifts.filter((x) => complMap[x.date] && oknoDni.includes(x.date) && !jestInstruktor(x)).length;
+  const doWeryf = data.shifts.filter((x) => x.date < dzis && oknoDni.includes(x.date) && !complMap[x.date] && !jestInstruktor(x)).length;
+  const stanKontClock = {};
+  ((clockDzis && clockDzis.events) || []).forEach((e) => { stanKontClock[e.accountId] = e.type; });
+  const terazWPracy = Object.values(stanKontClock).filter((t) => t === 'clock_in' || t === 'break_end' || t === 'break_start').length;
 
   const stats = [
     { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
@@ -494,56 +542,87 @@ const Dashboard = ({ data, setPage, userName }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">{stats.map((s, i) => <StatCard key={i} label={s.label} value={s.val} icon={s.icon} color={s.color} />)}</div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #3A6EA5' }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2"><Users className="w-5 h-5" style={{ color: '#3A6EA5' }} /><h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>Struktura załogi</h3></div>
-            <button onClick={() => setPage('emps')} className="text-sm px-3 py-1.5 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Zarządzaj</button>
+
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-[15px] font-bold" style={{ color: '#162523' }}>Analityka okresu</h2>
+          <div className="flex gap-1 p-1 rounded-xl bg-white border" style={{ borderColor: '#dfe6e5' }}>
+            {[['dzien', 'Dzień'], ['tydzien', 'Tydzień'], ['miesiac', 'Miesiąc']].map(([k, l]) => (
+              <button key={k} onClick={() => setZakresD(k)} className="px-3.5 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: zakresD === k ? '#12423f' : 'transparent', color: zakresD === k ? 'white' : '#71817f' }}>{l}</button>
+            ))}
           </div>
-          {acc.length === 0 ? <p className="text-slate-400 text-sm">Brak kont. Dodaj pracowników w module „Pracownicy".</p> : (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {zaloga.map((z, i) => (
-                <div key={i} className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}>
-                  <p className="text-2xl font-bold" style={{ color: z.color }}>{z.val}</p>
-                  <p className="text-xs" style={{ color: colors.primary.dark }}>{z.label}</p>
-                  {z.sub && <p className="text-[11px] mt-0.5" style={{ color: '#B26A00' }}>{z.sub}</p>}
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className="rounded-2xl bg-white border p-5" style={{ borderColor: '#dfe6e5', boxShadow: '0 8px 24px rgba(18,66,63,.045)' }}>
+            <div className="flex items-baseline justify-between"><h3 className="text-[14px] font-bold" style={{ color: '#162523' }}>Plan vs wykonanie godzin</h3><span className="text-[10px]" style={{ color: '#71817f' }}><i className="inline-block w-2.5 h-2.5 rounded-sm mr-1" style={{ backgroundColor: '#96aaa9' }} />Plan <i className="inline-block w-2.5 h-2.5 rounded-sm ml-2 mr-1" style={{ backgroundColor: '#12423f' }} />Wykonanie</span></div>
+            <p className="text-[11px] mb-3" style={{ color: '#71817f' }}>godziny netto · wykonanie dla dni minionych lub zamkniętych</p>
+            <div className="flex items-end gap-1 h-40">
+              {dStat.map((x, i) => (
+                <div key={x.d} className="flex-1 flex flex-col items-center justify-end min-w-0" title={x.d + ' — plan ' + x.plan.toFixed(1) + ' h' + (x.akt != null ? ', wykonanie ' + x.akt.toFixed(1) + ' h' : '')}>
+                  <div className="flex items-end gap-[2px] w-full justify-center" style={{ height: 128 }}>
+                    <div className="rounded-t-sm" style={{ width: oknoDni.length > 7 ? 5 : 14, height: ((x.plan / maxBar) * 100) + '%', backgroundColor: '#96aaa9' }} />
+                    {x.akt != null && <div className="rounded-t-sm" style={{ width: oknoDni.length > 7 ? 5 : 14, height: ((x.akt / maxBar) * 100) + '%', backgroundColor: '#12423f' }} />}
+                  </div>
+                  {(oknoDni.length <= 7 || (i + 1) % 5 === 0) && <span className="text-[9px] font-bold mt-1" style={{ color: x.d === dzis ? '#12423f' : '#8a9997' }}>{etD(x.d, i)}</span>}
+                  {oknoDni.length <= 7 && <span className="text-[8px]" style={{ color: '#96aaa9' }}>{x.akt != null ? x.akt.toFixed(0) + ' / ' + x.plan.toFixed(0) + ' h' : x.plan.toFixed(0) + ' h plan'}</span>}
                 </div>
               ))}
             </div>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-3">
-          {dniWyk.length > 1 && (
-            <Karta tytul="Ewolucja sprzedaży narastająco" podtytul={`${mLabel} · odchylenie od średniej dziennej`}>
-              <Ewolucja dni={dniWyk} />
-            </Karta>
-          )}
-          <Karta tytul="Ranking dni tygodnia" podtytul="SPLH z grafiku (zł/rbh)">
-            <Ranking jednostka="zł/rbh" dane={rankingDni} />
-          </Karta>
-          <Karta tytul="Rozkład załogi wg godzin miesiąca" podtytul={`${Object.keys(zalogaMapD).length} osób · ${mLabel}`}>
-            <Histogram kubelki={(() => { const h = Object.values(zalogaMapD); return [
-              { l: '<40 h', n: h.filter((x) => x < 40).length },
-              { l: '40–80', n: h.filter((x) => x >= 40 && x < 80).length },
-              { l: '80–120', n: h.filter((x) => x >= 80 && x < 120).length },
-              { l: '120–160', n: h.filter((x) => x >= 120 && x < 160).length },
-              { l: '160+', n: h.filter((x) => x >= 160).length }]; })()} />
-          </Karta>
-          {dniWyk.length === 0 && <div className="rounded-xl p-6 text-sm text-slate-400 bg-white border" style={{ borderColor: colors.primary.bg }}>Zaimportuj sprzedaż w module Planowanie, aby zobaczyć tu również ewolucję sprzedaży i pełny SPLH.</div>}
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #26A69A' }}>
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <div className="flex items-center gap-2"><Clock className="w-5 h-5" style={{ color: '#26A69A' }} /><h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>Wyliczone godziny — {mLabel}</h3></div>
-            {msc.length > 0 && <select value={mkey || ''} onChange={(e) => setMkeyS(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{msc.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select>}
           </div>
-          <div className="grid grid-cols-4 gap-4">
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.dark }}>{gCrew.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny CREW</p></div>
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: '#e0f2f1' }}><p className="text-2xl font-bold" style={{ color: '#00796B' }}>{gSzk.toFixed(1)}</p><p className="text-sm" style={{ color: '#00897B' }}>Godziny szkoleniowe</p></div>
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-2xl font-bold" style={{ color: colors.primary.darkest }}>{gMgr.toFixed(1)}</p><p className="text-sm" style={{ color: colors.primary.light }}>Godziny MANAGER{gManual ? ` (+${gManual.toFixed(0)} ręcznie)` : ''}</p></div>
-            <div className="rounded-xl p-4 text-center" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{(gCrew + gSzk + gMgr).toFixed(1)}</p><p className="text-sm" style={{ color: colors.accent.dark }}>RAZEM</p></div>
+
+          <div className="rounded-2xl bg-white border p-5" style={{ borderColor: '#dfe6e5', boxShadow: '0 8px 24px rgba(18,66,63,.045)' }}>
+            <h3 className="text-[14px] font-bold" style={{ color: '#162523' }}>SPLH dzienny</h3>
+            <p className="text-[11px] mb-3" style={{ color: '#71817f' }}>sprzedaż / plan rbh · cel ≥ 420 zł{zakresD === 'miesiac' ? ' · ostatnie dni z danymi' : ''}</p>
+            {splhDni.length === 0 && <p className="text-[12px] py-6 text-center" style={{ color: '#96aaa9' }}>Brak danych sprzedaży w tym okresie — zaimportuj sprzedaż w Planowaniu.</p>}
+            <div className="space-y-2">
+              {splhDni.map((x) => (
+                <div key={x.d} className="flex items-center gap-2">
+                  <span className="w-10 text-[10px] font-bold shrink-0" style={{ color: '#71817f' }}>{zakresD === 'tydzien' && tydzien.includes(x.d) ? ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][tydzien.indexOf(x.d)] : x.d.slice(8) + '.' + x.d.slice(5, 7)}</span>
+                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#eef2f1' }}><div className="h-full rounded-full" style={{ width: Math.min((x.splh / maxSplh) * 100, 100) + '%', backgroundColor: x.splh >= 420 ? '#315f5b' : '#d67943' }} /></div>
+                  <span className="w-10 text-right text-[11px] font-bold" style={{ color: '#162523' }}>{Math.round(x.splh)}</span>
+                </div>
+              ))}
+            </div>
+            {najSplh && <div className="mt-3 px-3 py-2 rounded-lg text-[11px] font-semibold" style={{ backgroundColor: '#eef2f1', color: '#315f5b' }}>Najlepszy wynik: {najSplh.d.slice(8)}.{najSplh.d.slice(5, 7)} · {Math.round(najSplh.splh)} SPLH</div>}
+          </div>
+
+          <div className="rounded-2xl bg-white border p-5" style={{ borderColor: '#dfe6e5', boxShadow: '0 8px 24px rgba(18,66,63,.045)' }}>
+            <h3 className="text-[14px] font-bold" style={{ color: '#162523' }}>Struktura godzin</h3>
+            <p className="text-[11px] mb-3" style={{ color: '#71817f' }}>plan {struktSuma.toFixed(1).replace('.', ',')} h według funkcji</p>
+            {struktSuma > 0 ? (
+              <div className="flex items-center gap-5 flex-wrap">
+                <svg width="150" height="150" viewBox="0 0 120 120">
+                  {(() => { let acc = 0; const C = 2 * Math.PI * 45; return Object.entries(struktH).map(([k, v]) => { const fr = v / struktSuma; const el = <circle key={k} cx="60" cy="60" r="45" fill="none" stroke={struktKol[k] || '#b3bebf'} strokeWidth="16" strokeDasharray={(fr * C) + ' ' + C} strokeDashoffset={-acc * C} transform="rotate(-90 60 60)" />; acc += fr; return el; }); })()}
+                  <text x="60" y="58" textAnchor="middle" fontSize="17" fontWeight="700" fill="#162523">{struktSuma.toFixed(0)}</text>
+                  <text x="60" y="72" textAnchor="middle" fontSize="8" fill="#8a9997">godzin</text>
+                </svg>
+                <div className="flex-1 min-w-[180px] space-y-1.5">
+                  {Object.entries(struktH).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: struktKol[k] || '#b3bebf' }} /><span className="flex-1 text-[12px] font-semibold" style={{ color: '#162523' }}>{k}<span className="block text-[9px] font-normal" style={{ color: '#96aaa9' }}>{v.toFixed(1).replace('.', ',')} h</span></span><span className="text-[11px] font-bold" style={{ color: '#315f5b' }}>{Math.round((v / struktSuma) * 100)}%</span></div>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="text-[12px] py-6 text-center" style={{ color: '#96aaa9' }}>Brak zmian w tym okresie.</p>}
+          </div>
+
+          <div className="rounded-2xl bg-white border p-5" style={{ borderColor: '#dfe6e5', boxShadow: '0 8px 24px rgba(18,66,63,.045)' }}>
+            <h3 className="text-[14px] font-bold" style={{ color: '#162523' }}>Status wykonania</h3>
+            <p className="text-[11px] mb-3" style={{ color: '#71817f' }}>zamykanie okresu + odbicia z REX Clock (dziś)</p>
+            <div className="flex items-center gap-5 flex-wrap">
+              <svg width="130" height="130" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="45" fill="none" stroke="#eef2f1" strokeWidth="14" />
+                <circle cx="60" cy="60" r="45" fill="none" stroke="#315f5b" strokeWidth="14" strokeDasharray={((pctWyk / 100) * 2 * Math.PI * 45) + ' ' + (2 * Math.PI * 45)} transform="rotate(-90 60 60)" strokeLinecap="round" />
+                <text x="60" y="58" textAnchor="middle" fontSize="19" fontWeight="700" fill="#162523">{Math.round(pctWyk)}%</text>
+                <text x="60" y="72" textAnchor="middle" fontSize="8" fill="#8a9997">dni zamkniętych</text>
+              </svg>
+              <div className="flex-1 grid grid-cols-3 gap-2 min-w-[240px]">
+                <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: '#315f5b' }}>{zamknZmian}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>zamknięte zmiany</p></div>
+                <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: doWeryf ? '#fff2e8' : '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: doWeryf ? '#a46135' : '#315f5b' }}>{doWeryf}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>do weryfikacji</p></div>
+                <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: '#12423f' }}>{clockDzis ? terazWPracy : '—'}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>teraz w pracy</p></div>
+              </div>
+            </div>
+            <button onClick={() => setPage && setPage('wt')} className="mt-4 w-full py-2.5 rounded-lg text-[12.5px] font-semibold border flex items-center justify-center gap-1.5" style={{ borderColor: '#dfe6e5', color: '#12423f' }}>Przejdź do Actual <ChevronRight size={14} /></button>
           </div>
         </div>
 
@@ -568,15 +647,6 @@ const Dashboard = ({ data, setPage, userName }) => {
           </div>
         )}
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${colors.accent.dark}` }}>
-          <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Szybkie akcje</h3>
-          <div className="flex flex-wrap gap-3">
-            <Btn icon={Upload} onClick={() => setPage('import')}>Importuj grafik z Excel</Btn>
-            <Btn variant="accent" icon={Printer} onClick={() => setPage('print')}>Drukuj grafik</Btn>
-            <Btn variant="secondary" icon={LayoutGrid} onClick={() => setPage('wt')}>Podgląd grafiku</Btn>
-            <Btn variant="secondary" icon={RefreshCw} onClick={data.sync} loading={data.loading}>Odśwież</Btn>
-          </div>
-        </div>
         {data.shifts.length === 0 && (
           <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
             <FileSpreadsheet className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.light }} />
@@ -594,6 +664,7 @@ const Dashboard = ({ data, setPage, userName }) => {
 
 const ImportPage = ({ data }) => {
   const [preview, setPreview] = useState(null);
+  const [expM, setExpM] = useState(() => { const m = (data.months || []); return m.length ? m[m.length - 1].key : ''; });
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef();
@@ -621,18 +692,30 @@ const ImportPage = ({ data }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Import z Excel" subtitle="Wczytaj matrycę grafiku (GRAFIK_CREW.xlsx)" />
+      <Header title="Import / eksport godzin" subtitle="Format poziomy: A1 = rok, pary kolumn DD/MM (start / koniec), wiersze = pracownicy" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="bg-white rounded-2xl p-8 shadow-sm">
           <div className="border-2 border-dashed rounded-2xl p-10 text-center transition-colors" style={{ borderColor: colors.primary.bg }}
             onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
             <FileSpreadsheet className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.medium }} />
-            <p className="font-semibold mb-1" style={{ color: colors.primary.darkest }}>Przeciągnij plik Excel tutaj</p>
-            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>plik .xlsx (matryca) lub .csv (z przycisku „Eksportuj grafik")</p>
+            <p className="font-semibold mb-1" style={{ color: colors.primary.darkest }}>Import: przeciągnij plik w formacie poziomym</p>
+            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>grafik_planowany_import_poziomy_RRRR_M.xlsx — dokładnie taki, jaki generuje sekcja Eksport poniżej</p>
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.csv" className="hidden" onChange={e => handleFile(e.target.files[0])} />
             <div className="flex justify-center"><Btn icon={Upload} loading={parsing} onClick={() => fileRef.current?.click()}>Wybierz plik</Btn></div>
           </div>
           {error && <div className="mt-4 bg-red-50 text-red-600 p-4 rounded-xl flex items-start gap-2"><AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" /><span className="text-sm">{error}</span></div>}
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #59807c' }}>
+          <h3 className="text-lg font-semibold mb-1" style={{ color: colors.primary.darkest }}>Eksport grafiku (format poziomy)</h3>
+          <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Zapisuje wybrany miesiąc do pliku w tym samym formacie, który przyjmuje import: wiersz na osobę, para kolumn start/koniec na każdy dzień. Przy kilku zmianach jednego dnia eksportowana jest pierwsza wg godziny startu; wpisy instruktorskie są pomijane.</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <select value={expM} onChange={(e) => setExpM(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+              {(data.months || []).map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+            <Btn icon={Download} onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami)`, 'success'); }}>Pobierz XLSX</Btn>
+          </div>
+          {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w WorkRhythm albo zaimportuj plik.</p>}
         </div>
 
         {preview && (
@@ -883,7 +966,7 @@ const SettingsPage = ({ data }) => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #E74C3C` }}>
+        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #bd4f45` }}>
           <h3 className="text-lg font-bold mb-2" style={{ color: colors.primary.darkest }}>Strefa zagrożenia</h3>
           <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Usuń cały grafik z bazy danych.</p>
           <Btn variant="danger" icon={Trash2} onClick={clearSchedule} loading={data.loading}>Wyczyść grafik</Btn>
@@ -905,7 +988,7 @@ const Sekcja = ({ children, kolor, tytul, ikona: Ik }) => (
 
 const toISOdate = (v) => { if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`; const s = String(v); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`; const d = new Date(v); return isNaN(d) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 // ===================== OPTYMALIZACJA (silnik MAPAL-style, sloty 30 min) =====================
-const OC = { cel: "#5C4B8A", silnik: "#E2571E", obsada: "#12655B", ok: "#12655B", warn: "#D08700", bad: "#B7362A" };
+const OC = { cel: "#5C4B8A", silnik: "#d67943", obsada: "#315f5b", ok: "#315f5b", warn: "#c06a35", bad: "#a03f37" };
 const S0 = 6, NS = 48;                       // doba operacyjna 06:00 → 06:00
 const sl = (h) => (h - S0) * 2;
 const hmS = (i) => { const t = (S0 * 60 + i * 30) % 1440; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
@@ -926,11 +1009,11 @@ const KC = {
   22: [3,3,3,3,4,3,4], 23: [3,3,3,3,3,3,3], 24: [3,3,3,3,3,3,3], 25: [1,1,1,1,1,1,1],
 };
 const SZAB = [
-  { n: "OTWARCIE 06–16", od: 6, do: 16, kol: "#2F6FB5" }, { n: "OTWARCIE 06–15", od: 6, do: 15, kol: "#2F6FB5" },
+  { n: "OTWARCIE 06–16", od: 6, do: 16, kol: "#3f6f91" }, { n: "OTWARCIE 06–15", od: 6, do: 15, kol: "#3f6f91" },
   { n: "KONTROLER I 07–15", od: 7, do: 15, kol: "#3D8AC7" }, { n: "DOSTAWA 07–12", od: 7, do: 12, kol: "#6B8E23" },
   { n: "DOSTAWA+SMAŻ 07–17", od: 7, do: 17, kol: "#6B8E23" }, { n: "DOSTAWA 07–15", od: 7, do: 15, kol: "#6B8E23" },
-  { n: "SMAŻENIE I 10–18", od: 10, do: 18, kol: "#B5482F" }, { n: "ŚRODEK 11–21", od: 11, do: 21, kol: "#E2571E" },
-  { n: "ŚRODEK 12–22", od: 12, do: 22, kol: "#E2571E" }, { n: "FLEX SZCZYT 12–20", od: 12, do: 20, kol: "#C0392B" },
+  { n: "SMAŻENIE I 10–18", od: 10, do: 18, kol: "#B5482F" }, { n: "ŚRODEK 11–21", od: 11, do: 21, kol: "#d67943" },
+  { n: "ŚRODEK 12–22", od: 12, do: 22, kol: "#d67943" }, { n: "FLEX SZCZYT 12–20", od: 12, do: 20, kol: "#C0392B" },
   { n: "ZAMKNIĘCIE 15–01", od: 15, do: 25, kol: "#5C4B8A" }, { n: "WSPARCIE WIECZ 16–24", od: 16, do: 24, kol: "#7C3AED" },
   { n: "ZAMKNIĘCIE 16–01", od: 16, do: 25, kol: "#5C4B8A" }, { n: "ZAMKNIĘCIE 17–02", od: 17, do: 26, kol: "#5C4B8A" },
   { n: "PREP 18–24", od: 18, do: 24, kol: "#8A8880" }, { n: "ZMYWAK 22–06", od: 22, do: 30, kol: "#4A4A48" },
@@ -1256,7 +1339,7 @@ const ForecastPlan = ({ data, setPage }) => {
                   <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
                   <span className="text-right font-medium" style={{ color: over ? OC.warn : under ? OC.ok : "#94a3b8" }}>{d >= 0 ? "+" : ""}{d.toFixed(1)}</span>
                   <span className="text-right" style={{ color: colors.primary.dark }}>{f0(x.splhE)}</span>
-                  <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: over ? "#fff4e0" : under ? "#e9f7ef" : "#f1f5f9", color: over ? OC.warn : under ? OC.ok : "#64748b" }}>{over ? "dołóż" : under ? "oszczędność" : "OK"}</span></span>
+                  <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: over ? "#fff4e0" : under ? "#e8f2ef" : "#f1f5f9", color: over ? OC.warn : under ? OC.ok : "#64748b" }}>{over ? "dołóż" : under ? "oszczędność" : "OK"}</span></span>
                 </div>); })}
             </div></div>
           </Sekcja>
@@ -1357,7 +1440,7 @@ const ForecastPlan = ({ data, setPage }) => {
 
         {tab === "prognoza" && (<>
           {!PRED ? (
-            <Sekcja kolor="#D08700" tytul="Brak historii sprzedaży">
+            <Sekcja kolor="#c06a35" tytul="Brak historii sprzedaży">
               <p className="text-sm" style={{ color: colors.primary.dark }}>Aby prognozować kolejny miesiąc, zaimportuj najpierw raport „Sales Day by Day" z co najmniej kilku tygodni. Im dłuższa historia, tym stabilniejszy profil dni tygodnia i trend.</p>
             </Sekcja>
           ) : (<>
@@ -1392,7 +1475,7 @@ const ForecastPlan = ({ data, setPage }) => {
                     <span className="text-right" style={{ color: colors.primary.darkest }}>{f0(x.sprzedaz)}</span>
                     <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
                     <span className="text-right" style={{ color: colors.primary.dark }}>{fH1(x.akt)}</span>
-                    <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: x.jestEst ? "#fff4e0" : "#e9f7ef", color: x.jestEst ? "#B26A00" : "#12655B" }}>{x.jestEst ? "prognoza" : "dane"}</span></span>
+                    <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: x.jestEst ? "#fff4e0" : "#e8f2ef", color: x.jestEst ? "#B26A00" : "#315f5b" }}>{x.jestEst ? "prognoza" : "dane"}</span></span>
                   </div>
                 ))}
               </div></div>
@@ -1507,7 +1590,7 @@ const ForecastPlan = ({ data, setPage }) => {
 
 
 // ===================== PULPIT WSKAŹNIKÓW (wykresy wzorowane na GIR/MAPAL) =====================
-const PC = { bg: '#F5F4F0', card: '#FFFFFF', line: '#DEDCD5', ink: '#1C1E21', mute: '#8C8A83', accent: '#E2571E', cel: '#5C4B8A', plan: '#2F6FB5', dir: '#B5482F', ind: '#6B8E23', bad: '#B7362A', ok: '#12655B' };
+const PC = { bg: '#F5F4F0', card: '#FFFFFF', line: '#DEDCD5', ink: '#1C1E21', mute: '#8C8A83', accent: '#d67943', cel: '#5C4B8A', plan: '#3f6f91', dir: '#B5482F', ind: '#6B8E23', bad: '#a03f37', ok: '#315f5b' };
 const DNI_PELNE = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
 const f1 = (v) => (v || 0).toFixed(1).replace('.', ',');
 const hmL = (i) => String(Math.floor(((S0 * 60 + i * 30) % 1440) / 60)).padStart(2, '0');
@@ -1928,7 +2011,7 @@ const BudgetPlan = ({ data, setPage }) => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Dwa label="COL — koszt pracy (total)" akt={`${zl(colAkt)} zł`} plan={`${zl(col)} zł`} kolor={colors.primary.darkest} />
-            <Dwa label="COL % (koszt / sprzedaż)" akt={`${(sale ? colAkt / sale * 100 : 0).toFixed(2)}%`} plan={`${(colPct * 100).toFixed(2)}%`} kolor={(sale ? colAkt / sale : 0) > 0.2 ? '#E74C3C' : '#2E9E5B'} />
+            <Dwa label="COL % (koszt / sprzedaż)" akt={`${(sale ? colAkt / sale * 100 : 0).toFixed(2)}%`} plan={`${(colPct * 100).toFixed(2)}%`} kolor={(sale ? colAkt / sale : 0) > 0.2 ? '#bd4f45' : '#347363'} />
             <Dwa label="Godziny total" akt={`${godzAktTotal.toFixed(0)} h`} plan={`${godzTotal.toFixed(0)} h`} />
             <Dwa label="Godziny na dzień" akt={`${dni ? (godzAktTotal / dni).toFixed(1) : 0} h`} plan={`${dni ? (godzTotal / dni).toFixed(1) : 0} h`} />
           </div>
@@ -2004,29 +2087,29 @@ const BudgetPlan = ({ data, setPage }) => {
           <Sekcja kolor="#12423f" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#12423f', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
           <Sekcja kolor="#455A64" tytul="Cost of Labour — udział kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
 
-          <Sekcja kolor="#12655B" tytul="Produktywność (SPLH) — okres vs poprzedni">
+          <Sekcja kolor="#315f5b" tytul="Produktywność (SPLH) — okres vs poprzedni">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat v={`${f0(splhBiez)}`} l={`SPLH — ${months[mIdx]}`} sub={`${f0(sBiez)} zł / ${f0(hBiez)} h`} />
               <Stat v={`${f0(splhPoprz)}`} l={`SPLH — ${months[poprz.m]}`} sub={`${f0(sPoprz)} zł / ${f0(hPoprz)} h`} />
-              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: varPct >= 0 ? '#12655B' : '#B7362A' }}><p className="text-xl font-bold text-white">{varPct >= 0 ? '+' : ''}{varPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Zmiana r/r okresu</p></div>
+              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: varPct >= 0 ? '#315f5b' : '#a03f37' }}><p className="text-xl font-bold text-white">{varPct >= 0 ? '+' : ''}{varPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Zmiana r/r okresu</p></div>
               <Stat v={`${f0(hRazem ? sBiez / hRazem : 0)}`} l="SPLH wg planu budżetu" sub={`${f0(hRazem)} h w planie`} />
             </div>
             {!sBiez && <p className="text-xs text-slate-400 mt-2">Brak danych sprzedaży dla tego miesiąca — zaimportuj raport w module Optymalizacja.</p>}
           </Sekcja>
 
-          <Sekcja kolor="#2F6FB5" tytul="Godziny kontraktowe — stałe vs zmienne">
+          <Sekcja kolor="#3f6f91" tytul="Godziny kontraktowe — stałe vs zmienne">
             <BPBars unit="h" items={[
-              { label: 'Stałe (UOP)', value: hStale, n: koszty.filter((x) => x.e.umowa === 'UOP').length, color: '#2F6FB5' },
-              { label: 'Zmienne (UZ)', value: hZmienne, n: koszty.filter((x) => x.e.umowa === 'UZ').length, color: '#E2571E' },
+              { label: 'Stałe (UOP)', value: hStale, n: koszty.filter((x) => x.e.umowa === 'UOP').length, color: '#3f6f91' },
+              { label: 'Zmienne (UZ)', value: hZmienne, n: koszty.filter((x) => x.e.umowa === 'UZ').length, color: '#d67943' },
             ]} />
             <p className="text-xs text-slate-400 mt-2">Udział godzin stałych: <b style={{ color: colors.primary.dark }}>{hRazem ? (hStale / hRazem * 100).toFixed(1).replace('.', ',') : 0}%</b> — wyższy udział to mniejsza elastyczność obsady, ale i niższy koszt krańcowy godziny.</p>
           </Sekcja>
 
-          <Sekcja kolor="#D08700" tytul="Zgodność kontraktowa — godziny teoretyczne vs zaplanowane">
+          <Sekcja kolor="#c06a35" tytul="Zgodność kontraktowa — godziny teoretyczne vs zaplanowane">
             <div className="grid grid-cols-3 gap-3 mb-3">
               <Stat v={`${f0(zgodnosc.reduce((a, x) => a + x.teor, 0))} h`} l="Teoretyczne (z umów)" />
-              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#D08700' }}>{f0(sumNadmiar)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Nadmiar (Exceso)</p></div>
-              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#B7362A' }}>{f0(sumNiedobor)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Niedobór (Defecto)</p></div>
+              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#c06a35' }}>{f0(sumNadmiar)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Nadmiar (Exceso)</p></div>
+              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#a03f37' }}>{f0(sumNiedobor)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Niedobór (Defecto)</p></div>
             </div>
             <div className="overflow-x-auto"><div className="min-w-[560px]">
               <div className="grid grid-cols-[1.6fr_70px_1fr_1fr_1fr_1fr] gap-2 px-2 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Pracownik</span><span>Umowa</span><span className="text-right">Teoret.</span><span className="text-right">Plan</span><span className="text-right">Nadmiar</span><span className="text-right">Niedobór</span></div>
@@ -2036,8 +2119,8 @@ const BudgetPlan = ({ data, setPage }) => {
                   <span className="text-xs" style={{ color: colors.primary.light }}>{z.umowa}</span>
                   <span className="text-right">{z.teor.toFixed(0)}</span>
                   <span className="text-right">{z.plan.toFixed(0)}</span>
-                  <span className="text-right font-medium" style={{ color: z.nadmiar ? '#D08700' : '#cbd5e1' }}>{z.nadmiar ? z.nadmiar.toFixed(0) : '—'}</span>
-                  <span className="text-right font-medium" style={{ color: z.niedobor ? '#B7362A' : '#cbd5e1' }}>{z.niedobor ? z.niedobor.toFixed(0) : '—'}</span>
+                  <span className="text-right font-medium" style={{ color: z.nadmiar ? '#c06a35' : '#cbd5e1' }}>{z.nadmiar ? z.nadmiar.toFixed(0) : '—'}</span>
+                  <span className="text-right font-medium" style={{ color: z.niedobor ? '#a03f37' : '#cbd5e1' }}>{z.niedobor ? z.niedobor.toFixed(0) : '—'}</span>
                 </div>
               ))}
             </div></div>
@@ -2047,7 +2130,7 @@ const BudgetPlan = ({ data, setPage }) => {
             <div className="grid grid-cols-3 gap-3">
               <Stat v={`${f0(hUrlop)} h`} l="Urlopy" />
               <Stat v={`${f0(hZLA)} h`} l="Chorobowe (ZLA)" sub={`${emps.reduce((a, e) => a + (e.dniZLA || 0), 0)} dni`} />
-              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: absPct > 8 ? '#B7362A' : '#7A5FB0' }}><p className="text-xl font-bold text-white">{absPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Wskaźnik absencji</p></div>
+              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: absPct > 8 ? '#a03f37' : '#7A5FB0' }}><p className="text-xl font-bold text-white">{absPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Wskaźnik absencji</p></div>
             </div>
           </Sekcja>
         </>)}
@@ -2087,7 +2170,7 @@ const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: fal
 const CopyField = ({ label, value }) => {
   const [ok, setOk] = useState(false);
   const copy = () => { try { navigator.clipboard.writeText(value); } catch (e) {} setOk(true); setTimeout(() => setOk(false), 1500); };
-  return (<div className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ backgroundColor: colors.primary.bgLight }}><div><p className="text-[11px]" style={{ color: colors.primary.light }}>{label}</p><p className="font-mono font-bold text-lg" style={{ color: colors.primary.darkest }}>{value}</p></div><button onClick={copy} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white" style={{ backgroundColor: ok ? '#2E9E5B' : colors.primary.medium }}>{ok ? 'Skopiowano' : 'Kopiuj'}</button></div>);
+  return (<div className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ backgroundColor: colors.primary.bgLight }}><div><p className="text-[11px]" style={{ color: colors.primary.light }}>{label}</p><p className="font-mono font-bold text-lg" style={{ color: colors.primary.darkest }}>{value}</p></div><button onClick={copy} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white" style={{ backgroundColor: ok ? '#347363' : colors.primary.medium }}>{ok ? 'Skopiowano' : 'Kopiuj'}</button></div>);
 };
 
 const EmpForm = ({ init, onSave, onClose }) => {
@@ -2102,7 +2185,7 @@ const EmpForm = ({ init, onSave, onClose }) => {
         <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>{init.id ? 'Edytuj pracownika' : 'Nowy pracownik'}</h3><button onClick={onClose}><X size={20} className="text-slate-400" /></button></div>
         <div className="space-y-3">
           {!rest && (<>
-          <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Imię i nazwisko</label><input value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="np. Jan Kowalski" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: valid || !f.name ? colors.primary.bg : '#E74C3C' }} /></div>
+          <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Imię i nazwisko</label><input value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="np. Jan Kowalski" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: valid || !f.name ? colors.primary.bg : '#bd4f45' }} /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Nazwa w grafiku</label>
               <input value={f.grafikName} onChange={(e) => set({ grafikName: e.target.value })} placeholder={f.name.trim().split(/\s+/).pop() || 'nazwisko'} className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} />
@@ -2172,7 +2255,7 @@ const AdminEmployees = ({ data }) => {
               <span style={{ color: colors.primary.dark }}>{funkcjaLabel(e.funkcja)}{e.instruktor && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>instruktor</span>}</span>
               <span><span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.umowa}</span></span>
               <span className="text-right font-medium" style={{ color: colors.primary.darkest }}>{e.umowa === 'UOP' ? `${zl(e.stawka)}` : `${zl(e.stawka)}/h`}</span>
-              <span className="text-center">{e.zus ? <Check size={16} style={{ color: '#2E9E5B' }} className="inline" /> : <span className="text-slate-300">—</span>}</span>
+              <span className="text-center">{e.zus ? <Check size={16} style={{ color: '#347363' }} className="inline" /> : <span className="text-slate-300">—</span>}</span>
               <span className="font-mono font-semibold" style={{ color: colors.primary.dark }}>{e.login}</span>
               <span className="flex items-center justify-end gap-1">
                 <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', ') })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
@@ -2207,7 +2290,7 @@ const AdminEmployees = ({ data }) => {
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setCred(null)} />
           <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center gap-2 mb-1"><div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e9f7ef' }}><Check size={20} style={{ color: '#2E9E5B' }} /></div><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>Konto gotowe</h3></div>
+            <div className="flex items-center gap-2 mb-1"><div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e8f2ef' }}><Check size={20} style={{ color: '#347363' }} /></div><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>Konto gotowe</h3></div>
             <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Dane logowania dla: <b style={{ color: colors.primary.dark }}>{cred.name}</b>. Przekaż je pracownikowi — PIN zmieni przy pierwszym logowaniu.</p>
             <div className="space-y-2"><CopyField label="Login" value={cred.login} /><CopyField label="PIN startowy" value={cred.haslo} /></div>
             <div className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: '#fff8e6', color: '#8a6d1a' }}>Zapisz lub skopiuj PIN teraz — nie będzie później widoczny (przechowywany jako hash).</div>
@@ -2235,7 +2318,7 @@ const PlanPage = ({ data }) => {
   useEffect(() => { setPlanLocal(p.planTotal ? String(p.planTotal) : ''); }, [ym, p.planTotal]);
   const nadmiar = p.planTotal > 0 ? p.total - p.planTotal : 0;
   const pct = p.planTotal > 0 ? Math.min(100, (p.total / p.planTotal) * 100) : 0;
-  const kolorStanu = p.planTotal === 0 ? colors.primary.light : nadmiar > 0 ? '#E74C3C' : (p.total >= p.planTotal * 0.95 ? '#F5B000' : '#2E9E5B');
+  const kolorStanu = p.planTotal === 0 ? colors.primary.light : nadmiar > 0 ? '#bd4f45' : (p.total >= p.planTotal * 0.95 ? '#F5B000' : '#347363');
   const topDni = (() => {
     const g = {};
     p.mShifts.forEach(s => { g[s.date] = (g[s.date] || 0) + godzZ(s); });
@@ -2270,12 +2353,12 @@ const PlanPage = ({ data }) => {
             </div>
           </div>
           {p.planTotal > 0 && (nadmiar > 0
-            ? <div className="rounded-xl p-4" style={{ backgroundColor: '#fdecea' }}>
-                <p className="font-semibold mb-1" style={{ color: '#E74C3C' }}>Przekroczenie planu o {nadmiar.toFixed(1)} h</p>
+            ? <div className="rounded-xl p-4" style={{ backgroundColor: '#fff0ed' }}>
+                <p className="font-semibold mb-1" style={{ color: '#bd4f45' }}>Przekroczenie planu o {nadmiar.toFixed(1)} h</p>
                 <p className="text-sm mb-2" style={{ color: colors.primary.dark }}>Sugerowane ścięcie: <b>{nadmiar.toFixed(1)} h</b>. Dni z największą liczbą godzin (kandydaci do redukcji):</p>
                 <div className="flex flex-wrap gap-2">{topDni.map(([d, h]) => <span key={d} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: 'white', color: colors.primary.dark }}>{d.slice(5)} — {h.toFixed(1)} h</span>)}</div>
               </div>
-            : <div className="rounded-xl p-3 text-sm" style={{ backgroundColor: '#e9f7ef', color: '#2E9E5B' }}>W ramach planu — pozostało {(p.planTotal - p.total).toFixed(1)} h.</div>)}
+            : <div className="rounded-xl p-3 text-sm" style={{ backgroundColor: '#e8f2ef', color: '#347363' }}>W ramach planu — pozostało {(p.planTotal - p.total).toFixed(1)} h.</div>)}
           <div className="grid grid-cols-4 gap-3 mt-4 text-center text-sm">
             <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bg }}><b>{p.crew.toFixed(1)}</b><br />CREW</div>
             <div className="rounded-lg p-2" style={{ backgroundColor: '#e0f2f1' }}><b>{p.szkol.toFixed(1)}</b><br />Szkoleniowe</div>
@@ -2401,7 +2484,7 @@ const WTBar = ({ start, end, color, breaks }) => {
   const width = (wtDur(start, end) / 1440) * 100;
   return (
     <div className="absolute top-0 h-full rounded" style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%`, backgroundColor: color }}>
-      {(breaks || []).map((b, i) => { const bl = ((wtRel(b.start) - wtRel(start) + 1440) % 1440) / wtDur(start, end) * 100; const bw = wtDur(b.start, b.end) / wtDur(start, end) * 100; return <div key={i} className="absolute top-0 h-full" style={{ left: `${bl}%`, width: `${Math.max(bw, 1)}%`, backgroundColor: b.platna === false ? '#E74C3C' : '#F5B000' }} title={`${b.type} ${b.start}-${b.end}`} />; })}
+      {(breaks || []).map((b, i) => { const bl = ((wtRel(b.start) - wtRel(start) + 1440) % 1440) / wtDur(start, end) * 100; const bw = wtDur(b.start, b.end) / wtDur(start, end) * 100; return <div key={i} className="absolute top-0 h-full" style={{ left: `${bl}%`, width: `${Math.max(bw, 1)}%`, backgroundColor: b.platna === false ? '#bd4f45' : '#F5B000' }} title={`${b.type} ${b.start}-${b.end}`} />; })}
     </div>
   );
 };
@@ -2504,7 +2587,7 @@ const ShiftCycles = ({ data }) => {
               <button disabled={robi} onClick={uruchom} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{robi ? 'Układam cykl…' : `Zastosuj cykl na ${ileTyg} tyg.`}</button>
               <span className="text-xs" style={{ color: colors.primary.light }}>Tygodnie: {Array.from({ length: ileTyg }, (_, i) => { const d = new Date(startTyg); d.setDate(d.getDate() + i * 7); return `${ymd(d).slice(8)}.${ymd(d).slice(5, 7)}`; }).join(' · ')}</span>
             </div>
-            {wynik && <p className="text-sm font-medium" style={{ color: '#12655B' }}>✓ Cykl ułożony: {wynik.ok}/{ileTyg} tygodni od {wynik.start}. Sprawdź w Schedule.</p>}
+            {wynik && <p className="text-sm font-medium" style={{ color: '#315f5b' }}>✓ Cykl ułożony: {wynik.ok}/{ileTyg} tygodni od {wynik.start}. Sprawdź w Schedule.</p>}
           </div>
         )}
       </div>
@@ -2556,7 +2639,7 @@ const WTTemplates = ({ data, weeks }) => {
                 <span className="text-xs" style={{ color: colors.primary.light }}>{t.sloty} slotów · {t.zmian} zmian · {Number(t.godzin).toFixed(0)} h/tydz.</span>
                 <span className="ml-auto flex gap-2">
                   <button onClick={() => otworzApply(t)} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zastosuj</button>
-                  <button onClick={() => window.confirm(`Usunąć szablon „${t.name}"?`) && data.deleteTemplate(t.id)} className="text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>Usuń</button>
+                  <button onClick={() => window.confirm(`Usunąć szablon „${t.name}"?`) && data.deleteTemplate(t.id)} className="text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Usuń</button>
                 </span>
               </div>
             ))}
@@ -2704,7 +2787,7 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
           <div className="px-3 py-2 text-[11px] font-bold uppercase" style={{ color: colors.primary.dark }}>Pracownik</div>
           {days.map((d) => { const dt = new Date(d); return (
             <button key={d} onClick={() => onDzien && onDzien(d)} title="Otwórz widok dnia" className="px-1 py-2 text-center border-l hover:bg-slate-50" style={{ borderColor: '#f1f5f9' }}>
-              <span className="block text-[11px] font-bold" style={{ color: [0, 6].includes(dt.getDay()) ? '#B7362A' : colors.primary.dark }}>{['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]} {dt.getDate()}</span>
+              <span className="block text-[11px] font-bold" style={{ color: [0, 6].includes(dt.getDay()) ? '#a03f37' : colors.primary.dark }}>{['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][dt.getDay()]} {dt.getDate()}</span>
             </button>
           ); })}
           <div className="px-2 py-2 text-[11px] font-bold uppercase text-right border-l" style={{ color: colors.primary.dark, borderColor: '#f1f5f9' }}>Σ tydzień</div>
@@ -2739,7 +2822,7 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
         </div>
         <div className="grid border-t-2" style={{ gridTemplateColumns: gridCols, borderColor: colors.primary.bg, backgroundColor: colors.primary.bgLight }}>
           <div className="px-3 py-2 text-[11px] font-bold" style={{ color: colors.primary.dark }}>Σ godzin dnia</div>
-          {days.map((d) => { const idealH = (() => { const dw = new Date(d).getDay(); const { dir, ind } = optRozbicie(0, 420, 3, 'krzywa', dw); return dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2; })(); const h = sumaDniaH(d); const kol = h < idealH * 0.95 ? '#B7362A' : h > idealH * 1.1 ? '#2F6FB5' : '#12655B'; return (
+          {days.map((d) => { const idealH = (() => { const dw = new Date(d).getDay(); const { dir, ind } = optRozbicie(0, 420, 3, 'krzywa', dw); return dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2; })(); const h = sumaDniaH(d); const kol = h < idealH * 0.95 ? '#a03f37' : h > idealH * 1.1 ? '#3f6f91' : '#315f5b'; return (
             <div key={d} className="px-1 py-1.5 text-center border-l" style={{ borderColor: '#eef2f7' }}>
               <span className="block text-[12px] font-bold leading-tight" style={{ color: kol }}>{h.toFixed(1).replace('.', ',')}</span>
               <span className="block text-[9px] leading-tight" style={{ color: colors.primary.light }}>potrzeba {idealH.toFixed(0)}</span>
@@ -2767,7 +2850,7 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
               <p className="text-xs" style={{ color: colors.primary.light }}>Czas trwania: <b style={{ color: colors.primary.darkest }}>{(() => { let a = plnMin(modal.start), b = plnMin(modal.end); if (b <= a) b += 1440; return ((b - a) / 60).toFixed(2).replace('.', ','); })()} h</b>{plnMin(modal.end) <= plnMin(modal.start) ? ' (przez północ)' : ''}</p>
             </div>
             <div className="flex items-center gap-2 mt-5">
-              {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>Usuń zmianę</button>}
+              {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Usuń zmianę</button>}
               <div className="ml-auto flex gap-2">
                 <button disabled={saving} onClick={() => setModal(null)} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
                 <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{saving ? 'Zapisuję…' : 'Zatwierdź'}</button>
@@ -2906,11 +2989,11 @@ const DayPlanner = ({ data, day, locked }) => {
           ['Plan (h)', planHDnia.toFixed(2).replace('.', ','), colors.primary.darkest],
           ['Wymagane (h)', cov96.requiredH.toFixed(2).replace('.', ','), colors.primary.darkest],
           ['Nadmiar', cov96.excessH.toFixed(2).replace('.', ','), cov96.excessH > 0.01 ? '#B26A00' : '#94a3b8'],
-          ['Niedobór', cov96.deficitH.toFixed(2).replace('.', ','), cov96.deficitH > 0.01 ? '#B7362A' : '#94a3b8'],
-          ['Pokrycie', `${cov96.coveragePct.toFixed(0)}%`, cov96.coveragePct >= 95 ? '#12655B' : '#B7362A'],
-          ['SPLH', sprzedazDnia && planHDnia ? f0(sprzedazDnia / planHDnia) : '—', sprzedazDnia && planHDnia && sprzedazDnia / planHDnia >= 420 ? '#12655B' : colors.primary.dark],
+          ['Niedobór', cov96.deficitH.toFixed(2).replace('.', ','), cov96.deficitH > 0.01 ? '#a03f37' : '#94a3b8'],
+          ['Pokrycie', `${cov96.coveragePct.toFixed(0)}%`, cov96.coveragePct >= 95 ? '#315f5b' : '#a03f37'],
+          ['SPLH', sprzedazDnia && planHDnia ? f0(sprzedazDnia / planHDnia) : '—', sprzedazDnia && planHDnia && sprzedazDnia / planHDnia >= 420 ? '#315f5b' : colors.primary.dark],
           ['Koszt', `${f0(kosztDnia)} zł`, colors.primary.dark],
-          ['COL', sprzedazDnia ? `${(kosztDnia / sprzedazDnia * 100).toFixed(1).replace('.', ',')}%` : '—', sprzedazDnia && kosztDnia / sprzedazDnia > 0.2 ? '#B7362A' : colors.primary.dark],
+          ['COL', sprzedazDnia ? `${(kosztDnia / sprzedazDnia * 100).toFixed(1).replace('.', ',')}%` : '—', sprzedazDnia && kosztDnia / sprzedazDnia > 0.2 ? '#a03f37' : colors.primary.dark],
         ].map(([l, v, k], i) => (
           <span key={i} className="flex items-baseline gap-1.5"><span className="text-[9px] uppercase font-semibold" style={{ color: colors.primary.light }}>{l}</span><span className="text-[13px] font-bold" style={{ color: k }}>{v}</span></span>
         ))}
@@ -2939,7 +3022,7 @@ const DayPlanner = ({ data, day, locked }) => {
                 {godzinyOsi.map((h) => {
                   const i1 = sl(h), v = Math.max(rw.arr[i1] || 0, rw.arr[i1 + 1] || 0);
                   let bg, kol = colors.primary.dark;
-                  if (rw.typ === 'p') { const need = Math.max(demand[i1] || 0, demand[i1 + 1] || 0); kol = v < need ? '#B7362A' : v > need ? '#2F6FB5' : '#12655B'; bg = v < need ? '#fbe9e7' : v > need ? '#e8f1fb' : '#e9f7ef'; }
+                  if (rw.typ === 'p') { const need = Math.max(demand[i1] || 0, demand[i1 + 1] || 0); kol = v < need ? '#a03f37' : v > need ? '#3f6f91' : '#315f5b'; bg = v < need ? '#fbe9e7' : v > need ? '#e8f1fb' : '#e8f2ef'; }
                   return <div key={h} className="flex-1 text-center border-l" style={{ borderColor: '#f1f5f9', backgroundColor: bg }} title={`${String(h % 24).padStart(2, '0')}:00 — ${rw.l}: ${v}`}><span className={`block text-[9px] leading-4 ${rw.typ === 'n' ? '' : 'font-bold'}`} style={{ color: rw.typ === 'n' ? '#94a3b8' : kol }}>{v || ''}</span></div>;
                 })}
               </div>
@@ -2950,13 +3033,13 @@ const DayPlanner = ({ data, day, locked }) => {
           <div className="w-56 shrink-0 px-3 py-1"><p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Pokrycie co 15 min</p><p className="text-[9px]" style={{ color: colors.primary.light }}>{slotSel != null ? `${v4SlotLabel(slotSel)} — podświetlono pracujących · kliknij ponownie, by wyczyścić` : 'kliknij slot, aby podświetlić osoby'}</p></div>
           <div className="flex-1 flex py-1.5 pr-1">
             {cov96.perSlot.map((sl2, i) => {
-              const kol = sl2.def > 0.01 ? '#B7362A' : sl2.exc > 0.01 ? '#E8A13A' : sl2.req > 0 ? '#2E9E5B' : '#e2e8f0';
+              const kol = sl2.def > 0.01 ? '#a03f37' : sl2.exc > 0.01 ? '#E8A13A' : sl2.req > 0 ? '#347363' : '#e2e8f0';
               return <button key={i} onClick={() => setSlotSel(slotSel === i ? null : i)} className="flex-1 mx-px rounded-sm" style={{ height: 12, backgroundColor: kol, outline: slotSel === i ? `2px solid ${colors.primary.darkest}` : 'none' }} title={`${v4SlotLabel(i)} — potrzeba ${sl2.req.toFixed(1)}, plan ${sl2.sch.toFixed(1)}, Δ ${(sl2.sch - sl2.req).toFixed(1)}`} />;
             })}
           </div>
         </div>
         <div className="flex" style={{ borderBottom: `2px solid ${colors.primary.bg}`, backgroundColor: 'white' }}>
-          <div className="w-56 shrink-0 px-3 py-1 flex flex-col justify-center"><p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Zapotrzebowanie vs plan</p><p className="text-[9px]" style={{ color: colors.primary.light }}><span style={{ color: colors.primary.darkest }}>■ wymagane</span> · <span style={{ color: '#E2571E' }}>■ w planie</span></p></div>
+          <div className="w-56 shrink-0 px-3 py-1 flex flex-col justify-center"><p className="text-[10px] font-bold uppercase" style={{ color: colors.primary.dark }}>Zapotrzebowanie vs plan</p><p className="text-[9px]" style={{ color: colors.primary.light }}><span style={{ color: colors.primary.darkest }}>■ wymagane</span> · <span style={{ color: '#d67943' }}>■ w planie</span></p></div>
           <div className="flex-1 pr-1">
             {(() => {
               const mx = Math.max(1, ...cov96.perSlot.map((q) => Math.max(q.req, q.sch)));
@@ -2965,7 +3048,7 @@ const DayPlanner = ({ data, day, locked }) => {
                 <svg viewBox="0 0 960 60" preserveAspectRatio="none" className="w-full" style={{ height: 60 }}>
                   {[0, 16, 32, 48, 64, 80].map((g) => <line key={g} x1={(g / 95) * 960} y1="4" x2={(g / 95) * 960} y2="56" stroke="#eef2f7" strokeWidth="1" />)}
                   <polyline points={cov96.perSlot.map((q, i) => pt(q.req, i)).join(' ')} fill="none" stroke={colors.primary.darkest} strokeWidth="1.6" />
-                  <polyline points={cov96.perSlot.map((q, i) => pt(q.sch, i)).join(' ')} fill="none" stroke="#E2571E" strokeWidth="1.6" />
+                  <polyline points={cov96.perSlot.map((q, i) => pt(q.sch, i)).join(' ')} fill="none" stroke="#d67943" strokeWidth="1.6" />
                 </svg>
               );
             })()}
@@ -2982,7 +3065,7 @@ const DayPlanner = ({ data, day, locked }) => {
                 onMouseDown={(e) => dragStart(w, e)} onMouseMove={(e) => dragMove(w, e)} onMouseUp={(e) => dragEnd(w, e)}
                 title={locked ? '' : 'Kliknij lub przeciągnij, aby dodać zmianę'}>
                 {drag && drag.key === w.key && (() => { const a = Math.min(drag.a, drag.b), b = Math.max(drag.a, drag.b, a + 1); return (
-                  <div className="absolute rounded-md pointer-events-none flex items-center justify-center" style={{ left: `${a / (2 * (PLN_HN - PLN_H0)) * 100}%`, width: `${(b - a) / (2 * (PLN_HN - PLN_H0)) * 100}%`, top: 5, bottom: 5, backgroundColor: 'rgba(226,87,30,.18)', border: '2px dashed #E2571E' }}>
+                  <div className="absolute rounded-md pointer-events-none flex items-center justify-center" style={{ left: `${a / (2 * (PLN_HN - PLN_H0)) * 100}%`, width: `${(b - a) / (2 * (PLN_HN - PLN_H0)) * 100}%`, top: 5, bottom: 5, backgroundColor: 'rgba(226,87,30,.18)', border: '2px dashed #d67943' }}>
                     <span className="text-[10px] font-bold" style={{ color: '#B7440F' }}>{plnClock(PLN_H0 * 60 + a * 30)}–{plnClock(PLN_H0 * 60 + b * 30)}</span>
                   </div>
                 ); })()}
@@ -3024,7 +3107,7 @@ const DayPlanner = ({ data, day, locked }) => {
               <p className="text-xs" style={{ color: colors.primary.light }}>Czas trwania: <b style={{ color: colors.primary.darkest }}>{(() => { let a = plnMin(modal.start), b = plnMin(modal.end); if (b <= a) b += 1440; return ((b - a) / 60).toFixed(2).replace('.', ','); })()} h</b>{plnMin(modal.end) <= plnMin(modal.start) ? ' (przez północ)' : ''}</p>
             </div>
             <div className="flex items-center gap-2 mt-5">
-              {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>Usuń zmianę</button>}
+              {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Usuń zmianę</button>}
               <div className="ml-auto flex gap-2">
                 <button disabled={saving} onClick={() => setModal(null)} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
                 <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{saving ? 'Zapisuję…' : 'Zatwierdź'}</button>
@@ -3157,9 +3240,9 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               return (
                 <div key={w.start} className="grid grid-cols-[1fr_110px_110px_110px_56px] px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#eef2f7', backgroundColor: idx % 2 ? '#f8fafc' : 'white' }}>
                   <button onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')} className="text-left font-medium hover:underline" style={{ color: colors.primary.darkest }}>{range(w)}<span className="text-xs text-slate-400 ml-2">({w.days.length} dni)</span></button>
-                  <span className="flex justify-center">{done ? <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e9f7ef' }}><Check size={15} style={{ color: '#2E9E5B' }} /></span> : <span className="text-slate-300">…</span>}</span>
-                  <span className="flex justify-center"><button onClick={toggleReviewed} title="Reviewed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.reviewed ? '#2E9E5B' : colors.primary.bg, backgroundColor: st.reviewed ? '#e9f7ef' : 'white' }}>{st.reviewed && <Check size={14} style={{ color: '#2E9E5B' }} />}</button></span>
-                  <span className="flex justify-center"><button onClick={toggleClosed} title="Closed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.closed ? '#E74C3C' : colors.primary.bg, backgroundColor: st.closed ? '#fdecea' : 'white' }}>{st.closed && <Check size={14} style={{ color: '#E74C3C' }} />}</button></span>
+                  <span className="flex justify-center">{done ? <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e8f2ef' }}><Check size={15} style={{ color: '#347363' }} /></span> : <span className="text-slate-300">…</span>}</span>
+                  <span className="flex justify-center"><button onClick={toggleReviewed} title="Reviewed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.reviewed ? '#347363' : colors.primary.bg, backgroundColor: st.reviewed ? '#e8f2ef' : 'white' }}>{st.reviewed && <Check size={14} style={{ color: '#347363' }} />}</button></span>
+                  <span className="flex justify-center"><button onClick={toggleClosed} title="Closed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.closed ? '#bd4f45' : colors.primary.bg, backgroundColor: st.closed ? '#fff0ed' : 'white' }}>{st.closed && <Check size={14} style={{ color: '#bd4f45' }} />}</button></span>
                   <span className="flex justify-center"><button onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')} className="w-7 h-7 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: colors.primary.medium }}><ChevronRight size={16} /></button></span>
                 </div>
               );
@@ -3196,10 +3279,10 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <Header title="WorkRhythm" subtitle={dateLabel(day)}>
-        {chip(weekDone(curWeek()), 'Completed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
-        {chip(st.reviewed, 'Reviewed', { bg: '#e9f7ef', fg: '#2E9E5B' })}
-        {chip(st.closed, 'Closed', { bg: '#fdecea', fg: '#E74C3C' })}
-        <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: ts.completed[day] ? '#2E9E5B' : 'white', color: ts.completed[day] ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}><Check size={15} />{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>
+        {chip(weekDone(curWeek()), 'Completed', { bg: '#e8f2ef', fg: '#347363' })}
+        {chip(st.reviewed, 'Reviewed', { bg: '#e8f2ef', fg: '#347363' })}
+        {chip(st.closed, 'Closed', { bg: '#fff0ed', fg: '#bd4f45' })}
+        <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: ts.completed[day] ? '#347363' : 'white', color: ts.completed[day] ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}><Check size={15} />{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>
       </Header>
       <div className="px-5 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b bg-white shadow-sm shrink-0" style={{ borderColor: colors.primary.bg }}>
           <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm shrink-0" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Tygodnie</button>
@@ -3210,12 +3293,12 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           </div>
           <div className="flex gap-0.5">
             {weekDays.map((d, i) => { const akt = zakresTyg === 'dzien' && day === d; return (
-              <button key={d} onClick={() => { setDay(d); setZakresTyg('dzien'); }} className="px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1" style={{ backgroundColor: akt ? colors.primary.medium : 'transparent', color: akt ? 'white' : i >= 5 ? '#B7362A' : colors.primary.dark, border: `1px solid ${akt ? colors.primary.medium : colors.primary.bg}` }}>{ts.completed[d] && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: akt ? 'white' : '#2E9E5B' }} />}{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}<span className="font-normal opacity-60">{dayShifts(d).length}</span></button>
+              <button key={d} onClick={() => { setDay(d); setZakresTyg('dzien'); }} className="px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1" style={{ backgroundColor: akt ? colors.primary.medium : 'transparent', color: akt ? 'white' : i >= 5 ? '#a03f37' : colors.primary.dark, border: `1px solid ${akt ? colors.primary.medium : colors.primary.bg}` }}>{ts.completed[d] && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: akt ? 'white' : '#347363' }} />}{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}<span className="font-normal opacity-60">{dayShifts(d).length}</span></button>
             ); })}
             <button onClick={() => setZakresTyg('siatka')} className="ml-1 px-2.5 py-1 rounded-md text-[11px] font-bold" style={{ backgroundColor: zakresTyg === 'siatka' ? colors.primary.medium : 'transparent', color: zakresTyg === 'siatka' ? 'white' : colors.primary.dark, border: `1px solid ${zakresTyg === 'siatka' ? colors.primary.medium : colors.primary.bg}` }}>Tydzień</button>
           </div>
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#fdecea', color: '#E74C3C' }}>🔒 tylko podgląd</span>}
+            {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>🔒 tylko podgląd</span>}
             <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
             <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
           </div>
@@ -3287,14 +3370,14 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <div className="min-w-[820px]">
             <div className="flex items-stretch" style={{ backgroundColor: '#f1f5f9', borderBottom: `1px solid ${colors.primary.bg}` }}>
               <div className="w-64 shrink-0 px-3 py-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.primary.dark }}>Pracownik</div>
-              <div className="relative flex-1 h-8"><WTGrid />{WT_TICKS.map((h) => <span key={h} className="absolute top-1 text-[10px] font-medium text-slate-400" style={{ left: `calc(${((h - 6) * 60 / 1440) * 100}% + 2px)` }}>{String(h % 24).padStart(2, '0')}</span>)}{rows.length > 0 && <div className="absolute bottom-1 h-2 rounded" style={{ left: `${openStartRel / 1440 * 100}%`, width: `${(openEndRel - openStartRel) / 1440 * 100}%`, backgroundColor: '#2E9E5B' }} title="Public Opening Hours" />}</div>
+              <div className="relative flex-1 h-8"><WTGrid />{WT_TICKS.map((h) => <span key={h} className="absolute top-1 text-[10px] font-medium text-slate-400" style={{ left: `calc(${((h - 6) * 60 / 1440) * 100}% + 2px)` }}>{String(h % 24).padStart(2, '0')}</span>)}{rows.length > 0 && <div className="absolute bottom-1 h-2 rounded" style={{ left: `${openStartRel / 1440 * 100}%`, width: `${(openEndRel - openStartRel) / 1440 * 100}%`, backgroundColor: '#347363' }} title="Public Opening Hours" />}</div>
               <div className="w-24 shrink-0 px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-center" style={{ color: colors.primary.dark }}>Wykonanie</div>
             </div>
             <div className="flex items-center gap-4 px-3 py-1.5 text-[10px]" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#2E9E5B' }} />Public Opening Hours</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#347363' }} />Public Opening Hours</span>
               <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: colors.primary.bg }} />Plan (Shift)</span>
               <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: colors.primary.medium }} />Wykonanie (Actual)</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#E74C3C' }} />Przerwa niepłatna</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#bd4f45' }} />Przerwa niepłatna</span>
             </div>
             {rows.length === 0 ? <p className="text-center text-slate-400 py-8">Brak zmian w tym dniu.</p> : rows.map((s, i) => {
               const a = act(s); const dMin = actualNet(s) - wtDur(s.start, s.end); const tol = Math.abs(dMin) <= 5;
@@ -3302,7 +3385,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                 <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#eef2f7' }}>
                   <div className="w-64 shrink-0 px-3 py-2">
                     <p className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{s.name}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
-                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span><span className="text-[11px] font-medium" style={{ color: tol ? '#2E9E5B' : '#E74C3C' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span></div>
+                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span><span className="text-[11px] font-medium" style={{ color: tol ? '#347363' : '#bd4f45' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span></div>
                     <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{wtHours(actualNet(s))}</b></span></div>
                   </div>
                   <div className="relative flex-1 py-2"><WTGrid />
@@ -3325,12 +3408,12 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
       <div className="px-5 py-1.5 flex flex-wrap items-center gap-x-6 gap-y-1 border-t bg-white shrink-0" style={{ borderColor: colors.primary.bg }}>
           {[
-            { l: 'Koszt (szac.)', v: `${f0(kpiTyg.koszt)} zł`, k: '#12655B' },
-            { l: 'Koszt / sprzedaż', v: kpiTyg.sprzedaz ? `${(kpiTyg.koszt / kpiTyg.sprzedaz * 100).toFixed(2).replace('.', ',')}%` : '—', k: kpiTyg.sprzedaz && kpiTyg.koszt / kpiTyg.sprzedaz > 0.2 ? '#B7362A' : '#12655B' },
+            { l: 'Koszt (szac.)', v: `${f0(kpiTyg.koszt)} zł`, k: '#315f5b' },
+            { l: 'Koszt / sprzedaż', v: kpiTyg.sprzedaz ? `${(kpiTyg.koszt / kpiTyg.sprzedaz * 100).toFixed(2).replace('.', ',')}%` : '—', k: kpiTyg.sprzedaz && kpiTyg.koszt / kpiTyg.sprzedaz > 0.2 ? '#a03f37' : '#315f5b' },
             { l: 'Godziny', v: `${kpiTyg.h.toFixed(1).replace('.', ',')} h`, k: colors.primary.medium },
-            { l: 'Nadmiar (h)', v: kpiTyg.exceso.toFixed(1).replace('.', ','), k: '#2F6FB5' },
-            { l: 'Niedobór (h)', v: kpiTyg.defecto.toFixed(1).replace('.', ','), k: '#B7362A' },
-            { l: 'Sprzedaż / rbh', v: kpiTyg.sprzedaz && kpiTyg.h ? f0(kpiTyg.sprzedaz / kpiTyg.h) : '—', k: '#D08700' },
+            { l: 'Nadmiar (h)', v: kpiTyg.exceso.toFixed(1).replace('.', ','), k: '#3f6f91' },
+            { l: 'Niedobór (h)', v: kpiTyg.defecto.toFixed(1).replace('.', ','), k: '#a03f37' },
+            { l: 'Sprzedaż / rbh', v: kpiTyg.sprzedaz && kpiTyg.h ? f0(kpiTyg.sprzedaz / kpiTyg.h) : '—', k: '#c06a35' },
           ].map((x, i) => (
             <div key={i} className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: x.k }} />
