@@ -339,6 +339,51 @@ const Dashboard = ({ data, setPage }) => {
     return { n: ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'][i], v: h ? sp / h : 0 };
   });
 
+  // Dzien dobry - realne dane biezacego tygodnia i dnia (silnik 15 min)
+  const dzisD = new Date();
+  const dzis = ymd(dzisD);
+  const ponD = new Date(dzisD); ponD.setDate(dzisD.getDate() - ((dzisD.getDay() + 6) % 7));
+  const tydzien = Array.from({ length: 7 }, (_, i) => { const d = new Date(ponD); d.setDate(ponD.getDate() + i); return ymd(d); });
+  const salesAll = ((data.salesData || {}).sales) || {};
+  const ztyg = data.shifts.filter((x) => tydzien.includes(x.date) && !jestInstruktor(x));
+  const poIdA = new Map((data.accounts || []).map((a) => [a.id, a]));
+  const poNazA = new Map((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+  let planTygH = 0, kosztTyg = 0;
+  ztyg.forEach((x) => { const g = godzZ(x); planTygH += g; kosztTyg += kosztGodzin(poIdA.get(x.accountId) || poNazA.get(String(x.name || '').toUpperCase().trim()), g); });
+  const sprzedazTyg = tydzien.reduce((a, d) => a + (salesAll[d] || 0), 0);
+  let defTyg = 0;
+  tydzien.forEach((d) => {
+    const sp = salesAll[d] || 0;
+    const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', new Date(d).getDay());
+    const s96 = new Float64Array(V4_NSLOT);
+    ztyg.filter((x) => x.date === d).forEach((x) => v4AddCoverage(s96, x.start, x.end));
+    defTyg += v4Coverage(v4Up96(dir.map((v, i) => Math.max(v, ind[i]))), s96).deficitH;
+  });
+  const completedDni = tydzien.filter((d) => (data.ts.completed || {})[d]).length;
+  const spDzis = salesAll[dzis] || 0;
+  const { dir: dD, ind: iD } = optRozbicie(spDzis, 420, 3, spDzis ? 'sprzedaz' : 'krzywa', dzisD.getDay());
+  const req96D = v4Up96(dD.map((v, i) => Math.max(v, iD[i])));
+  const sch96D = new Float64Array(V4_NSLOT);
+  data.shifts.filter((x) => x.date === dzis && !jestInstruktor(x)).forEach((x) => v4AddCoverage(sch96D, x.start, x.end));
+  const covD = v4Coverage(req96D, sch96D);
+  let okno = null, a0 = -1, maxDef = 0;
+  covD.perSlot.forEach((sl2, i) => {
+    if (sl2.def > 0.01) { if (a0 < 0) a0 = i; maxDef = Math.max(maxDef, sl2.def); }
+    else if (a0 >= 0) { if (!okno || i - a0 > okno.b - okno.a) okno = { a: a0, b: i, n: maxDef }; a0 = -1; maxDef = 0; }
+  });
+  if (a0 >= 0 && (!okno || V4_NSLOT - a0 > okno.b - okno.a)) okno = { a: a0, b: V4_NSLOT, n: maxDef };
+  const otwarteZamiany = (data.swaps || []).filter((x) => x.status === 'open').length;
+  const preM = dzis.slice(0, 7);
+  const znaneNazwy = new Set((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => String(n).toUpperCase().trim())));
+  const bezKontaN = new Set(data.shifts.filter((x) => (x.date || '').startsWith(preM) && !x.accountId && !znaneNazwy.has(String(x.name || '').toUpperCase().trim())).map((x) => String(x.name).toUpperCase())).size;
+  const dniDoZamkniecia = tydzien.filter((d) => d < dzis && !(data.ts.completed || {})[d] && data.shifts.some((x) => x.date === d)).length;
+  const zadania = [
+    okno && { ik: '!', txt: `Uzupełnij obsadę dziś ${v4SlotLabel(okno.a)}-${v4SlotLabel(Math.min(okno.b, V4_NSLOT - 1))} (brakuje ${Math.ceil(okno.n)} os.)`, tag: 'Planowanie', go: 'wt', pilne: true },
+    otwarteZamiany > 0 && { ik: 'Z', txt: `Rozpatrz ${otwarteZamiany} zgłoszeń na giełdzie zamian`, tag: 'Zespół', go: 'swaps' },
+    bezKontaN > 0 && { ik: 'K', txt: `Przypisz ${bezKontaN} nazw z grafiku do kont`, tag: 'Pracownicy', go: 'emps' },
+    dniDoZamkniecia > 0 && { ik: 'T', txt: `Oznacz ${dniDoZamkniecia} minione dni jako Completed`, tag: 'Time & Attendance', go: 'wt' },
+  ].filter(Boolean);
+
   const stats = [
     { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
     { label: 'Konta pracowników', val: acc.length, icon: Users, color: '#9C27B0' },
@@ -348,6 +393,67 @@ const Dashboard = ({ data, setPage }) => {
     <div className="flex-1 flex flex-col">
       <Header title="Dashboard" subtitle="Przegląd systemu REX Cloud · WorkRhythm" />
       <div className="flex-1 p-8 space-y-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: '#59807c' }}>{dniPelne[dzisD.getDay()].toUpperCase()}, {dzisD.getDate()} {['STYCZNIA','LUTEGO','MARCA','KWIETNIA','MAJA','CZERWCA','LIPCA','SIERPNIA','WRZESNIA','PAZDZIERNIKA','LISTOPADA','GRUDNIA'][dzisD.getMonth()]}</p>
+            <h1 className="text-[26px] font-bold mt-1" style={{ color: '#162523' }}>Dzień dobry, Marcin</h1>
+            <p className="text-[13px] mt-0.5" style={{ color: '#71817f' }}>PLK 201043 · Galeria Krakowska · najważniejsze informacje na dziś.</p>
+          </div>
+          <button onClick={() => setPage && setPage('wt')} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ backgroundColor: '#12423f', boxShadow: '0 8px 20px rgba(18,66,63,.18)' }}><Calendar size={15} /> Otwórz grafik</button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+          {[
+            ['Sprzedaż tygodnia', sprzedazTyg ? f0(sprzedazTyg) + ' zł' : '—', sprzedazTyg ? tydzien.filter((d) => salesAll[d]).length + ' / 7 dni z danymi' : 'brak importu', null],
+            ['Plan Hours', planTygH.toFixed(1).replace('.', ',') + ' h', 'bieżący tydzień', null],
+            ['Koszt pracy', f0(kosztTyg) + ' zł', 'szacunek wg stawek', null],
+            ['Coverage dziś', covD.coveragePct.toFixed(1).replace('.', ',') + '%', 'cel >= 95%', covD.coveragePct >= 95 ? 'ok' : 'zle'],
+            ['SPLH', sprzedazTyg && planTygH ? f0(sprzedazTyg / planTygH) : '—', 'cel >= 420 zł/rbh', sprzedazTyg && planTygH && sprzedazTyg / planTygH >= 420 ? 'ok' : null],
+            ['COL', sprzedazTyg ? (kosztTyg / sprzedazTyg * 100).toFixed(1).replace('.', ',') + '%' : '—', 'target <= 20%', sprzedazTyg && kosztTyg / sprzedazTyg <= 0.2 ? 'ok' : sprzedazTyg ? 'zle' : null],
+            ['Deficit tyg.', defTyg.toFixed(2).replace('.', ',') + ' h', 'silnik 15 min', defTyg > 0.01 ? 'zle' : 'ok'],
+            ['Completed', completedDni + ' / 7', 'dni zamknięte', null],
+          ].map(([l, v, h, ton], i) => (
+            <div key={i} className="rounded-xl px-3 py-2.5 border" style={{ borderColor: '#dfe6e5', boxShadow: '0 1px 2px rgba(18,66,63,.04)', backgroundColor: ton === 'zle' ? '#fff0ed' : 'white' }}>
+              <p className="text-[9px] font-semibold uppercase" style={{ color: '#8a9997' }}>{l}</p>
+              <p className="text-[16px] font-bold mt-0.5" style={{ color: ton === 'zle' ? '#bd4f45' : ton === 'ok' ? '#12423f' : '#162523' }}>{v}</p>
+              <p className="text-[9px]" style={{ color: '#96aaa9' }}>{h}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-4">
+          <div className="rounded-2xl p-6 flex items-center gap-6 text-white" style={{ background: 'linear-gradient(120deg, #12423f, #315f5b)', boxShadow: '0 8px 24px rgba(18,66,63,.18)' }}>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold tracking-[0.15em]" style={{ color: '#b8d0cd' }}>OPERACJA NA DZIŚ</p>
+              <h2 className="text-[20px] font-bold mt-2 leading-snug">{okno ? 'Obsada dnia wymaga decyzji.' : covD.requiredH > 0 ? 'Obsada dnia domknięta.' : 'Brak grafiku na dziś.'}</h2>
+              <p className="text-[12.5px] mt-1.5" style={{ color: '#d8e5e3' }}>
+                {okno ? 'Między ' + v4SlotLabel(okno.a) + ' a ' + v4SlotLabel(Math.min(okno.b, V4_NSLOT - 1)) + ' brakuje ' + Math.ceil(okno.n) + ' os. — łączny niedobór dnia ' + covD.deficitH.toFixed(2).replace('.', ',') + ' h.'
+                  : covD.requiredH > 0 ? 'Pokrycie ' + covD.coveragePct.toFixed(0) + '% bez niedoborów wg silnika 15-minutowego' + (covD.excessH > 0.5 ? '; zapas ' + covD.excessH.toFixed(1).replace('.', ',') + ' h do ewentualnego przycięcia' : '') + '.'
+                  : 'Dodaj zmiany w Schedule albo nałóż Blueprint na ten tydzień.'}
+              </p>
+              <button onClick={() => setPage && setPage('wt')} className="mt-3 text-[12px] font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,.14)' }}>{okno ? 'Rozwiąż niedobór' : 'Sprawdź plan dnia'} <ChevronRight size={13} /></button>
+            </div>
+            <div className="text-center shrink-0 px-4">
+              <p className="text-[10px]" style={{ color: '#b8d0cd' }}>Pokrycie dziś</p>
+              <p className="text-[42px] font-bold leading-none mt-1">{covD.coveragePct.toFixed(0)}<span className="text-[16px] font-medium" style={{ color: '#b8d0cd' }}>%</span></p>
+            </div>
+          </div>
+          <div className="rounded-2xl bg-white border p-5" style={{ borderColor: '#dfe6e5', boxShadow: '0 8px 24px rgba(18,66,63,.045)' }}>
+            <h2 className="text-[15px] font-bold" style={{ color: '#162523' }}>Do zrobienia</h2>
+            <p className="text-[11px] mb-3" style={{ color: '#71817f' }}>{zadania.length ? zadania.length + (zadania.length === 1 ? ' zadanie wymaga uwagi' : ' zadania wymagają uwagi') : 'wszystko na bieżąco'}</p>
+            <div className="space-y-1.5">
+              {zadania.map((z, i) => (
+                <button key={i} onClick={() => setPage && setPage(z.go)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 border" style={{ borderColor: '#eef2f1' }}>
+                  <span className="w-8 h-8 rounded-lg flex items-center justify-center text-[12px] font-bold shrink-0" style={{ backgroundColor: z.pilne ? '#fff0ed' : '#e8f2ef', color: z.pilne ? '#bd4f45' : '#347363' }}>{z.ik}</span>
+                  <span className="min-w-0 flex-1"><span className="block text-[12.5px] font-semibold truncate" style={{ color: '#162523' }}>{z.txt}</span><span className="block text-[10px]" style={{ color: '#96aaa9' }}>{z.tag}</span></span>
+                  <ChevronRight size={15} style={{ color: '#b3bebf' }} />
+                </button>
+              ))}
+              {zadania.length === 0 && <p className="text-[12px] py-4 text-center" style={{ color: '#96aaa9' }}>Brak zaległości — grafik, konta i zamiany są ogarnięte.</p>}
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-3 gap-6">{stats.map((s, i) => <StatCard key={i} label={s.label} value={s.val} icon={s.icon} color={s.color} />)}</div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #3A6EA5' }}>
