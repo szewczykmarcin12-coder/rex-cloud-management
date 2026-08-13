@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
@@ -150,8 +150,6 @@ const Header = ({ title, subtitle, children }) => (
 // ===================== LOGIN =====================
 
 const Login = ({ onLogin }) => {
-  const [tryb, setTryb] = useState('pin'); // 'pin' | 'asm'
-  const [pin, setPin] = useState('');
   const [login, setLogin] = useState('');
   const [haslo, setHaslo] = useState('');
   const [err, setErr] = useState('');
@@ -159,46 +157,32 @@ const Login = ({ onLogin }) => {
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
-      const body = tryb === 'asm' ? { login, password: haslo } : { pin };
-      const r = await api('/admin-auth', 'POST', body);
-      if (r.success) { store.set('admin_session', { at: Date.now(), role: r.role }); onLogin(r.role); }
+      const r = await api('/admin-auth', 'POST', { login, password: haslo });
+      if (r.success) { const un = r.userName || login.trim() || 'ASM'; store.set('admin_session', { at: Date.now(), role: r.role, userName: un }); onLogin(r.role, un); }
       else setErr(r.error || 'Błąd logowania');
     } catch { setErr('Błąd połączenia z serwerem'); }
     setLoading(false);
   };
-  const zakl = (id, txt) => (
-    <button type="button" onClick={() => { setTryb(id); setErr(''); }} className="flex-1 py-2 rounded-lg text-sm font-medium transition-all" style={{ backgroundColor: tryb === id ? colors.primary.medium : 'transparent', color: tryb === id ? 'white' : colors.primary.light }}>{txt}</button>
-  );
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: `linear-gradient(to bottom, #0d3431, ${colors.primary.darkest})` }}>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-12"><div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary.medium }}><Cloud className="w-8 h-8 text-white" /></div><div><span className="text-white text-3xl font-light">REX</span><span className="text-3xl font-light ml-2" style={{ color: colors.primary.bg }}>Cloud</span></div></div>
         <div className="bg-white rounded-2xl p-8">
           <div className="flex items-center justify-center gap-2 mb-2"><Lock className="w-5 h-5" style={{ color: colors.primary.medium }} /><h2 className="text-2xl font-semibold" style={{ color: colors.primary.darkest }}>Panel Administratora</h2></div>
-          <p className="text-center text-sm mb-5" style={{ color: colors.primary.light }}>{tryb === 'asm' ? 'ASM — pełny dostęp' : 'Kierownik zmiany — wydruk grafiku'}</p>
-          <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ backgroundColor: colors.primary.bgLight }}>{zakl('pin', 'Kierownik (PIN)')}{zakl('asm', 'ASM')}</div>
+          <p className="text-center text-sm mb-5" style={{ color: colors.primary.light }}>Zaloguj się kontem — poziom dostępu wynika z uprawnień konta.</p>
           {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
           <form onSubmit={submit} className="space-y-4">
-            {tryb === 'pin' ? (
-              <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN kierownika</label><input type="password" value={pin} onChange={e => setPin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none text-center text-2xl tracking-widest" style={{ borderColor: colors.primary.bg }} placeholder="••••••" maxLength={6} inputMode="numeric" disabled={loading} autoFocus /></div>
-            ) : (
-              <>
-                <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>Login ASM</label><input type="text" value={login} onChange={e => setLogin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="login" disabled={loading} autoFocus /></div>
-                <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>Hasło ASM</label><input type="password" value={haslo} onChange={e => setHaslo(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="hasło" disabled={loading} /></div>
-              </>
-            )}
+            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>Login</label><input type="text" value={login} onChange={e => setLogin(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="np. PLPLK201043" disabled={loading} autoFocus /></div>
+            <div><label className="block text-sm mb-1" style={{ color: colors.primary.light }}>PIN / hasło</label><input type="password" value={haslo} onChange={e => setHaslo(e.target.value)} className="w-full px-4 py-3 rounded-xl border focus:outline-none" style={{ borderColor: colors.primary.bg }} placeholder="••••••" disabled={loading} /></div>
             <button type="submit" disabled={loading} className="w-full text-white font-semibold py-3 rounded-xl" style={{ backgroundColor: loading ? colors.primary.light : colors.primary.medium }}>{loading ? 'Sprawdzam...' : 'Zaloguj się'}</button>
           </form>
         </div>
       </div>
     </div>
   );
-
 };
 
-// ===================== SIDEBAR =====================
-
-const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr }) => {
+const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName }) => {
   const [zwiniety, setZwiniety] = useState(false);
   const SEKCJE = [
     { naglowek: 'Główne', items: [
@@ -280,9 +264,9 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
 
       {/* użytkownik */}
       <div className={`mx-3 mt-0 px-2 pt-3 pb-2 flex items-center gap-2.5 ${zwiniety ? 'justify-center px-0' : ''}`} style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
-        <div className="w-[31px] h-[31px] rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ backgroundColor: '#d4e1df', color: '#12423f' }}>{role === 'asm' ? 'AS' : 'KZ'}</div>
+        <div className="w-[31px] h-[31px] rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ backgroundColor: '#d4e1df', color: '#12423f' }}>{(userName || (role === 'asm' ? 'AS' : 'PL')).split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}</div>
         {!zwiniety && (<>
-          <div className="leading-tight min-w-0 flex-1"><p className="text-[13px] font-semibold text-white truncate">{role === 'asm' ? 'ASM' : 'Kierownik zmiany'}</p><p className="text-[10px] text-white/45">{role === 'asm' ? 'pełny dostęp' : 'grafik i wydruk'}</p></div>
+          <div className="leading-tight min-w-0 flex-1"><p className="text-[13px] font-semibold text-white truncate">{userName || (role === 'asm' ? 'ASM' : 'PLK 201043')}</p><p className="text-[10px] text-white/45">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany'}</p></div>
           <button onClick={logout} title="Wyloguj się" className="text-red-300 hover:text-red-400 shrink-0"><LogOut className="w-[17px] h-[17px]" /></button>
         </>)}
       </div>
@@ -291,7 +275,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
   );
 };
 
-const Dashboard = ({ data, setPage }) => {
+const Dashboard = ({ data, setPage, userName }) => {
   const [mkeyS, setMkeyS] = useState(null);
   const msc = data.months || [];
   const mkey = mkeyS || (msc.length ? msc[msc.length - 1].key : null);
@@ -352,12 +336,17 @@ const Dashboard = ({ data, setPage }) => {
   ztyg.forEach((x) => { const g = godzZ(x); planTygH += g; kosztTyg += kosztGodzin(poIdA.get(x.accountId) || poNazA.get(String(x.name || '').toUpperCase().trim()), g); });
   const sprzedazTyg = tydzien.reduce((a, d) => a + (salesAll[d] || 0), 0);
   let defTyg = 0;
+  const PORY = [['06-10', 0, 16], ['10-14', 16, 32], ['14-18', 32, 48], ['18-22', 48, 64], ['22-02', 64, 80], ['02-06', 80, 96]];
+  const heatTyg = [];
   tydzien.forEach((d) => {
     const sp = salesAll[d] || 0;
     const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', new Date(d).getDay());
+    const req96 = v4Up96(dir.map((v, i) => Math.max(v, ind[i])));
     const s96 = new Float64Array(V4_NSLOT);
     ztyg.filter((x) => x.date === d).forEach((x) => v4AddCoverage(s96, x.start, x.end));
-    defTyg += v4Coverage(v4Up96(dir.map((v, i) => Math.max(v, ind[i]))), s96).deficitH;
+    const cs = v4Coverage(req96, s96);
+    defTyg += cs.deficitH;
+    heatTyg.push(PORY.map(([, a, b]) => { let rq = 0, sc = 0; for (let i = a; i < b; i++) { rq += req96[i]; sc += s96[i]; } return { rq, sc }; }));
   });
   const completedDni = tydzien.filter((d) => (data.ts.completed || {})[d]).length;
   const spDzis = salesAll[dzis] || 0;
@@ -396,7 +385,7 @@ const Dashboard = ({ data, setPage }) => {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: '#59807c' }}>{dniPelne[dzisD.getDay()].toUpperCase()}, {dzisD.getDate()} {['STYCZNIA','LUTEGO','MARCA','KWIETNIA','MAJA','CZERWCA','LIPCA','SIERPNIA','WRZESNIA','PAZDZIERNIKA','LISTOPADA','GRUDNIA'][dzisD.getMonth()]}</p>
-            <h1 className="text-[26px] font-bold mt-1" style={{ color: '#162523' }}>Dzień dobry, Marcin</h1>
+            <h1 className="text-[26px] font-bold mt-1" style={{ color: '#162523' }}>Dzień dobry, {(userName || 'PLK 201043').split(' ')[0]}</h1>
             <p className="text-[13px] mt-0.5" style={{ color: '#71817f' }}>PLK 201043 · Galeria Krakowska · najważniejsze informacje na dziś.</p>
           </div>
           <button onClick={() => setPage && setPage('wt')} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ backgroundColor: '#12423f', boxShadow: '0 8px 20px rgba(18,66,63,.18)' }}><Calendar size={15} /> Otwórz grafik</button>
@@ -451,6 +440,27 @@ const Dashboard = ({ data, setPage }) => {
               ))}
               {zadania.length === 0 && <p className="text-[12px] py-4 text-center" style={{ color: '#96aaa9' }}>Brak zaległości — grafik, konta i zamiany są ogarnięte.</p>}
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white border p-5" style={{ borderColor: '#dfe6e5', boxShadow: '0 8px 24px rgba(18,66,63,.045)' }}>
+          <div className="flex items-baseline justify-between flex-wrap gap-2">
+            <div><h2 className="text-[15px] font-bold" style={{ color: '#162523' }}>Coverage heatmap</h2><p className="text-[11px]" style={{ color: '#71817f' }}>bieżący tydzień × pory dnia · silnik 15 min</p></div>
+            <div className="flex gap-3 text-[10px]" style={{ color: '#71817f' }}><span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: '#e8f2ef' }} /> pokrycie</span><span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: '#fff2e8' }} /> nadmiar</span><span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: '#fff0ed' }} /> niedobór</span></div>
+          </div>
+          <div className="mt-3 grid" style={{ gridTemplateColumns: '44px repeat(6, 1fr)', gap: 4 }}>
+            <span />
+            {PORY.map(([l]) => <span key={l} className="text-[10px] text-center font-semibold" style={{ color: '#8a9997' }}>{l}</span>)}
+            {heatTyg.map((row, di) => (<React.Fragment key={di}>
+              <span className="text-[11px] font-bold flex items-center" style={{ color: tydzien[di] === dzis ? '#12423f' : '#71817f' }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][di]}</span>
+              {row.map((c, pi) => {
+                const pct = c.rq > 0 ? (c.sc / c.rq) * 100 : null;
+                const pusty = c.rq === 0 && c.sc === 0;
+                const kol = pusty ? '#f4f7f6' : pct === null ? '#fff2e8' : pct < 95 ? '#fff0ed' : pct > 112 ? '#fff2e8' : '#e8f2ef';
+                const tk = pusty ? '#b3bebf' : pct === null ? '#a46135' : pct < 95 ? '#bd4f45' : pct > 112 ? '#a46135' : '#347363';
+                return <span key={pi} className="rounded-lg text-[11px] font-bold text-center py-2" title={`${['Pn','Wt','Śr','Cz','Pt','So','Nd'][di]} ${PORY[pi][0]} — plan ${(c.sc * 0.25).toFixed(1)} h / potrzeba ${(c.rq * 0.25).toFixed(1)} h`} style={{ backgroundColor: kol, color: tk }}>{pusty ? '—' : pct === null ? 'zapas' : Math.round(pct) + '%'}</span>;
+              })}
+            </React.Fragment>))}
           </div>
         </div>
 
@@ -761,6 +771,24 @@ const PrintPage = ({ data }) => {
 // ===================== SETTINGS =====================
 
 const SettingsPage = ({ data }) => {
+  const [linked, setLinked] = useState([]);
+  const [linkLogin, setLinkLogin] = useState('');
+  const [linkPass, setLinkPass] = useState('');
+  const [linkRola, setLinkRola] = useState('asm');
+  useEffect(() => { api('/admin-auth', 'GET').then((r) => { if (r && r.success) setLinked(r.linked || []); }).catch(() => {}); }, []);
+  const powiaz = async () => {
+    if (!linkLogin.trim() || !linkPass) return data.show('Podaj login konta i hasło ASM', 'error');
+    try { const r = await api('/admin-auth', 'POST', { action: 'link', accountLogin: linkLogin.trim(), asmPassword: linkPass, role: linkRola });
+      if (r.success) { setLinked(r.linked); setLinkLogin(''); setLinkPass(''); data.show('Konto powiązane z rolą ASM', 'success'); } else data.show(r.error || 'Błąd', 'error');
+    } catch (e) { data.show((e && e.message) || 'Błąd', 'error'); }
+  };
+  const zdejmij = async (l) => {
+    const pw = prompt(`Odpinasz ${l} od roli ASM. Podaj obecne hasło ASM:`);
+    if (pw == null) return;
+    try { const r = await api('/admin-auth', 'POST', { action: 'unlink', accountLogin: l, asmPassword: pw });
+      if (r.success) { setLinked(r.linked); data.show('Konto odpięte', 'success'); } else data.show(r.error || 'Błąd', 'error');
+    } catch (e) { data.show((e && e.message) || 'Błąd', 'error'); }
+  };
   // Zmiana PIN kierownika zmiany — wymaga hasła ASM
   const [pinNew, setPinNew] = useState('');
   const [pinNew2, setPinNew2] = useState('');
@@ -821,6 +849,27 @@ const SettingsPage = ({ data }) => {
             <input type="password" value={asmNew2} onChange={e => setAsmNew2(e.target.value)} placeholder="Powtórz nowe hasło" className={inp} style={{ borderColor: colors.primary.bg }} />
             <input type="password" value={asmCur} onChange={e => setAsmCur(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#12423f' }} />
             <Btn onClick={changeAsm}>Zapisz poświadczenia ASM</Btn>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #59807c` }}>
+          <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Jeden profil — uprawnienia panelu per konto</h3>
+          <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Konto pracownicze z przypisaną rolą loguje się do panelu tym samym loginem i PIN-em/hasłem co do aplikacji pracownika. Poziom dostępu (ASM lub kierownik zmiany) wynika z roli konta. Zapasowy login ASM nadal działa.</p>
+          <div className="space-y-2">
+            {(linked || []).map((l) => (
+              <div key={l.login || l} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
+                <span className="text-sm font-mono font-semibold" style={{ color: colors.primary.darkest }}>{l.login || l}</span>
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: (l.role || 'asm') === 'asm' ? '#12423f' : '#59807c', color: 'white' }}>{(l.role || 'asm') === 'asm' ? 'ASM' : 'Kierownik zmiany'}</span>
+                <button onClick={() => zdejmij(l.login || l)} className="text-xs font-semibold" style={{ color: '#bd4f45' }}>Odepnij</button>
+              </div>
+            ))}
+            {(linked || []).length === 0 && <p className="text-xs" style={{ color: colors.primary.light }}>Brak powiązanych kont.</p>}
+            <input value={linkLogin} onChange={(e) => setLinkLogin(e.target.value)} placeholder="Login konta pracowniczego (np. PLPLK201043)" className={inp} />
+            <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}>{[['asm', 'ASM — pełny dostęp'], ['kierownik', 'Kierownik zmiany — grafik i wydruk']].map(([id, l]) => (
+              <button key={id} type="button" onClick={() => setLinkRola(id)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: linkRola === id ? colors.primary.medium : 'transparent', color: linkRola === id ? 'white' : colors.primary.light }}>{l}</button>
+            ))}</div>
+            <input type="password" value={linkPass} onChange={(e) => setLinkPass(e.target.value)} placeholder="Obecne hasło ASM (wymagane)" className={inp} style={{ borderColor: '#12423f' }} />
+            <Btn onClick={powiaz}>Powiąż konto z rolą ASM</Btn>
           </div>
         </div>
 
@@ -3496,17 +3545,18 @@ export default function App() {
   const sesja = store.get('admin_session');
   const [authed, setAuthed] = useState(() => !!sesja);
   const [role, setRole] = useState(() => (sesja && sesja.role) || 'kierownik');
+  const [userName, setUserName] = useState(() => (sesja && sesja.userName) || '');
   const [page, setPage] = useState('dashboard');
   const [wrTab, setWrTab] = useState('schedule');
   const [wrNonce, setWrNonce] = useState(0);
   const data = useData();
-  const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setPage('dashboard'); };
-  const onLogin = (r) => { setRole(r); setAuthed(true); setPage('dashboard'); };
+  const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setUserName(''); setPage('dashboard'); };
+  const onLogin = (r, un) => { setRole(r); setUserName(un || ''); setAuthed(true); setPage('dashboard'); };
 
   if (!authed) return <Login onLogin={onLogin} />;
 
   const pages = {
-    dashboard: <Dashboard data={data} setPage={setPage} />,
+    dashboard: <Dashboard data={data} setPage={setPage} userName={userName} />,
     import: <ImportPage data={data} />,
     wt: <WorkingTime data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
     print: <PrintPage data={data} />,
@@ -3523,7 +3573,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
-      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} />
+      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} />
       <div className="flex-1 flex flex-col overflow-hidden"><div className={widok === 'wt' ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 overflow-y-auto"}>{pages[widok] || pages.print}</div></div>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </div>
