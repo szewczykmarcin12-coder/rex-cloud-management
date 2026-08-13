@@ -165,7 +165,11 @@ const Login = ({ onLogin }) => {
         else setErr(r.error || 'Błąd zgłoszenia');
       } else {
         const r = await api('/admin-auth', 'POST', { login, password: haslo });
-        if (r.success) { const un = r.userName || login.trim() || 'ASM'; store.set('admin_session', { at: Date.now(), role: r.role, userName: un }); onLogin(r.role, un); }
+        if (r.success) {
+          const un = r.userName || login.trim() || 'ASM';
+          try { if (window.PasswordCredential && navigator.credentials) { navigator.credentials.store(new window.PasswordCredential({ id: login.trim(), password: haslo, name: un })); } } catch {}
+          store.set('admin_session', { at: Date.now(), role: r.role, userName: un }); onLogin(r.role, un);
+        }
         else setErr(r.error || 'Błąd logowania');
       }
     } catch (e2) { setErr((e2 && e2.message) || 'Błąd połączenia z serwerem'); }
@@ -184,12 +188,12 @@ const Login = ({ onLogin }) => {
         <form onSubmit={submit} className="space-y-4">
           <div className="relative">
             <Users className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#b3bebf' }} />
-            <input type="text" value={login} onChange={(e) => setLogin(e.target.value)} className={pole} style={{ borderColor: '#dfe6e5', color: '#162523' }} placeholder="Login" disabled={loading} autoFocus />
+            <input type="text" name="username" id="username" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} className={pole} style={{ borderColor: '#dfe6e5', color: '#162523' }} placeholder="Login" disabled={loading} autoFocus />
           </div>
           {!reset && (
             <div className="relative">
               <Lock className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#b3bebf' }} />
-              <input type="password" value={haslo} onChange={(e) => setHaslo(e.target.value)} className={pole} style={{ borderColor: '#dfe6e5', color: '#162523' }} placeholder="PIN / hasło" disabled={loading} />
+              <input type="password" name="password" id="current-password" autoComplete="current-password" value={haslo} onChange={(e) => setHaslo(e.target.value)} className={pole} style={{ borderColor: '#dfe6e5', color: '#162523' }} placeholder="PIN / hasło" disabled={loading} />
             </div>
           )}
           <button type="button" onClick={() => { setReset(!reset); setErr(''); setInfo(''); }} className="text-[13.5px] font-medium" style={{ color: '#315f5b' }}>
