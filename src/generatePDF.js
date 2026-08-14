@@ -301,3 +301,216 @@ export function generateRangePDF(shifts, startDate, endDate, location = 'Popeyes
   }
   return doc;
 }
+
+
+// ══════════════ DAILY ROSTER — wydruk dnia wg wzorca GRAFIK OBSADY ══════════════
+// Landscape A4, lewy pionowy pasek tytułowy, KPI, sekcje 01–04.
+// Pracownicy ZAWSZE pełnym imieniem i nazwiskiem z KONTA (aliasy tylko do dopasowania).
+const TEAL9 = [18, 66, 63], TEAL7 = [49, 95, 91], TEAL5 = [89, 128, 124], LINIA = [223, 230, 229], TLO = [244, 247, 246];
+const OK_BG = [232, 242, 239], BAD_BG = [255, 240, 237], WARN_BG = [255, 242, 232];
+const OK_TX = [52, 115, 99], BAD_TX = [189, 79, 69], WARN_TX = [164, 97, 53];
+
+export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = 'Wersja opublikowana' }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.addFileToVFS('LibSans.ttf', LIB_SANS_REGULAR); doc.addFont('LibSans.ttf', 'LS', 'normal');
+  doc.addFileToVFS('LibSansB.ttf', LIB_SANS_BOLD); doc.addFont('LibSansB.ttf', 'LS', 'bold');
+  const F = (b, sz, kol) => { doc.setFont('LS', b ? 'bold' : 'normal'); doc.setFontSize(sz); doc.setTextColor(...(kol || INK)); };
+  const W = 297, H = 210;
+
+  // mapy kont: pelne imie i nazwisko po accountId / grafikName / aliasach / name
+  const poId = new Map((accounts || []).map((a) => [a.id, a]));
+  const poNaz = new Map((accounts || []).flatMap((a) => [a.grafikName, a.name, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+  const kontoZ = (sx) => poId.get(sx.accountId) || poNaz.get(String(sx.name || '').toUpperCase().trim()) || null;
+  const etyk = (sx) => { const k = kontoZ(sx); return (k && k.name ? k.name : (sx.name || '')).toUpperCase(); };
+  const MGR = new Set(['SM', 'JSM', 'ASM', 'RGM']);
+
+  const dzienne = (shifts || []).filter((x) => x.date === dateStr);
+  const scalone = scalPary(dzienne);
+  const osoby = new Set(dzienne.filter((x) => rolaSzk(x) !== 'instruktor').map(etyk));
+  const planH = dzienne.reduce((a, x) => a + godzZmiany(x), 0);
+  const mgrH = dzienne.filter((x) => { const k = kontoZ(x); return k && MGR.has(k.funkcja); }).reduce((a, x) => a + godzZmiany(x), 0);
+  const szkH = dzienne.filter((x) => rolaSzk(x)).reduce((a, x) => a + godzZmiany(x), 0);
+  const szkOsoby = new Set(dzienne.filter((x) => rolaSzk(x) === 'training').map(etyk)).size;
+  const crewH = planH - mgrH - szkH;
+  // kierownictwo dnia: manager z najwczesniejszym startem / najpozniejszym koncem
+  const mgrZm = dzienne.filter((x) => { const k = kontoZ(x); return k && MGR.has(k.funkcja); });
+  const minut = (t) => { const [h2, m2] = String(t || '0:0').split(':').map(Number); return h2 * 60 + m2; };
+  const kEnd = (x) => { let e = minut(x.end); if (e <= minut(x.start)) e += 1440; return e; };
+  const otw = mgrZm.slice().sort((a, b) => minut(a.start) - minut(b.start))[0];
+  const zam = mgrZm.slice().sort((a, b) => kEnd(b) - kEnd(a))[0];
+  const nazwisko = (sx) => { const e = etyk(sx); const cz = e.split(/\s+/); return cz[cz.length - 1]; };
+
+  const d0 = new Date(dateStr + 'T12:00:00');
+  const tytul = `${dniPl[d0.getDay()]}, ${d0.getDate()} ${mcPl[d0.getMonth()]} ${d0.getFullYear()}`;
+
+  // ── lewy pionowy pasek ──
+  doc.setFillColor(...TEAL9); doc.rect(0, 0, 32, H, 'F');
+  doc.setFillColor(...TEAL7); doc.rect(0, 0, 32, 3, 'F');
+  const pion = (txt, x, y, opt) => doc.text(txt, x, y, { angle: 90, ...opt });
+  F(0, 6.4, [145, 173, 169]); pion('RESTAURACJA', 10, H - 8);
+  F(1, 11, [255, 255, 255]); pion('Popeyes Kraków', 16, H - 8);
+  F(0, 7, [175, 197, 194]); pion('Galeria Krakowska · K003', 21.5, H - 8);
+  F(0, 6.6, [145, 173, 169]); pion('GRAFIK OBSADY', 9, H - 78, { charSpace: 0.6 });
+  F(1, 17, [255, 255, 255]); pion(tytul, 17, H - 78);
+  F(0, 7, [183, 212, 208]); pion(`Doba operacyjna 06:00–06:00 · ${wersja}`, 23.5, H - 78);
+  doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.5); doc.circle(16, 14, 5.2, 'S');
+  F(1, 8.5, [255, 255, 255]); pion('REX Cloud', 14.5, 24);
+  F(0, 5.4, [145, 173, 169]); pion('WORKRHYTHM · DAILY ROSTER', 19.5, 24, { charSpace: 0.5 });
+
+  // ── pasek KPI ──
+  const X0 = 38, KY = 8, KW = W - X0 - 8;
+  const kpi = [
+    ['ZMIANY', String(dzienne.length), `${osoby.size} pracowników`],
+    ['PLAN GODZIN', `${planH.toFixed(1).replace('.', ',')} h`, 'netto'],
+    ['COVERAGE', cov ? `${cov.pct.toFixed(0)}%` : '—', cov ? `${cov.zle} ${cov.zle === 1 ? 'slot' : cov.zle < 5 ? 'sloty' : 'slotów'} do kontroli` : 'brak danych'],
+    ['MANAGER', `${mgrH.toFixed(1).replace('.', ',')} h`, 'otwarcie + zamknięcie'],
+    ['SZKOLENIA', `${szkH.toFixed(1).replace('.', ',')} h`, `${szkOsoby} ${szkOsoby === 1 ? 'osoba' : szkOsoby < 5 ? 'osoby' : 'osób'}`],
+    ['KIEROWNICTWO DNIA', '', ''],
+  ];
+  const kw = KW / 6;
+  kpi.forEach((k, i) => {
+    const x = X0 + i * kw;
+    if (i) { doc.setDrawColor(...LINIA); doc.setLineWidth(0.25); doc.line(x - 3, KY + 1, x - 3, KY + 15); }
+    F(0, 5.6, GREY); doc.text(k[0], x, KY + 3.4, { charSpace: 0.3 });
+    if (i === 5) {
+      F(1, 7.5, INK); doc.text(`Otwarcie: ${otw ? nazwisko(otw) : '—'}`, x, KY + 8.6);
+      doc.text(`Zamknięcie: ${zam ? nazwisko(zam) : '—'}`, x, KY + 13);
+    } else {
+      F(1, 12.5, INK); doc.text(k[1], x, KY + 10);
+      F(0, 5.8, GREY); doc.text(k[2], x, KY + 14.2);
+    }
+  });
+  doc.setDrawColor(...LINIA); doc.setLineWidth(0.3); doc.line(X0, KY + 17.5, W - 8, KY + 17.5);
+
+  // ── sekcja 01: obsada wedlug stanowisk (2 kolumny blokow) ──
+  const sekcjaTag = (x, y, nr, tyt, sub) => {
+    doc.setFillColor(...TLO); doc.roundedRect(x, y, 7.5, 7.5, 1.4, 1.4, 'F');
+    F(1, 7, TEAL5); doc.text(nr, x + 3.75, y + 4.9, { align: 'center' });
+    F(1, 9.5, INK); doc.text(tyt, x + 10, y + 3.6);
+    F(0, 6.2, GREY); doc.text(sub, x + 10, y + 7.2);
+  };
+  const L0 = 38, LW2 = 152, kolW = (LW2 - 6) / 2;
+  let y01 = KY + 22;
+  sekcjaTag(L0, y01, '01', 'Obsada według stanowisk', 'godziny pracy netto · pełne imiona i nazwiska z kont');
+  y01 += 11;
+
+  // grupowanie
+  const grupy = {};
+  scalone.forEach((x) => { const st = (x.station || '').toUpperCase() || 'OBSADA'; (grupy[st] = grupy[st] || []).push(x); });
+  const nazwyGrup = Object.keys(grupy).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  let cx = L0, cy = y01, kolNr = 0;
+  const dolLimit = H - 14;
+  const nowaKolumna = () => { kolNr += 1; cx = L0 + kolNr * (kolW + 6); cy = y01; };
+  nazwyGrup.forEach((g) => {
+    let wpisy = grupy[g].slice().sort((a, b) => minut(a.start) - minut(b.start));
+    const hGr = wpisy.reduce((a, x) => a + godzZmiany(x) + (x.rola === 'training' && x.instrHours ? x.instrHours : 0), 0);
+    let czesc = 1;
+    while (wpisy.length) {
+      const wolne = dolLimit - cy;
+      let ile = Math.floor((wolne - 9) / 6.4);
+      if (ile < 3 && kolNr < 1) { nowaKolumna(); continue; }
+      if (ile < 1 && kolNr >= 1) break;
+      ile = Math.max(1, Math.min(ile, wpisy.length));
+      rysujBlok(g, wpisy.slice(0, ile), hGr, czesc);
+      wpisy = wpisy.slice(ile);
+      czesc += 1;
+      if (wpisy.length && kolNr < 1) nowaKolumna();
+      else if (wpisy.length) break;
+    }
+  });
+  function rysujBlok(g, wpisy, hGr, czesc) {
+    const wys = 7 + wpisy.length * 6.4 + 2;
+    const kol = kolor(g);
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(...LINIA); doc.setLineWidth(0.3);
+    doc.roundedRect(cx, cy, kolW, wys, 1.8, 1.8, 'FD');
+    doc.setFillColor(...kol); doc.roundedRect(cx, cy, 2, wys, 1, 1, 'F');
+    doc.setFillColor(...kol); doc.roundedRect(cx + 4, cy + 2, 10, 4, 1, 1, 'F');
+    F(1, 5.4, [255, 255, 255]); doc.text(g.slice(0, 3), cx + 9, cy + 4.8, { align: 'center' });
+    F(1, 7.4, INK); doc.text(czesc > 1 ? `${g} (cd.)` : g, cx + 16, cy + 5, { maxWidth: kolW - 34 });
+    if (czesc === 1) { F(1, 7.4, TEAL7); doc.text(`${hGr.toFixed(1).replace('.', ',')} h`, cx + kolW - 3, cy + 5, { align: 'right' }); }
+    let ry = cy + 8.6;
+    wpisy.forEach((x) => {
+      const k = kontoZ(x);
+      let nm = etyk(x);
+      F(1, 6.8, INK); doc.text(nm, cx + 4, ry, { maxWidth: kolW - 52 });
+      const wTxt = Math.min(doc.getTextWidth(nm), kolW - 52);
+      let bx = cx + 4 + wTxt + 1.5;
+      const badge = (t, kb) => { const wB = doc.getTextWidth(t) * 0.5 + 3; doc.setFillColor(...kb); doc.roundedRect(bx, ry - 2.5, wB, 3.2, 0.8, 0.8, 'F'); F(1, 4.6, [255, 255, 255]); doc.text(t, bx + wB / 2, ry - 0.2, { align: 'center' }); bx += wB + 1.2; };
+      if (x.rola === 'training' && x.partner) { const ki = poNaz.get(String(x.partner).toUpperCase().trim()); F(0, 5.2, TEAL5); doc.text(`instr.: ${(ki && ki.name ? ki.name : x.partner)}`, bx, ry - 0.1, { maxWidth: kolW - 60 }); }
+      else if (k && k.instruktor) badge('Trener', [0, 121, 107]);
+      else if (k && MGR.has(k.funkcja)) badge('Manager', TEAL9);
+      F(0, 6.6, GREY); doc.text(`${x.start}–${x.end}`, cx + kolW - 16, ry, { align: 'right' });
+      F(1, 6.4, INK); doc.text(`${godzZmiany(x).toFixed(0)} h`, cx + kolW - 3, ry, { align: 'right' });
+      ry += 6.4;
+    });
+    cy += wys + 3.5;
+  }
+
+  // ── prawa kolumna: sekcje 02–04 ──
+  const R0 = L0 + LW2 + 6, RW = W - R0 - 8;
+  let ry2 = KY + 22;
+  sekcjaTag(R0, ry2, '02', 'Pokrycie godzinowe', 'plan względem obsady idealnej');
+  if (cov) { F(1, 13, cov.pct >= 95 ? OK_TX : BAD_TX); doc.text(`${cov.pct.toFixed(0)}%`, R0 + RW, ry2 + 5, { align: 'right' }); }
+  ry2 += 11;
+  if (cov && cov.rows) {
+    const cw = RW / 24;
+    F(0, 4.6, GREY); cov.rows.forEach((r2, i) => doc.text(String(r2.g).padStart(2, '0'), R0 + i * cw + cw / 2, ry2 + 2.4, { align: 'center' }));
+    const wiersz = (label, klucz, yy) => {
+      F(0, 5, GREY); doc.text(label, R0, yy - 1.2);
+      cov.rows.forEach((r2, i) => {
+        const v = r2[klucz]; const idl = r2.ideal;
+        let bg = OK_BG, tx = OK_TX;
+        if (klucz === 'plan') { if (v < idl) { bg = BAD_BG; tx = BAD_TX; } else if (v > idl) { bg = WARN_BG; tx = WARN_TX; } }
+        else { bg = TLO; tx = [90, 104, 101]; }
+        doc.setFillColor(...bg); doc.rect(R0 + i * cw, yy, cw - 0.4, 5, 'F');
+        F(1, 5.4, tx); doc.text(String(v), R0 + i * cw + cw / 2, yy + 3.5, { align: 'center' });
+      });
+    };
+    wiersz('Idealna', 'ideal', ry2 + 4.5);
+    wiersz('Plan', 'plan', ry2 + 11.5);
+    ry2 += 18.5;
+    F(0, 5.4, GREY);
+    const leg = [['Pokrycie', OK_TX], ['Niedobór', BAD_TX], ['Nadmiar', WARN_TX]];
+    let lx = R0;
+    leg.forEach(([t, c2]) => { doc.setFillColor(...c2); doc.circle(lx + 1, ry2, 1, 'F'); doc.setTextColor(...GREY); doc.text(t, lx + 3, ry2 + 1); lx += doc.getTextWidth(t) + 9; });
+    ry2 += 6;
+  } else { F(0, 6.5, GREY); doc.text('Brak danych sprzedaży — pokrycie niedostępne.', R0, ry2 + 3); ry2 += 8; }
+
+  ry2 += 4;
+  sekcjaTag(R0, ry2, '03', 'Podsumowanie godzin', 'plan i wykonanie');
+  ry2 += 11;
+  F(0, 5.4, GREY); doc.text('KATEGORIA', R0, ry2); doc.text('PLAN', R0 + RW * 0.55, ry2, { align: 'right' }); doc.text('REALIZACJA', R0 + RW, ry2, { align: 'right' });
+  ry2 += 2;
+  const kat = [['CREW', crewH], ['MANAGER', mgrH], ['SZKOLENIA', szkH], ['RAZEM', planH]];
+  kat.forEach(([n2, v], i) => {
+    ry2 += 6.2;
+    const bold = n2 === 'RAZEM';
+    if (bold) { doc.setDrawColor(...LINIA); doc.setLineWidth(0.3); doc.line(R0, ry2 - 4.4, R0 + RW, ry2 - 4.4); }
+    F(bold ? 1 : 0, 7, INK); doc.text(n2, R0, ry2);
+    F(1, 7, INK); doc.text(`${v.toFixed(1).replace('.', ',')} h`, R0 + RW * 0.55, ry2, { align: 'right' });
+    doc.setDrawColor(...LINIA); doc.setLineWidth(0.25); doc.line(R0 + RW * 0.68, ry2, R0 + RW, ry2);
+  });
+
+  ry2 += 10;
+  sekcjaTag(R0, ry2, '04', 'Priorytety zmiany', 'do omówienia na pre-shiftcie');
+  ry2 += 10.5;
+  const prio = ['Wbicia i wybicia kartą zgodnie z planem.', 'Reakcja na wskaźnik kalkulatora MPT.', 'Każda zamiana wymaga akceptacji ASM lub RGM.'];
+  prio.forEach((t) => { doc.setFillColor(...TEAL5); doc.circle(R0 + 1, ry2 - 1, 0.8, 'F'); F(0, 6.6, INK); doc.text(t, R0 + 3.5, ry2, { maxWidth: RW - 4 }); ry2 += 5.4; });
+  ry2 += 2;
+  F(0, 5.6, GREY); doc.text('Uwagi kierownika', R0, ry2);
+  doc.setDrawColor(...LINIA); doc.line(R0 + 24, ry2, R0 + RW, ry2); ry2 += 9;
+  F(0, 5.6, GREY); doc.text('KIEROWNIK ZAMYKAJĄCY', R0, ry2);
+  F(1, 8, INK); doc.text(zam ? nazwisko(zam) : '—', R0, ry2 + 5);
+  F(0, 5.6, GREY); doc.text('Podpis', R0 + RW * 0.5, ry2 + 5);
+  doc.setDrawColor(...LINIA); doc.line(R0 + RW * 0.5 + 12, ry2 + 5, R0 + RW, ry2 + 5);
+
+  // stopka
+  doc.setDrawColor(...LINIA); doc.setLineWidth(0.3); doc.line(X0, H - 9, W - 8, H - 9);
+  F(0, 5.6, GREY);
+  doc.text('REX Cloud · WorkRhythm', X0, H - 5);
+  const teraz = new Date();
+  doc.text(`Wygenerowano ${String(teraz.getDate()).padStart(2, '0')}.${String(teraz.getMonth() + 1).padStart(2, '0')}.${teraz.getFullYear()} · ${String(teraz.getHours()).padStart(2, '0')}:${String(teraz.getMinutes()).padStart(2, '0')}`, X0 + KW / 2, H - 5, { align: 'center' });
+  doc.text('Dokument operacyjny · K003 · strona 1/1', W - 8, H - 5, { align: 'right' });
+
+  doc.save(`grafik_${dateStr}.pdf`);
+}

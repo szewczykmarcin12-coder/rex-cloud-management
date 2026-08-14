@@ -5,7 +5,7 @@ import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCovera
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
 import { parseExportCSV } from './parseExport.js';
-import { generateDayPDF, generateRangePDF } from './generatePDF.js';
+import { generateDayPDF, generateRangePDF, generateDailyRoster } from './generatePDF.js';
 
 const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
 // ^ Zmień na URL swojego backendu po wdrożeniu
@@ -229,11 +229,10 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
     ] },
     { naglowek: 'Narzędzia', items: [
       { id: 'import', label: 'Import / eksport godzin', icon: Upload },
-      { id: 'print', label: 'Wydruk grafiku', icon: Printer },
     ] },
     { naglowek: 'System', items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
   ];
-  const widoczne = role === 'asm' ? null : ['dashboard', 'wt', 'print'];
+  const widoczne = role === 'asm' ? null : ['dashboard', 'wt'];
   const sekcje = SEKCJE
     .map((g) => ({ ...g, items: g.items.filter((m) => !widoczne || widoczne.includes(m.page || m.id)) }))
     .filter((g) => g.items.length > 0);
@@ -3129,6 +3128,20 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const [order, setOrder] = useState('entry');
   const [brkFor, setBrkFor] = useState(null);
   const [zakresTyg, setZakresTyg] = useState('siatka');   // 'siatka' (cały tydzień) | 'dzien'
+  const [printOpen, setPrintOpen] = useState(false);
+  const drukujDzien = (d) => {
+    const sp = (((data.salesData || {}).sales) || {})[d] || 0;
+    const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', new Date(d).getDay());
+    const req96 = v4Up96(dir.map((v, i2) => Math.max(v, ind[i2])));
+    const sch96 = new Float64Array(V4_NSLOT);
+    data.shifts.filter((x) => x.date === d && !jestInstruktor(x)).forEach((x) => v4AddCoverage(sch96, x.start, x.end));
+    const cv = v4Coverage(req96, sch96);
+    const rows = Array.from({ length: 24 }, (_, gi) => { const g = (6 + gi) % 24; let idl = 0, pl = 0; for (let k = gi * 4; k < gi * 4 + 4; k++) { idl = Math.max(idl, req96[k]); pl = Math.max(pl, sch96[k]); } return { g, ideal: Math.ceil(idl), plan: Math.round(pl) }; });
+    const zle = cv.perSlot.filter((x) => x.def > 0.01).length;
+    const maReq = sp > 0 || req96.some((v) => v > 0);
+    generateDailyRoster({ dateStr: d, shifts: data.shifts, accounts: data.accounts, cov: maReq ? { pct: cv.coveragePct, zle, rows } : null });
+    setPrintOpen(false);
+  };
   const zmienTydzien = (dni) => { const d = new Date(weekStart); d.setDate(d.getDate() + dni); const nowy = ymd(d); setWeekStart(nowy); setDay(nowy); };
   const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
@@ -3300,9 +3313,19 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <div className="ml-auto flex items-center gap-2 shrink-0">
             {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>🔒 tylko podgląd</span>}
             <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
+            <button onClick={() => setPrintOpen((v) => !v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: printOpen ? colors.primary.medium : colors.primary.bg, color: colors.primary.darkest, backgroundColor: printOpen ? colors.primary.bgLight : 'white' }}><Printer size={13} /> Wydruk dnia</button>
             <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
           </div>
       </div>
+
+      {printOpen && (
+        <div className="shrink-0 px-5 py-2 flex items-center gap-2 flex-wrap border-b" style={{ backgroundColor: 'white', borderColor: colors.primary.bg }}>
+          <span className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>Grafik obsady (PDF) — wybierz dzień:</span>
+          {weekDays.map((d, i) => (
+            <button key={d} onClick={() => drukujDzien(d)} className="px-2.5 py-1 rounded-md text-[11px] font-bold border" style={{ borderColor: colors.primary.bg, color: i >= 5 ? '#a03f37' : colors.primary.dark }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}</button>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ backgroundColor: colors.primary.bgLight }}>
         {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} />}
@@ -3678,7 +3701,7 @@ export default function App() {
     settings: <SettingsPage data={data} />
   };
   // Kierownik zmiany: strona domowa, grafik i wydruk. ASM: wszystko.
-  const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'wt', 'print'];
+  const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'wt'];
   const widok = dozwolone.includes(page) ? page : 'dashboard';
   const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length;
 
