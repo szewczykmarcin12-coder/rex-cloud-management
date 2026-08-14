@@ -115,9 +115,16 @@ const store = {
 
 const api = async (path, method = 'GET', body = null) => {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  const tok = store.get('admin_token');
+  if (tok) opts.headers.Authorization = `Bearer ${tok}`;               // SEC-01: sesja przy każdym wywołaniu
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(`${API_BASE}${path}`, opts);
-  return r.json();
+  const j = await r.json().catch(() => ({ success: false, error: 'Nieprawidłowa odpowiedź serwera' }));
+  if (r.status === 401 && tok) {                                       // sesja wygasła → pełne wylogowanie
+    store.del('admin_token'); store.del('admin_session');
+    try { location.reload(); } catch {}
+  }
+  return j;
 };
 
 // ===================== UI =====================
@@ -169,7 +176,9 @@ const Login = ({ onLogin }) => {
         if (r.success) {
           const un = r.userName || login.trim() || 'ASM';
           try { if (window.PasswordCredential && navigator.credentials) { navigator.credentials.store(new window.PasswordCredential({ id: login.trim(), password: haslo, name: un })); } } catch {}
-          store.set('admin_session', { at: Date.now(), role: r.role, userName: un }); onLogin(r.role, un);
+          if (r.token) store.set('admin_token', r.token);
+          store.set('admin_session', { at: Date.now(), role: r.role, userName: un });
+          try { location.reload(); } catch { onLogin(r.role, un); }
         }
         else setErr(r.error || 'Błąd logowania');
       }
@@ -410,9 +419,11 @@ const Dashboard = ({ data, setPage, userName }) => {
   const oknoDni = zakresD === 'dzien' ? [dzis] : zakresD === 'tydzien' ? tydzien : dniMies;
   const aktNetto = (sx) => {
     const rec = ((data.ts || {}).actuals || {})[wtKey(sx)];
-    const a = rec || { start: sx.start, end: sx.end, breaks: [] };
+    if (!rec) return 0;                                   // R-04: bez odbić nie ma wykonania
+    const a = rec;
     let sp = wtToMin(a.end) - wtToMin(a.start); if (sp <= 0) sp += 1440;
-    let br = 0; (a.breaks || []).forEach((b) => { if (!b.platna) { let x = wtToMin(b.do) - wtToMin(b.od); if (x < 0) x += 1440; br += x; } });
+    // COR-04: jeden kontrakt danych przerwy {start, end, platna}; stare wpisy {od, do} czytane awaryjnie
+    let br = 0; (a.breaks || []).forEach((b) => { if (!b.platna) { let x = wtToMin(b.end != null ? b.end : b.do) - wtToMin(b.start != null ? b.start : b.od); if (x < 0) x += 1440; br += x; } });
     return Math.max(sp - br, 0) / 60;
   };
   const complMap = (data.ts || {}).completed || {};
@@ -420,7 +431,7 @@ const Dashboard = ({ data, setPage, userName }) => {
     const zs = data.shifts.filter((x) => x.date === d && !jestInstruktor(x));
     const plan = zs.reduce((a, x) => a + godzZ(x), 0);
     const zamkniety = !!complMap[d];
-    const akt = (d < dzis || zamkniety) && plan > 0 ? zs.reduce((a, x) => a + aktNetto(x), 0) : null;
+    const akt = (d < dzis || zamkniety) && plan > 0 ? (() => { const zRec = zs.filter((x) => ((data.ts || {}).actuals || {})[wtKey(x)]); return zRec.length ? zRec.reduce((a, x) => a + aktNetto(x), 0) : null; })() : null;   // R-04
     const sp = salesAll[d] || 0;
     return { d, plan, akt, sp, splh: sp && plan ? sp / plan : null, zamkniety };
   });
@@ -883,6 +894,44 @@ const PrintPage = ({ data }) => {
 
 // ===================== SETTINGS =====================
 
+// ── Rejestr terminali REX Clock (SEC-04): odbicia tylko z urządzeń dodanych przez ASM ──
+const TerminalsCard = ({ data }) => {
+  const [terms, setTerms] = useState(null);
+  const [tid, setTid] = useState('');
+  const [tname, setTname] = useState('');
+  useEffect(() => { api('/clock?action=terminals').then((r) => { if (r && r.success) setTerms(r.terminals || []); }).catch(() => {}); }, []);
+  const dodaj = async () => {
+    if (!tid.trim()) return data.show('Podaj identyfikator terminala', 'error');
+    const r = await api('/clock?action=terminal-add', 'POST', { id: tid.trim(), name: tname.trim() });
+    if (r.success) { setTerms(r.terminals); setTid(''); setTname(''); data.show('Terminal zarejestrowany', 'success'); } else data.show(r.error || 'Błąd', 'error');
+  };
+  const przelacz = async (t) => { const r = await api('/clock?action=terminal-toggle', 'POST', { id: t.id }); if (r.success) setTerms(r.terminals); else data.show(r.error || 'Błąd', 'error'); };
+  const usun = async (t) => { if (!confirm(`Usunąć terminal ${t.id}? Urządzenie straci możliwość odbijania.`)) return; const r = await api('/clock?action=terminal-del', 'POST', { id: t.id }); if (r.success) setTerms(r.terminals); else data.show(r.error || 'Błąd', 'error'); };
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl">
+      <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Terminale REX Clock</h3>
+      <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Odbicia przyjmowane są wyłącznie z zarejestrowanych, aktywnych terminali (identyfikator z adresu urządzenia: ?terminal=…).</p>
+      {terms === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : terms.length === 0 ? <p className="text-sm mb-3" style={{ color: '#c06a35' }}>Brak terminali — REX Clock nie przyjmie żadnych odbić, dopóki nie dodasz urządzenia.</p> : (
+        <div className="space-y-2 mb-4">
+          {terms.map((t) => (
+            <div key={t.id} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}>
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate" style={{ color: colors.primary.darkest }}>{t.id}</p><p className="text-[11px] truncate" style={{ color: colors.primary.light }}>{t.name}{t.lastSeen ? ` · ostatnio: ${new Date(t.lastSeen).toLocaleString('pl-PL')}` : ' · jeszcze nie użyty'}</p></div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: t.active === false ? '#fff0ed' : '#e8f2ef', color: t.active === false ? '#bd4f45' : '#347363' }}>{t.active === false ? 'wycofany' : 'aktywny'}</span>
+              <button onClick={() => przelacz(t)} className="text-xs font-medium" style={{ color: colors.primary.medium }}>{t.active === false ? 'przywróć' : 'wycofaj'}</button>
+              <button onClick={() => usun(t)} className="text-red-300 hover:text-red-500"><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input value={tid} onChange={(e) => setTid(e.target.value)} placeholder="ID (np. K003-POS-01)" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
+        <input value={tname} onChange={(e) => setTname(e.target.value)} placeholder="Opis (np. POS przy kuchni)" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
+        <button onClick={dodaj} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Dodaj</button>
+      </div>
+    </div>
+  );
+};
+
 const SettingsPage = ({ data }) => {
   const [linked, setLinked] = useState([]);
   const [linkLogin, setLinkLogin] = useState('');
@@ -928,6 +977,8 @@ const SettingsPage = ({ data }) => {
     <div className="flex-1 flex flex-col">
       <Header title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+
+        <TerminalsCard data={data} />
 
         {resetReqs.length > 0 && (
           <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #d67943` }}>
@@ -3224,10 +3275,11 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const weekDone = (w) => w.days.length > 0 && w.days.every((d) => ts.completed[d]);
   const curWeek = () => weeks.find((w) => w.start === weekStart) || { days: [] };
 
+  const hasAct = (s) => !!ts.actuals[wtKey(s)];                       // R-04: wykonanie istnieje tylko z odbić/korekty
   const act = (s) => ts.actuals[wtKey(s)] || { start: s.start, end: s.end, breaks: [] };
-  const setAct = (s, patch) => { if (locked) return data.show('Tydzień zamknięty — tylko podgląd', 'error'); data.tsPutActual(wtKey(s), { ...act(s), ...patch }); };
+  const setAct = (s, patch) => { if (locked) return data.show('Tydzień zamknięty — tylko podgląd', 'error'); data.tsPutActual(wtKey(s), { ...act(s), ...patch, source: 'manual' }); };
   const unpaid = (a) => (a.breaks || []).filter((b) => b.platna === false).reduce((x, b) => x + wtDur(b.start, b.end), 0);
-  const actualNet = (s) => wtDur(act(s).start, act(s).end) - unpaid(act(s));
+  const actualNet = (s) => hasAct(s) ? wtDur(act(s).start, act(s).end) - unpaid(act(s)) : 0;
   const dayShifts = (d) => data.shifts.filter((s) => s.date === d && !jestInstruktor(s));
 
   const weekDays = weekStart ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return ymd(d); }) : [];
@@ -3272,19 +3324,29 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   // Wiersze instruktorskie to duplikaty (osoba ma równolegle swoją zmianę) — nie liczą się do godzin
   const rowsGodz = rows.filter((s) => !jestInstruktor(s));
   const plannedMin = rowsGodz.reduce((x, s) => x + wtDur(s.start, s.end), 0);
-  const actualMin = rowsGodz.reduce((x, s) => x + actualNet(s), 0);
-  const eff = plannedMin ? Math.round((actualMin / plannedMin) * 100) : 0;
+  const rowsAct = rowsGodz.filter(hasAct);                            // R-04: KPI tylko z realnych odbić
+  const actualMin = rowsAct.reduce((x, s) => x + actualNet(s), 0);
+  const plannedActMin = rowsAct.reduce((x, s) => x + wtDur(s.start, s.end), 0);
+  const eff = plannedActMin ? Math.round((actualMin / plannedActMin) * 100) : 0;
 
-  const simulate = () => {
+  // R-03/TNA-01: wykonanie budowane z realnych odbić REX Clock (projekcja event store).
+  // Odbicia surowe pozostają niezmienne w backendzie; wpis tutaj to audytowalna projekcja (source: 'clock').
+  const pobierzOdbicia = async () => {
     if (locked) return;
-    const map = {};
+    const r = await api(`/clock?action=projection&date=${day}`);
+    if (!r || !r.success) return data.show((r && r.error) || 'Nie udało się pobrać odbić', 'error');
+    const proj = r.projection || [];
+    const map = {}; let n = 0, niepelne = 0;
     dayShifts(day).forEach((s) => {
-      const seed = [...wtKey(s)].reduce((a, c) => a + c.charCodeAt(0), 0);
-      const ds = (seed % 13) - 4, de = ((seed >> 2) % 15) - 3;
-      map[wtKey(s)] = { start: wtClock(wtToMin(s.start) + ds), end: wtClock(wtToMin(s.end) + de), breaks: (ts.actuals[wtKey(s)]?.breaks) || [] };
+      const pr = proj.find((x) => s.accountId && x.accountId === s.accountId);
+      if (!pr || !pr.in) return;
+      if (!pr.out) { niepelne++; return; }                             // brak wybicia → wyjątek, nie wykonanie
+      map[wtKey(s)] = { start: pr.in, end: pr.out, breaks: (pr.breaks || []).map((b) => ({ platna: !!b.paid, start: b.start, end: b.end })), source: 'clock' };
+      n++;
     });
-    data.tsPutActualsBulk(map);
-    data.show('Wbicia zasymulowane');
+    if (!n && !niepelne) return data.show('Brak odbić z REX Clock dla tego dnia', 'error');
+    if (n) data.tsPutActualsBulk(map);
+    data.show(`Odbicia z REX Clock: ${n}${niepelne ? ` · ${niepelne} bez wybicia (pominięte)` : ''}`, n ? 'success' : 'error');
   };
 
   const dateLabel = (d) => { const dt = new Date(d); return `${dniPelne[dt.getDay()]}, ${dt.getDate()} ${monthsGen[dt.getMonth()]} ${dt.getFullYear()}`; };
@@ -3440,7 +3502,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                     setAddSaving(false);
                     if (ok) setAddOsoba('');
                   }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{addSaving ? 'Dodaję…' : 'Dodaj do grafiku'}</button>
-                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku i od razu do wykonania (Actual). {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
+                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku. Wykonanie powstanie z odbić REX Clock lub ręcznej korekty. {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
                 </div>
               </div>
             )}
@@ -3451,7 +3513,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
           <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
           <select value={order} onChange={(e) => setOrder(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="entry">Kolejność wpisu</option><option value="az">Alfabetycznie</option><option value="diff">Wg różnicy</option></select>
-          <button disabled={locked} onClick={simulate} className="ml-auto text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Symuluj wbicia</button>
+          <button disabled={locked} onClick={pobierzOdbicia} className="ml-auto text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Pobierz odbicia z REX Clock</button>
         </div>
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto border" style={{ borderColor: colors.primary.bg }}>
           <div className="min-w-[820px]">
@@ -3467,17 +3529,17 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#bd4f45' }} />Przerwa niepłatna</span>
             </div>
             {rows.length === 0 ? <p className="text-center text-slate-400 py-8">Brak zmian w tym dniu.</p> : rows.map((s, i) => {
-              const a = act(s); const dMin = actualNet(s) - wtDur(s.start, s.end); const tol = Math.abs(dMin) <= 5;
+              const a = act(s); const ma = hasAct(s); const dMin = ma ? actualNet(s) - wtDur(s.start, s.end) : 0; const tol = Math.abs(dMin) <= 5;
               return (
                 <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#eef2f7' }}>
                   <div className="w-64 shrink-0 px-3 py-2">
                     <p className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{s.name}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
-                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span><span className="text-[11px] font-medium" style={{ color: tol ? '#347363' : '#bd4f45' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span></div>
-                    <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{wtHours(actualNet(s))}</b></span></div>
+                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className="text-[11px] font-medium" style={{ color: tol ? '#347363' : '#bd4f45' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="text-[11px] font-medium" style={{ color: '#c06a35' }}>brak odbić</span>}</div>
+                    <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
                   </div>
                   <div className="relative flex-1 py-2"><WTGrid />
                     <div className="relative h-3.5 mb-1 rounded" style={{ backgroundColor: '#f8fafc' }}><WTBar start={s.start} end={s.end} color={colors.primary.bg} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: colors.primary.dark }}>Shift {s.start}–{s.end}</div></div>
-                    <div className="relative h-3.5 rounded" style={{ backgroundColor: '#f8fafc' }}><WTBar start={a.start} end={a.end} color={colors.primary.medium} breaks={a.breaks} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium text-white/90">Actual {a.start}–{a.end}</div></div>
+                    <div className="relative h-3.5 rounded" style={{ backgroundColor: '#f8fafc' }}>{ma ? <><WTBar start={a.start} end={a.end} color={colors.primary.medium} breaks={a.breaks} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium text-white/90">Actual {a.start}–{a.end}</div></> : <div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: '#c06a35' }}>Brak odbić — wykonanie nie zostało utworzone</div>}</div>
                   </div>
                   <div className="w-24 shrink-0 px-2 py-2 flex flex-col items-center justify-center gap-1">
                     <div className="flex items-center gap-0.5"><input value={a.start} disabled={locked} onChange={(e) => setAct(s, { start: e.target.value })} className="w-11 px-1 py-0.5 rounded border text-[11px] text-center disabled:bg-slate-50" style={{ borderColor: colors.primary.bg }} /><input value={a.end} disabled={locked} onChange={(e) => setAct(s, { end: e.target.value })} className="w-11 px-1 py-0.5 rounded border text-[11px] text-center disabled:bg-slate-50" style={{ borderColor: colors.primary.bg }} /></div>
@@ -3658,11 +3720,10 @@ const useData = () => {
     const r = await api('/schedule?action=add', 'POST', payload);
     if (!r.success) { show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
     const sh = r.shift;
-    await tsPutActual(wtKey(sh), { start: sh.start, end: sh.end, breaks: [] });
-    await sync();
-    show(`Dodano: ${sh.name} ${sh.start}–${sh.end} (grafik + wykonanie)`);
+    await sync();                                        // COR-02: wykonanie powstaje wyłącznie z odbić / korekty
+    show(`Dodano: ${sh.name} ${sh.start}–${sh.end} (grafik)`);
     return true;
-  }, [sync, tsPutActual]);
+  }, [sync]);
 
   const updateShiftManual = useCallback(async (ident, nowe) => {
     const r = await api('/schedule?action=update', 'POST', { ...ident, nowe });
@@ -3695,13 +3756,10 @@ const useData = () => {
   const applyTemplate = useCallback(async (id, weekStart, przypisania) => {
     const r = await api('/templates?action=apply', 'POST', { id, weekStart, przypisania });
     if (!r.success) { show(r.error || 'Nie udało się zastosować szablonu', 'error'); return false; }
-    const mapAct = {};
-    (r.dodane || []).forEach((sh) => { mapAct[wtKey(sh)] = { start: sh.start, end: sh.end, breaks: [] }; });
-    await tsPutActualsBulk(mapAct);
-    await sync();
-    show(`Zastosowano szablon: ${r.dodane.length} zmian (grafik + wykonanie)`);
+    await sync();                                        // COR-02: bez automatycznego Actual z planu
+    show(`Zastosowano szablon: ${r.dodane.length} zmian (grafik)`);
     return true;
-  }, [sync, tsPutActualsBulk]);
+  }, [sync]);
   const deleteTemplate = useCallback(async (id) => {
     const r = await api(`/templates?id=${encodeURIComponent(id)}`, 'DELETE');
     if (!r.success) { show(r.error || 'Nie udało się usunąć', 'error'); return; }
@@ -3748,7 +3806,7 @@ export default function App() {
   const [wrTab, setWrTab] = useState('schedule');
   const [wrNonce, setWrNonce] = useState(0);
   const data = useData();
-  const logout = () => { store.del('admin_session'); setAuthed(false); setRole('kierownik'); setUserName(''); setPage('dashboard'); };
+  const logout = () => { store.del('admin_session'); store.del('admin_token'); setAuthed(false); setRole('kierownik'); setUserName(''); setPage('dashboard'); };
   const onLogin = (r, un) => { setRole(r); setUserName(un || ''); setAuthed(true); setPage('dashboard'); };
 
   if (!authed) return <Login onLogin={onLogin} />;
