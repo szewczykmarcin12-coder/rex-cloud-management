@@ -5,7 +5,8 @@ import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCovera
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
 import { parseExportCSV } from './parseExport.js';
-import { generateDayPDF, generateRangePDF, generateDailyRoster } from './generatePDF.js';
+import { generateDayPDF, generateRangePDF } from './generatePDF.js';
+import { DailyRosterPrint } from './DailyRosterPrint.jsx';
 
 const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
 // ^ Zmień na URL swojego backendu po wdrożeniu
@@ -3129,19 +3130,78 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const [brkFor, setBrkFor] = useState(null);
   const [zakresTyg, setZakresTyg] = useState('siatka');   // 'siatka' (cały tydzień) | 'dzien'
   const [printOpen, setPrintOpen] = useState(false);
-  const drukujDzien = (d) => {
+  const [rosterData, setRosterData] = useState(null);
+  const zbudujRoster = (d) => {
+    const MGRF = new Set(['SM', 'JSM', 'ASM', 'RGM']);
+    const poIdR = new Map((data.accounts || []).map((a) => [a.id, a]));
+    const poNazR = new Map((data.accounts || []).flatMap((a) => [a.grafikName, a.name, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+    const kontoZ = (x) => poIdR.get(x.accountId) || poNazR.get(String(x.name || '').toUpperCase().trim()) || null;
+    const pelne = (x) => { const k = kontoZ(x); return (k && k.name ? k.name : (x.name || '')).toUpperCase(); };
+    const nazwisko = (x) => { const cz = pelne(x).split(/\s+/); return cz[cz.length - 1]; };
+    const fH = (h) => `${h.toFixed(1).replace('.', ',')} h`;
+    const dzienne = data.shifts.filter((x) => x.date === d);
+    const scalone = scalParyPlan(dzienne);
+    const planH = dzienne.reduce((a, x) => a + godzZ(x), 0);
+    const mgrH = dzienne.filter((x) => { const k = kontoZ(x); return k && MGRF.has(k.funkcja); }).reduce((a, x) => a + godzZ(x), 0);
+    const szkZ = dzienne.filter((x) => x.rola === 'training' || jestInstruktor(x));
+    const szkH = szkZ.reduce((a, x) => a + godzZ(x), 0);
+    const szkOs = new Set(dzienne.filter((x) => x.rola === 'training').map(pelne)).size;
+    const mgrZm = dzienne.filter((x) => { const k = kontoZ(x); return k && MGRF.has(k.funkcja); });
+    const mn = (t) => { const [h2, m2] = String(t || '0:0').split(':').map(Number); return h2 * 60 + m2; };
+    const kEnd = (x) => { let e = mn(x.end); if (e <= mn(x.start)) e += 1440; return e; };
+    const otw = mgrZm.slice().sort((a, b) => mn(a.start) - mn(b.start))[0];
+    const zam = mgrZm.slice().sort((a, b) => kEnd(b) - kEnd(a))[0];
+    // silnik: pokrycie godzinowe
     const sp = (((data.salesData || {}).sales) || {})[d] || 0;
     const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', new Date(d).getDay());
     const req96 = v4Up96(dir.map((v, i2) => Math.max(v, ind[i2])));
     const sch96 = new Float64Array(V4_NSLOT);
-    data.shifts.filter((x) => x.date === d && !jestInstruktor(x)).forEach((x) => v4AddCoverage(sch96, x.start, x.end));
+    dzienne.filter((x) => !jestInstruktor(x)).forEach((x) => v4AddCoverage(sch96, x.start, x.end));
     const cv = v4Coverage(req96, sch96);
-    const rows = Array.from({ length: 24 }, (_, gi) => { const g = (6 + gi) % 24; let idl = 0, pl = 0; for (let k = gi * 4; k < gi * 4 + 4; k++) { idl = Math.max(idl, req96[k]); pl = Math.max(pl, sch96[k]); } return { g, ideal: Math.ceil(idl), plan: Math.round(pl) }; });
+    const coverage = Array.from({ length: 24 }, (_, gi) => { const g = (6 + gi) % 24; let idl = 0, pl = 0; for (let k = gi * 4; k < gi * 4 + 4; k++) { idl = Math.max(idl, req96[k]); pl = Math.max(pl, sch96[k]); } return { label: String(g).padStart(2, '0'), required: Math.ceil(idl), scheduled: Math.round(pl) }; });
     const zle = cv.perSlot.filter((x) => x.def > 0.01).length;
-    const maReq = sp > 0 || req96.some((v) => v > 0);
-    generateDailyRoster({ dateStr: d, shifts: data.shifts, accounts: data.accounts, cov: maReq ? { pct: cv.coveragePct, zle, rows } : null });
-    setPrintOpen(false);
+    // stacje
+    const TONE = { 'PANIEROWANIE': 'lime', 'SMAŻENIE': 'red', 'KANAPKI / WRAPY': 'cyan', 'KONTROLER': 'navy', 'WSPARCIE WIECZORNE / FLEX': 'coral', 'DISPATCHER': 'coral', 'PHU': 'teal', 'DESERY / NAPOJE': 'indigo', 'FRYTKI': 'lime', 'ZMYWAK': 'slate', 'DOSTAWA': 'indigo', 'SZKOLENIA': 'teal', 'OBSADA': 'teal' };
+    const grupy = {};
+    scalone.forEach((x) => { const st = (x.station || '').toUpperCase() || 'OBSADA'; (grupy[st] = grupy[st] || []).push(x); });
+    const stations = Object.keys(grupy).sort((a, b) => (a === 'OBSADA' ? -1 : b === 'OBSADA' ? 1 : a.localeCompare(b))).map((g) => {
+      const wpisy = grupy[g].slice().sort((a, b) => mn(a.start) - mn(b.start));
+      const hGr = wpisy.reduce((a, x) => a + godzZ(x) + (x.paraInstr ? godzZ(x.paraInstr) : 0), 0);
+      return {
+        id: g.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: g === 'OBSADA' ? 'Obsada' : g, code: g.slice(0, 3), tone: TONE[g] || 'teal', hours: fH(hGr),
+        people: wpisy.map((x, i2) => { const k = kontoZ(x); return {
+          id: `${g}-${i2}`, name: pelne(x), time: `${x.start}–${x.end}`, hours: `${godzZ(x).toFixed(0)} h`,
+          badge: k && MGRF.has(k.funkcja) ? 'Manager' : (k && k.instruktor ? 'Trener' : undefined),
+          detail: x.paraInstr ? `instr.: ${pelne(x.paraInstr)}` : undefined,
+        }; }),
+      };
+    });
+    const d0 = new Date(d + 'T12:00:00');
+    const dniP = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
+    const mcP = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
+    const teraz = new Date();
+    return {
+      dateLabel: `${dniP[d0.getDay()]}, ${d0.getDate()} ${mcP[d0.getMonth()]} ${d0.getFullYear()}`,
+      operationalDayLabel: 'Doba operacyjna 06:00–06:00', versionLabel: 'Wersja opublikowana',
+      restaurantName: 'Popeyes Kraków', restaurantDetail: 'Galeria Krakowska', locationCode: 'PLK 201043',
+      shiftCount: dzienne.length, employeeCount: new Set(dzienne.filter((x) => !jestInstruktor(x)).map(pelne)).size,
+      plannedHours: fH(planH), coveragePercent: Math.round(cv.coveragePct),
+      coverageAttentionLabel: zle ? `${zle} ${zle === 1 ? 'slot' : zle < 5 ? 'sloty' : 'slotów'} do kontroli` : 'Bez uwag',
+      managerHours: fH(mgrH), trainingHours: fH(szkH), trainingPeopleLabel: szkOs ? `${szkOs} ${szkOs === 1 ? 'osoba' : szkOs < 5 ? 'osoby' : 'osób'}` : '—',
+      openingManager: otw ? nazwisko(otw) : '—', closingManager: zam ? nazwisko(zam) : '—',
+      stations, coverage,
+      hoursSummary: [
+        { id: 'crew', label: 'CREW', planned: fH(planH - mgrH - szkH) },
+        { id: 'mgr', label: 'MANAGER', planned: fH(mgrH) },
+        { id: 'szk', label: 'SZKOLENIA', planned: fH(szkH) },
+        { id: 'razem', label: 'RAZEM', planned: fH(planH) },
+      ],
+      priorities: ['Wbicia i wybicia kartą zgodnie z planem.', 'Reakcja na wskaźnik kalkulatora MPT.', 'Każda zamiana wymaga akceptacji ASM lub RGM.'],
+      generatedAt: `Wygenerowano ${String(teraz.getDate()).padStart(2, '0')}.${String(teraz.getMonth() + 1).padStart(2, '0')}.${teraz.getFullYear()} · ${String(teraz.getHours()).padStart(2, '0')}:${String(teraz.getMinutes()).padStart(2, '0')}`,
+      documentLabel: 'Dokument operacyjny · PLK 201043 · strona 1/1',
+    };
   };
+  const otworzWydruk = (d) => { setPrintOpen(false); setRosterData(zbudujRoster(d)); };
   const zmienTydzien = (dni) => { const d = new Date(weekStart); d.setDate(d.getDate() + dni); const nowy = ymd(d); setWeekStart(nowy); setDay(nowy); };
   const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
@@ -3313,7 +3373,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <div className="ml-auto flex items-center gap-2 shrink-0">
             {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>🔒 tylko podgląd</span>}
             <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
-            <button onClick={() => setPrintOpen((v) => !v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: printOpen ? colors.primary.medium : colors.primary.bg, color: colors.primary.darkest, backgroundColor: printOpen ? colors.primary.bgLight : 'white' }}><Printer size={13} /> Wydruk dnia</button>
+            <button onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: printOpen ? colors.primary.medium : colors.primary.bg, color: colors.primary.darkest, backgroundColor: printOpen ? colors.primary.bgLight : 'white' }}><Printer size={13} /> Wydruk dnia</button>
             <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
           </div>
       </div>
@@ -3322,10 +3382,12 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         <div className="shrink-0 px-5 py-2 flex items-center gap-2 flex-wrap border-b" style={{ backgroundColor: 'white', borderColor: colors.primary.bg }}>
           <span className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>Grafik obsady (PDF) — wybierz dzień:</span>
           {weekDays.map((d, i) => (
-            <button key={d} onClick={() => drukujDzien(d)} className="px-2.5 py-1 rounded-md text-[11px] font-bold border" style={{ borderColor: colors.primary.bg, color: i >= 5 ? '#a03f37' : colors.primary.dark }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}</button>
+            <button key={d} onClick={() => otworzWydruk(d)} className="px-2.5 py-1 rounded-md text-[11px] font-bold border" style={{ borderColor: colors.primary.bg, color: i >= 5 ? '#a03f37' : colors.primary.dark }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}</button>
           ))}
         </div>
       )}
+
+      {rosterData && <DailyRosterPrint open data={rosterData} onClose={() => setRosterData(null)} />}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ backgroundColor: colors.primary.bgLight }}>
         {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} />}
