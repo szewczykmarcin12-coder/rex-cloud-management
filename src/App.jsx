@@ -3141,12 +3141,14 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     const fH = (h) => `${h.toFixed(1).replace('.', ',')} h`;
     const dzienne = data.shifts.filter((x) => x.date === d);
     const scalone = scalParyPlan(dzienne);
-    const planH = dzienne.reduce((a, x) => a + godzZ(x), 0);
-    const mgrH = dzienne.filter((x) => { const k = kontoZ(x); return k && MGRF.has(k.funkcja); }).reduce((a, x) => a + godzZ(x), 0);
-    const szkZ = dzienne.filter((x) => x.rola === 'training' || jestInstruktor(x));
-    const szkH = szkZ.reduce((a, x) => a + godzZ(x), 0);
-    const szkOs = new Set(dzienne.filter((x) => x.rola === 'training').map(pelne)).size;
-    const mgrZm = dzienne.filter((x) => { const k = kontoZ(x); return k && MGRF.has(k.funkcja); });
+    // wpisy instruktorskie to adnotacje pary (instruktor ma wlasna zwykla zmiane) — nie licza sie do godzin
+    const bezInstr = dzienne.filter((x) => !jestInstruktor(x));
+    const planH = bezInstr.reduce((a, x) => a + godzZ(x), 0);
+    const mgrH = bezInstr.filter((x) => { const k = kontoZ(x); return k && MGRF.has(k.funkcja); }).reduce((a, x) => a + godzZ(x), 0);
+    // szkolenia = godziny UCZNIOW (jak we wzorcu: sekcja SZKOLENIA sumuje zmiany szkolonych)
+    const szkH = bezInstr.filter((x) => x.rola === 'training').reduce((a, x) => a + godzZ(x), 0);
+    const szkOs = new Set(bezInstr.filter((x) => x.rola === 'training').map(pelne)).size;
+    const mgrZm = bezInstr.filter((x) => { const k = kontoZ(x); return k && MGRF.has(k.funkcja); });
     const mn = (t) => { const [h2, m2] = String(t || '0:0').split(':').map(Number); return h2 * 60 + m2; };
     const kEnd = (x) => { let e = mn(x.end); if (e <= mn(x.start)) e += 1440; return e; };
     const otw = mgrZm.slice().sort((a, b) => mn(a.start) - mn(b.start))[0];
@@ -3166,7 +3168,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     scalone.forEach((x) => { const st = (x.station || '').toUpperCase() || 'OBSADA'; (grupy[st] = grupy[st] || []).push(x); });
     const stations = Object.keys(grupy).sort((a, b) => (a === 'OBSADA' ? -1 : b === 'OBSADA' ? 1 : a.localeCompare(b))).map((g) => {
       const wpisy = grupy[g].slice().sort((a, b) => mn(a.start) - mn(b.start));
-      const hGr = wpisy.reduce((a, x) => a + godzZ(x) + (x.paraInstr ? godzZ(x.paraInstr) : 0), 0);
+      const hGr = wpisy.reduce((a, x) => a + godzZ(x), 0);
       return {
         id: g.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: g === 'OBSADA' ? 'Obsada' : g, code: g.slice(0, 3), tone: TONE[g] || 'teal', hours: fH(hGr),
         people: wpisy.map((x, i2) => { const k = kontoZ(x); return {
@@ -3184,7 +3186,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       dateLabel: `${dniP[d0.getDay()]}, ${d0.getDate()} ${mcP[d0.getMonth()]} ${d0.getFullYear()}`,
       operationalDayLabel: 'Doba operacyjna 06:00–06:00', versionLabel: 'Wersja opublikowana',
       restaurantName: 'Popeyes Kraków', restaurantDetail: 'Galeria Krakowska', locationCode: 'PLK 201043',
-      shiftCount: dzienne.length, employeeCount: new Set(dzienne.filter((x) => !jestInstruktor(x)).map(pelne)).size,
+      shiftCount: bezInstr.length, employeeCount: new Set(bezInstr.map(pelne)).size,
       plannedHours: fH(planH), coveragePercent: Math.round(cv.coveragePct),
       coverageAttentionLabel: zle ? `${zle} ${zle === 1 ? 'slot' : zle < 5 ? 'sloty' : 'slotów'} do kontroli` : 'Bez uwag',
       managerHours: fH(mgrH), trainingHours: fH(szkH), trainingPeopleLabel: szkOs ? `${szkOs} ${szkOs === 1 ? 'osoba' : szkOs < 5 ? 'osoby' : 'osób'}` : '—',
