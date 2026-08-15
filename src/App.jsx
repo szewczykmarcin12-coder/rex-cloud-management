@@ -3101,6 +3101,170 @@ const WTBreaks = ({ actual, onSave, locked, onClose }) => {
 
 
 // ===================== SHIFTCYCLES — cykle rotacyjne (rota) na bazie Blueprints =====================
+// ═════════ WORKRHYTHM · SHIFTCYCLES — rotacje cykliczne wg wzorca ═════════
+const ROT_ZESPOLY = [
+  { id: 'A', nazwa: 'Zespół A', kat: 'Kuchnia', kol: '#e3efe9', ram: '#b9d6c9', tekst: '#246145' },
+  { id: 'B', nazwa: 'Zespół B', kat: 'Front', kol: '#e4edf6', ram: '#bcd2e6', tekst: '#2b5a80' },
+  { id: 'C', nazwa: 'Zespół C', kat: 'Dispatch', kol: '#ede7f4', ram: '#cfc2e2', tekst: '#5C4B8A' },
+  { id: 'y', nazwa: 'Liderzy', kat: 'Manager', kol: '#fbeee2', ram: '#e8cbaf', tekst: '#a05a1f' },
+];
+const RotacjeWzor = ({ data, naGrafik }) => {
+  const [tplId, setTplId] = useState('');
+  const [det, setDet] = useState(null);
+  const [startTyg, setStartTyg] = useState('');
+  const [ileCykli, setIleCykli] = useState(4);
+  const [aktCykl, setAktCykl] = useState(0);
+  const [robi, setRobi] = useState(false);
+  const [wynik, setWynik] = useState(null);
+  const nastepnyPon = () => { const d = new Date(); const off = (8 - d.getDay()) % 7 || 7; d.setDate(d.getDate() + off); return ymd(d); };
+  useEffect(() => { setStartTyg(nastepnyPon()); }, []);
+  useEffect(() => { const l = data.templates || []; if (!tplId && l.length) setTplId(l[0].id); }, [data.templates]);
+  useEffect(() => { if (!tplId) { setDet(null); return; } let ok = true; data.templateDetail(tplId).then((t) => { if (ok) { setDet(t); setWynik(null); } }); return () => { ok = false; }; }, [tplId]);
+
+  // podział slotów na zespoły wg dominującej kategorii
+  const zespoly = useMemo(() => {
+    if (!det) return [];
+    const przydzial = { A: [], B: [], C: [], y: [] };
+    det.sloty.forEach((sl) => {
+      const liczby = {}; sl.shifts.forEach((sh) => { const k = BP_KATEGORIA(sh.station); liczby[k] = (liczby[k] || 0) + 1; });
+      const dominanta = Object.entries(liczby).sort((a, b) => b[1] - a[1])[0];
+      const kat = dominanta ? dominanta[0] : 'Inne';
+      const z = ROT_ZESPOLY.find((x) => x.kat === kat) || ROT_ZESPOLY[2];
+      przydzial[z.id].push(sl);
+    });
+    return ROT_ZESPOLY.map((z) => {
+      const sloty = przydzial[z.id];
+      // wzorzec dnia: najczęstszy przedział start–end wśród slotów zespołu
+      const wzorzec = bpDowKol.map((dw) => {
+        const zm = sloty.flatMap((sl) => sl.shifts.filter((sh) => sh.dow === dw));
+        if (!zm.length) return null;
+        const liczby = {}; zm.forEach((sh) => { const k = `${sh.start}–${sh.end}`; liczby[k] = (liczby[k] || 0) + 1; });
+        const [zakres] = Object.entries(liczby).sort((a, b) => b[1] - a[1])[0];
+        return { zakres, etykieta: bpEtykietaPory(zakres.split('–')[0]), n: zm.length };
+      });
+      const h = sloty.reduce((a, sl) => a + sl.shifts.reduce((x, y) => x + y.hours, 0), 0);
+      return { ...z, sloty, wzorzec, h, osob: sloty.length };
+    }).filter((z) => z.sloty.length);
+  }, [det]);
+
+  const cykle = useMemo(() => Array.from({ length: ileCykli }, (_, i) => { const d = new Date(startTyg || nastepnyPon()); d.setDate(d.getDate() + i * 7); const s2 = ymd(d); const e = new Date(d); e.setDate(e.getDate() + 6); return { start: s2, label: `${s2.slice(8)}.${s2.slice(5, 7)}–${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}` }; }), [startTyg, ileCykli]);
+
+  // KPI + konflikty (absencje zatwierdzone osób z podpowiedzi w zakresie cyklu)
+  const peak = useMemo(() => det ? bpPeakCoverage(det.sloty) : null, [det]);
+  const sumaH = zespoly.reduce((a, z) => a + z.h, 0);
+  const weekendyOff = useMemo(() => { if (!det) return 0; const wolne = det.sloty.filter((sl) => !sl.shifts.some((sh) => sh.dow === 0 || sh.dow === 6)).length; return det.sloty.length ? Math.round(wolne / det.sloty.length * (ileCykli * 2)) : 0; }, [det, ileCykli]);
+  const konflikty = useMemo(() => {
+    if (!det || !cykle.length) return 0;
+    const od = cykle[0].start; const koniec = new Date(cykle[cykle.length - 1].start); koniec.setDate(koniec.getDate() + 6); const do2 = ymd(koniec);
+    const idKonta = det.sloty.map((sl) => sl.hintAccountId).filter(Boolean);
+    return (data.absences || []).filter((a) => a.status === 'approved' && idKonta.includes(a.accountId) && a.from <= do2 && od <= a.to).length;
+  }, [det, cykle, data.absences]);
+
+  const aktywuj = async () => {
+    if (!det || !startTyg) return;
+    const przypisania = {};
+    det.sloty.forEach((sl) => { if (sl.hint) { const konto = (data.accounts || []).find((a) => sl.hintAccountId ? a.id === sl.hintAccountId : [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(sl.hint).toUpperCase().trim())); przypisania[sl.id] = { name: sl.hint, accountId: konto ? konto.id : undefined }; } });
+    if (!Object.keys(przypisania).length) return data.show('Szablon nie ma podpowiedzi osób — użyj Blueprints i przypisz ręcznie', 'error');
+    if (!confirm(`Aktywować rotację: ${ileCykli} cykli od ${startTyg}? Zmiany trafią do grafiku (duplikaty pomijane przy publikacji ręcznie).`)) return;
+    setRobi(true); let ok = 0;
+    for (const c of cykle) { const r = await data.applyTemplate(det.id, c.start, przypisania); if (r) ok++; }
+    setRobi(false); setWynik({ ok });
+  };
+  const duplikuj = async () => { if (!det) return; const r = await api('/templates?action=duplicate', 'POST', { id: det.id }); if (r.success) { data.show(`Utworzono kopię cyklu: ${r.template.name}`); data.sync(); } };
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+        <div>
+          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#238b85' }}>WORKRHYTHM · SHIFTCYCLES</p>
+          <h1 className="text-[28px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Rotacje cykliczne</h1>
+          <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Powtarzalne wzorce zmian zespołów z kontrolą pokrycia i regeneracji.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={naGrafik} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#dfe7ec', color: colors.primary.darkest }}><Calendar size={15} /> Wróć do grafiku</button>
+          <button onClick={duplikuj} disabled={!det} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2 disabled:opacity-50" style={{ borderColor: '#dfe7ec', color: colors.primary.darkest }}>Duplikuj cykl</button>
+          <button onClick={aktywuj} disabled={!det || robi} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><Check size={15} /> {robi ? 'Aktywuję…' : 'Aktywuj ShiftCycles'}</button>
+        </div>
+      </div>
+      {/* pasek rotacji */}
+      <div className="bg-white rounded-2xl border px-5 py-4 mb-4 flex flex-wrap items-center gap-x-6 gap-y-3" style={{ borderColor: '#e2e8ea' }}>
+        <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#eef2f4', color: colors.primary.dark }}><RefreshCw size={18} /></span>
+        <div className="min-w-0">
+          <p className="text-[15px] font-bold flex items-center gap-2" style={{ color: colors.primary.darkest }}>{ileCykli}-tygodniowa rotacja PLK 201043 <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-md" style={{ backgroundColor: '#efe9f7', color: '#5C4B8A' }}>{wynik ? 'AKTYWOWANA' : 'ACTIVE DRAFT'}</span></p>
+          <p className="text-[11.5px]" style={{ color: colors.primary.light }}>Start {startTyg} · {det ? det.sloty.length : 0} osób · {zespoly.length} zespoły{zespoly.some((z) => z.id === 'y') ? ' + liderzy' : ''}</p>
+        </div>
+        <span className="ml-auto flex flex-wrap items-center gap-x-6 gap-y-1">
+          {[['Śr. coverage', peak != null ? `${peak}%` : '—'], ['Godziny / cykl', `${Math.round(sumaH * ileCykli).toLocaleString('pl-PL')} h`], ['Weekendy OFF', `${weekendyOff} / osobę`], ['Konflikty', konflikty]].map(([l, v], i) => (
+            <span key={i} className="text-center"><p className="text-[9.5px] font-semibold" style={{ color: colors.primary.light }}>{l}</p><p className="text-[16px] font-bold" style={{ color: i === 3 && konflikty > 0 ? '#a03f37' : colors.primary.darkest }}>{v}</p></span>
+          ))}
+        </span>
+        <span className="flex items-center gap-2 text-xs w-full lg:w-auto">
+          <select value={tplId} onChange={(e) => setTplId(e.target.value)} className="px-3 h-9 rounded-xl border text-sm" style={{ borderColor: '#dfe7ec' }}>{(data.templates || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+          <input type="date" value={startTyg} onChange={(e) => { const d = new Date(e.target.value); const pon = new Date(d); pon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); setStartTyg(ymd(pon)); }} className="px-3 h-9 rounded-xl border text-sm" style={{ borderColor: '#dfe7ec' }} />
+          <select value={ileCykli} onChange={(e) => { setIleCykli(+e.target.value); setAktCykl(0); }} className="px-3 h-9 rounded-xl border text-sm" style={{ borderColor: '#dfe7ec' }}>{[2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} cykle</option>)}</select>
+        </span>
+      </div>
+      {wynik && <div className="rounded-2xl border px-4 py-3 mb-4 text-sm font-semibold" style={{ borderColor: '#bcd8d0', backgroundColor: '#e6f2ef', color: '#16705b' }}>Rotacja aktywowana: {wynik.ok}/{ileCykli} cykli trafiło do grafiku. Pamiętaj o publikacji miesięcy w Planowaniu obsady.</div>}
+      {/* zakładki cykli */}
+      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: `repeat(${Math.min(ileCykli, 4)}, minmax(0, 1fr))` }}>
+        {cykle.map((c, i) => (
+          <button key={c.start} onClick={() => setAktCykl(i)} className="rounded-2xl border px-4 py-3 text-left" style={{ borderColor: aktCykl === i ? colors.primary.darkest : '#e2e8ea', backgroundColor: 'white', boxShadow: aktCykl === i ? `0 0 0 1px ${colors.primary.darkest}` : 'none' }}>
+            <p className="flex items-center gap-2 text-[13px] font-bold" style={{ color: colors.primary.darkest }}><span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] text-white" style={{ backgroundColor: aktCykl === i ? colors.primary.darkest : '#b7c3c9' }}>{i + 1}</span> Cykl {i + 1} · {c.label}</p>
+            <p className="text-[10.5px] mt-1 ml-8" style={{ color: colors.primary.light }}>{i === 0 ? 'Preliminary' : 'Draft'}</p>
+          </button>
+        ))}
+      </div>
+      {/* siatka zespołów */}
+      <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: '#e2e8ea' }}>
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 900 }}>
+            <thead><tr className="border-b" style={{ borderColor: '#eef2f4', backgroundColor: '#fafbfb' }}>
+              <th className="text-left px-4 py-2.5 text-[10.5px] font-extrabold" style={{ color: colors.primary.light }}>ZESPÓŁ / WZORZEC</th>
+              {bpDowKol.map((dw, i) => { const d = new Date(cykle[aktCykl] ? cykle[aktCykl].start : startTyg); d.setDate(d.getDate() + i); return <th key={dw} className="px-2 py-2.5 text-center"><p className="text-[12px] font-bold" style={{ color: colors.primary.darkest }}>{bpDni3[dw]}</p><p className="text-[9.5px]" style={{ color: colors.primary.light }}>{ymd(d).slice(8)} {['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru'][d.getMonth()]}</p></th>; })}
+              <th className="px-3 py-2.5 text-center text-[10.5px] font-extrabold" style={{ color: colors.primary.light }}>H / TYDZ.</th>
+            </tr></thead>
+            <tbody>
+              {zespoly.map((z) => (
+                <tr key={z.id} className="border-b last:border-0" style={{ borderColor: '#f2f5f7' }}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold" style={{ backgroundColor: z.kol, color: z.tekst, border: `1px solid ${z.ram}` }}>{z.id}</span>
+                      <div><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{z.nazwa}</p><p className="text-[10.5px]" style={{ color: colors.primary.light }}>{z.osob} osób · {z.kat}</p></div>
+                    </div>
+                  </td>
+                  {z.wzorzec.map((w, i) => (
+                    <td key={i} className="px-1.5 py-2.5 text-center">
+                      {w ? <div className="rounded-xl border px-2 py-2" style={{ backgroundColor: z.kol, borderColor: z.ram }}><p className="text-[12px] font-bold" style={{ color: z.tekst }}>{w.zakres}</p><p className="text-[9.5px]" style={{ color: z.tekst }}>{w.etykieta}{w.n > 1 ? ` · ${w.n} os.` : ''}</p></div>
+                        : <div className="rounded-xl border px-2 py-2" style={{ backgroundColor: '#fafbfb', borderColor: '#eef2f4' }}><p className="text-[12px] font-bold" style={{ color: '#b7c3c9' }}>OFF</p><p className="text-[9.5px]" style={{ color: '#b7c3c9' }}>Regeneracja</p></div>}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2.5 text-center"><p className="text-[14px] font-bold" style={{ color: colors.primary.darkest }}>{Math.round(z.h)} h</p><p className="text-[9.5px]" style={{ color: z.osob && z.h / z.osob > 48 ? '#a03f37' : '#16705b' }}>{z.osob && z.h / z.osob > 48 ? `−${Math.round(z.h / z.osob - 48)} h` : 'w limicie'}</p></td>
+                </tr>
+              ))}
+              {!zespoly.length && <tr><td colSpan={9} className="text-center py-8 text-sm" style={{ color: colors.primary.light }}>Wybierz Blueprint, aby zbudować rotację.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        {det && (
+          <div className="px-5 py-4 border-t" style={{ borderColor: '#eef2f4' }}>
+            <p className="text-[12px] font-bold mb-0.5" style={{ color: colors.primary.darkest }}>Obsada vs idealna</p>
+            <p className="text-[10.5px] mb-2" style={{ color: colors.primary.light }}>agregacja zespołów dla wybranego cyklu (vs krzywa obsady)</p>
+            <div className="flex items-end gap-6">
+              {bpDowKol.map((dw) => {
+                const { dir, ind } = optRozbicie(0, 420, 3, 'krzywa', dw);
+                const req = dir.reduce((a, v, i) => a + Math.max(v, ind[i]), 0) / 2;
+                const sch = det.sloty.reduce((a, sl) => a + sl.shifts.filter((sh) => sh.dow === dw).reduce((x, y) => x + y.hours, 0), 0);
+                const pct = req ? Math.min(120, Math.round(sch / req * 100)) : 100;
+                return <div key={dw} className="flex flex-col items-center gap-1"><div className="w-9 rounded-md" style={{ height: `${Math.max(10, pct * 0.55)}px`, backgroundColor: pct < 90 ? '#c25048' : pct > 110 ? '#dba24c' : '#8aa8a1' }} /><p className="text-[10.5px] font-bold" style={{ color: colors.primary.darkest }}>{pct}%</p><p className="text-[9.5px]" style={{ color: colors.primary.light }}>{bpDni3[dw]}</p></div>;
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ShiftCycles = ({ data }) => {
   const [tplId, setTplId] = useState('');
   const [det, setDet] = useState(null);
@@ -3175,6 +3339,193 @@ const ShiftCycles = ({ data }) => {
 };
 
 // ===================== SZABLONY TYGODNIOWE (Plantillas de Turnos Semanales) =====================
+// ── wspólne dla Blueprints/ShiftCycles ──
+const BP_KATEGORIA = (st) => { const x = String(st || '').toUpperCase();
+  if (x === 'MANAGER' || x === 'MGR FUNKCYJNE') return 'Manager';
+  if (['SMAŻENIE', 'PANIEROWANIE', 'PREP', 'FRYTKI', 'ZMYWAK'].includes(x)) return 'Kuchnia';
+  if (['KANAPKI / WRAPY', 'DESERY / NAPOJE', 'KONTROLER', 'PHU', 'WSPARCIE WIECZORNE / FLEX', 'SZKOLENIA', 'TRAINING'].includes(x)) return 'Front';
+  if (['DISPATCHER', 'DOSTAWA'].includes(x)) return 'Dispatch';
+  return 'Inne'; };
+const BP_KAT_KOLEJNOSC = ['Manager', 'Kuchnia', 'Front', 'Dispatch', 'Inne'];
+const bpDowKol = [1, 2, 3, 4, 5, 6, 0];
+const bpDni3 = ['Nd', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
+// pokrycie szablonu vs krzywa obsady (48 slotów/dzień) → średni %
+function bpPeakCoverage(sloty) {
+  let suma = 0, n = 0;
+  for (const dow of bpDowKol) {
+    const { dir, ind } = optRozbicie(0, 420, 3, 'krzywa', dow);
+    const req = dir.map((v, i) => Math.max(v, ind[i]));
+    const sch = new Array(req.length).fill(0);
+    sloty.forEach((sl) => sl.shifts.filter((sh) => sh.dow === dow).forEach((sh) => { const a = Math.max(0, Math.round((sh.start ? (parseInt(sh.start) - 6 + 24) % 24 : 0) * 2)); const [h1, m1] = String(sh.start || '6:0').split(':').map(Number); const [h2, m2] = String(sh.end || '6:0').split(':').map(Number); let x = ((h1 - 6 + 24) % 24) * 2 + (m1 >= 30 ? 1 : 0), y = ((h2 - 6 + 24) % 24) * 2 + (m2 >= 30 ? 1 : 0); if (y <= x) y += 48; for (let i = x; i < Math.min(y, 48); i++) sch[i]++; }));
+    req.forEach((r2, i) => { if (r2 > 0) { suma += Math.min(sch[i] / r2, 1); n++; } });
+  }
+  return n ? Math.round(suma / n * 100) : 100;
+}
+const bpEtykietaPory = (start) => { const h = parseInt(start); return h < 10 ? 'Opening' : h < 14 ? 'Lunch' : h < 17 ? 'Mid' : 'Closing'; };
+
+// ═════════ WORKRHYTHM · BLUEPRINTS — szablony tygodniowe wg wzorca ═════════
+const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
+  const [selId, setSelId] = useState('');
+  const [det, setDet] = useState(null);
+  const [tplName, setTplName] = useState('');
+  const [saveFor, setSaveFor] = useState(weeks.length ? weeks[weeks.length - 1].start : '');
+  const [saving, setSaving] = useState(false);
+  const [applyT, setApplyT] = useState(null);
+  const [applyWeek, setApplyWeek] = useState('');
+  const [przyp, setPrzyp] = useState({});
+  const [applying, setApplying] = useState(false);
+  const lista = data.templates || [];
+  useEffect(() => { if (!selId && lista.length) setSelId(lista[0].id); }, [lista.length]);
+  useEffect(() => { if (!selId) { setDet(null); return; } let ok = true; data.templateDetail(selId).then((t) => { if (ok) setDet(t); }); return () => { ok = false; }; }, [selId]);
+  const nastepnyPon = () => { const d = new Date(); const off = (8 - d.getDay()) % 7 || 7; d.setDate(d.getDate() + off); return ymd(d); };
+  const otworzApply = () => { if (!det) return; setApplyT(det); setApplyWeek(nastepnyPon()); const p = {}; det.sloty.forEach((sl) => { p[sl.id] = sl.hint || ''; }); setPrzyp(p); };
+  const wyslijApply = async () => {
+    const przypisania = {};
+    Object.entries(przyp).forEach(([k, v]) => { if (String(v).trim()) { const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(v).trim().toUpperCase())); przypisania[k] = { name: String(v).trim(), accountId: konto ? konto.id : undefined }; } });
+    setApplying(true);
+    const ok = await data.applyTemplate(applyT.id, applyWeek, przypisania);
+    setApplying(false);
+    if (ok) setApplyT(null);
+  };
+  const przelaczFav = async (t) => { const r = await api('/templates?action=fav', 'POST', { id: t.id }); if (r.success) data.sync(); };
+  const duplikuj = async (t) => { const r = await api('/templates?action=duplicate', 'POST', { id: t.id }); if (r.success) { data.show(`Utworzono kopię: ${r.template.name}`); data.sync(); } else data.show(r.error || 'Błąd', 'error'); };
+  const usun = async (t) => { if (confirm(`Usunąć szablon „${t.name}"?`)) await data.deleteTemplate(t.id); };
+  const zapisz = async () => { if (!tplName.trim() || !saveFor) return data.show('Podaj nazwę i tydzień źródłowy', 'error'); setSaving(true); const ok = await data.saveTemplate(saveFor, tplName.trim(), ''); setSaving(false); if (ok) setTplName(''); };
+  const sel = lista.find((t) => t.id === selId);
+  const maxDniH = det ? Math.max(1, ...(sel ? sel.dniH || [] : [])) : 1;
+  // agregacje szczegółu
+  const zmianKat = useMemo(() => {
+    if (!det) return {};
+    const m = {};
+    det.sloty.forEach((sl) => sl.shifts.forEach((sh) => { const k = `${BP_KATEGORIA(sh.station)}|${sh.dow}`; m[k] = (m[k] || 0) + 1; }));
+    return m;
+  }, [det]);
+  const otwarteDni = useMemo(() => { const m = {}; if (det) det.sloty.filter((sl) => !sl.hintAccountId).forEach((sl) => sl.shifts.forEach((sh) => { m[sh.dow] = (m[sh.dow] || 0) + 1; })); return m; }, [det]);
+  const statSum = det ? det.sloty.reduce((a, sl) => a + sl.shifts.reduce((x, y) => x + y.hours, 0), 0) : 0;
+  const statPrzerwy = det ? det.sloty.reduce((a, sl) => a + sl.shifts.filter((sh) => sh.hours >= 6).length, 0) : 0;
+  const statOtwarte = det ? det.sloty.filter((sl) => !sl.hintAccountId).length : 0;
+  const peak = useMemo(() => det ? bpPeakCoverage(det.sloty) : null, [det]);
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+        <div>
+          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#238b85' }}>WORKRHYTHM · BLUEPRINTS</p>
+          <h1 className="text-[28px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Szablony tygodniowe</h1>
+          <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Gotowe układy zmian, godzin i obsady do wielokrotnego użycia.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={naGrafik} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#dfe7ec', color: colors.primary.darkest }}><Calendar size={15} /> Wróć do grafiku</button>
+          <button onClick={otworzApply} disabled={!det} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><Check size={15} /> Zastosuj do tygodnia</button>
+        </div>
+      </div>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(280px, 360px) minmax(0, 1fr)' }}>
+        {/* biblioteka */}
+        <div className="bg-white rounded-2xl border p-4" style={{ borderColor: '#e2e8ea' }}>
+          <div className="flex items-center justify-between mb-1"><p className="text-[15px] font-bold" style={{ color: colors.primary.darkest }}>Biblioteka Blueprints</p></div>
+          <p className="text-[11px] mb-3" style={{ color: colors.primary.light }}>{lista.length} szablonów · pełne tygodnie</p>
+          <div className="space-y-3">
+            {[...lista].sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0)).map((t) => (
+              <button key={t.id} onClick={() => setSelId(t.id)} className="w-full text-left rounded-2xl border p-3.5 transition-shadow hover:shadow-sm" style={{ borderColor: selId === t.id ? colors.primary.medium : '#e8edef', boxShadow: selId === t.id ? '0 0 0 1px ' + colors.primary.medium : 'none' }}>
+                <div className="flex items-center gap-2.5 mb-2.5">
+                  <span className="w-9 h-9 rounded-xl border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#c9d4d9', color: colors.primary.medium }}><LayoutGrid size={16} /></span>
+                  <div className="min-w-0 flex-1"><p className="text-[13.5px] font-bold truncate" style={{ color: colors.primary.darkest }}>{t.name}</p><p className="text-[10.5px] truncate" style={{ color: colors.primary.light }}>{t.notes || (t.fav ? 'Ulubiony' : `${t.sloty} slotów`)}</p></div>
+                  {t.fav && <span title="Ulubiony" style={{ color: '#5C4B8A' }}>★</span>}
+                </div>
+                <div className="flex items-end gap-1.5 mb-2" style={{ height: 44 }}>
+                  {bpDowKol.map((dw) => <div key={dw} className="flex-1 flex flex-col items-center gap-1"><div className="w-full rounded-md" style={{ height: `${Math.max(8, ((t.dniH || [])[dw] || 0) / Math.max(1, ...(t.dniH || [1])) * 36)}px`, backgroundColor: '#8aa8a1' }} /><span className="text-[8.5px]" style={{ color: colors.primary.light }}>{bpDni3[dw].slice(0, 2)}</span></div>)}
+                </div>
+                <div className="flex items-center gap-4 pt-2 border-t text-[11px]" style={{ borderColor: '#eef2f4', color: colors.primary.dark }}>
+                  <span className="flex items-center gap-1"><Clock size={11} /> {Number(t.godzin).toFixed(1).replace('.', ',')} h</span>
+                  <span className="flex items-center gap-1"><Users size={11} /> {t.sloty} osób</span>
+                  <ChevronRight size={13} className="ml-auto" style={{ color: colors.primary.light }} />
+                </div>
+              </button>
+            ))}
+            {!lista.length && <p className="text-sm text-center py-4" style={{ color: colors.primary.light }}>Brak szablonów — zapisz pierwszy poniżej.</p>}
+          </div>
+          <div className="mt-4 rounded-2xl border-2 border-dashed p-4" style={{ borderColor: '#d5dde0' }}>
+            <p className="text-[13px] font-bold flex items-center gap-2" style={{ color: colors.primary.darkest }}><Plus size={15} /> Zapisz aktualny grafik jako Blueprint</p>
+            <p className="text-[11px] mt-0.5 mb-3" style={{ color: colors.primary.light }}>Zachowaj obsadę, godziny, pozycje i przerwy.</p>
+            <select value={saveFor} onChange={(e) => setSaveFor(e.target.value)} className="w-full mb-2 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+              {weeks.map((w) => { const e2 = new Date(w.start); e2.setDate(e2.getDate() + 6); return <option key={w.start} value={w.start}>{w.start.slice(8)}.{w.start.slice(5, 7)} – {ymd(e2).slice(8)}.{ymd(e2).slice(5, 7)}.{w.start.slice(0, 4)}</option>; })}
+            </select>
+            <div className="flex gap-2">
+              <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Nazwa nowego szablonu" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
+              <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}>Zapisz</button>
+            </div>
+          </div>
+        </div>
+        {/* szczegół */}
+        <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: '#e2e8ea' }}>
+          {det && sel ? (<>
+            <div className="px-5 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#eef2f4' }}>
+              <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#e6f2ef', color: '#246964' }}><FileSpreadsheet size={19} /></span>
+              <div><p className="text-[16px] font-bold" style={{ color: colors.primary.darkest }}>{det.name}</p><p className="text-[11.5px]" style={{ color: colors.primary.light }}>{Number(statSum).toFixed(1).replace('.', ',')} h · {det.sloty.length} osób{det.zrodloTydzien ? ` · źródło: tydzień ${det.zrodloTydzien}` : ''}</p></div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 760 }}>
+                <thead><tr className="border-b" style={{ borderColor: '#eef2f4', backgroundColor: '#fafbfb' }}>
+                  <th className="text-left px-4 py-2.5 text-[10.5px] font-extrabold" style={{ color: colors.primary.light }}></th>
+                  {bpDowKol.map((dw) => <th key={dw} className="px-2 py-2.5 text-center"><p className="text-[12px] font-bold" style={{ color: colors.primary.darkest }}>{bpDni3[dw]}</p></th>)}
+                </tr></thead>
+                <tbody>
+                  {BP_KAT_KOLEJNOSC.filter((kat) => bpDowKol.some((dw) => zmianKat[`${kat}|${dw}`])).map((kat) => (
+                    <tr key={kat} className="border-b" style={{ borderColor: '#f2f5f7' }}>
+                      <td className="px-4 py-3 text-[11px] font-bold whitespace-nowrap" style={{ color: colors.primary.dark }}>{kat}</td>
+                      {bpDowKol.map((dw) => { const n = zmianKat[`${kat}|${dw}`] || 0; return <td key={dw} className="px-2 py-3 text-center">{n ? <span className="inline-block px-3 py-1.5 rounded-lg text-[11px] font-semibold" style={{ backgroundColor: '#e6efec', color: colors.primary.dark }}>{n} zmian</span> : <span className="text-slate-300">—</span>}</td>; })}
+                    </tr>
+                  ))}
+                  {Object.keys(otwarteDni).length > 0 && (
+                    <tr className="border-b" style={{ borderColor: '#f2f5f7' }}>
+                      <td className="px-4 py-3 text-[11px] font-bold whitespace-nowrap" style={{ color: '#96630b' }}>Open Shift</td>
+                      {bpDowKol.map((dw) => { const n = otwarteDni[dw] || 0; return <td key={dw} className="px-2 py-3 text-center">{n ? <span className="inline-block px-3 py-1.5 rounded-lg text-[11px] font-semibold border-2 border-dashed" style={{ borderColor: '#d9c6a8', color: '#96630b' }}>{n} open</span> : <span className="text-slate-300">—</span>}</td>; })}
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid grid-cols-4 border-t" style={{ borderColor: '#eef2f4' }}>
+              {[['Planowane godziny', `${Number(statSum).toFixed(1).replace('.', ',')} h`], ['Peak coverage', peak != null ? `${peak}%` : '—'], ['Przerwy (należne)', statPrzerwy], ['Otwarte zmiany', statOtwarte]].map(([l, v], i) => (
+                <div key={i} className="px-4 py-3 text-center border-r last:border-0" style={{ borderColor: '#eef2f4' }}><p className="text-[10px] font-semibold" style={{ color: colors.primary.light }}>{l}</p><p className="text-[17px] font-bold" style={{ color: colors.primary.darkest }}>{v}</p></div>
+              ))}
+            </div>
+            <div className="px-5 py-3 flex flex-wrap justify-end gap-2 border-t" style={{ borderColor: '#eef2f4' }}>
+              <button onClick={() => przelaczFav(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#dfe7ec', color: '#5C4B8A' }}>{sel.fav ? '★ Usuń z ulubionych' : '☆ Dodaj do ulubionych'}</button>
+              <button onClick={() => duplikuj(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#dfe7ec', color: colors.primary.darkest }}>Duplikuj</button>
+              <button onClick={() => usun(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#f0d9d5', color: '#a03f37' }}>Usuń</button>
+              <button onClick={otworzApply} className="px-5 h-10 rounded-xl text-sm font-bold text-white" style={{ backgroundColor: colors.primary.darkest }}>Zastosuj</button>
+            </div>
+          </>) : <div className="p-10 text-center text-sm" style={{ color: colors.primary.light }}>{lista.length ? 'Wybierz szablon z biblioteki.' : 'Zapisz pierwszy Blueprint z istniejącego tygodnia grafiku.'}</div>}
+        </div>
+      </div>
+      {/* modal zastosowania */}
+      {applyT && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setApplyT(null)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-2xl p-6 shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1"><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>Zastosuj „{applyT.name}"</h3><button onClick={() => setApplyT(null)}><X size={20} className="text-slate-400" /></button></div>
+            <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Przypisz osoby do slotów (puste pole = slot pominięty). Zmiany trafią do grafiku.</p>
+            <div className="flex items-center gap-3 mb-4">
+              <label className="text-sm font-semibold" style={{ color: colors.primary.dark }}>Tydzień docelowy (pon.):</label>
+              <input type="date" value={applyWeek} onChange={(e) => { const d = new Date(e.target.value); const pon = new Date(d); pon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); setApplyWeek(ymd(pon)); }} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
+            </div>
+            <div className="grid md:grid-cols-2 gap-2 mb-5">
+              {applyT.sloty.map((sl) => (
+                <div key={sl.id} className="rounded-xl border p-2.5" style={{ borderColor: '#eef2f4' }}>
+                  <p className="text-[11px] font-bold mb-1" style={{ color: colors.primary.dark }}>{sl.label} <span className="font-normal" style={{ color: colors.primary.light }}>· {sl.shifts.length} zmian · {sl.shifts.reduce((a, x) => a + x.hours, 0).toFixed(0)} h</span></p>
+                  <input list="bp-konta" value={przyp[sl.id] || ''} onChange={(e) => setPrzyp((p2) => ({ ...p2, [sl.id]: e.target.value }))} placeholder={sl.hint ? `ostatnio: ${sl.hint}` : 'nazwisko…'} className="w-full px-2.5 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
+                </div>
+              ))}
+              <datalist id="bp-konta">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist>
+            </div>
+            <div className="flex justify-end gap-2"><button onClick={() => setApplyT(null)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button><button disabled={applying} onClick={wyslijApply} className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}>{applying ? 'Stosuję…' : 'Zastosuj do tygodnia'}</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const WTTemplates = ({ data, weeks }) => {
   const [saveFor, setSaveFor] = useState(weeks.length ? weeks[weeks.length - 1].start : '');
   const [tplName, setTplName] = useState('');
@@ -4347,11 +4698,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             </div>
           )}
           </>)}
-          {wrTab === 'blueprints' && canEdit && (<>
-            <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Blueprints — wzorcowe tygodnie z generycznymi slotami. Zapisz najlepszy tydzień i nakładaj go na kolejne z przypisaniem osób.</p>
-            <WTTemplates data={data} weeks={weeks} />
-          </>)}
-          {wrTab === 'cycles' && canEdit && <ShiftCycles data={data} />}
+          {wrTab === 'blueprints' && canEdit && <BlueprintyWzor data={data} weeks={weeks} naGrafik={() => setWrTab('schedule')} />}
+          {wrTab === 'cycles' && canEdit && <RotacjeWzor data={data} naGrafik={() => setWrTab('schedule')} />}
           {!canEdit && <p className="text-xs text-slate-400 mt-3">Widok kierownika zmiany — podgląd. Zamykanie i korekty wykonuje ASM.</p>}
         </div>
       </div>
