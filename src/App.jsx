@@ -682,20 +682,68 @@ const Dashboard = ({ data, setPage, userName }) => {
 
 // ===================== IMPORT =====================
 
+// Prosta tabela XLSX: kolumny Nazwisko | Data | Od | Do | [Godziny] | [Stanowisko] (nagłówek opcjonalny).
+// Format zapasowy dla plików typu „godziny MGR" — gdy plik nie jest matrycą poziomą.
+function parseProstaTabela(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+  const naDate = (v) => {
+    if (v == null) return null;
+    if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+    if (typeof v === 'number') { const d = XLSX.SSF.parse_date_code(v); return d && d.y ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : null; }
+    const t = String(v).trim();
+    let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    return null;
+  };
+  const naCzas = (v) => {
+    if (v == null) return null;
+    if (v instanceof Date) return `${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}`;
+    if (typeof v === 'number') { const mi = Math.round((v % 1) * 1440); return `${String(Math.floor(mi / 60) % 24).padStart(2, '0')}:${String(mi % 60).padStart(2, '0')}`; }
+    const m = String(v).match(/(\d{1,2})[:.](\d{2})/); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+  };
+  const shifts = [];
+  rows.forEach((r) => {
+    if (!r || r.length < 4) return;
+    const name = String(r[0] || '').trim();
+    const date = naDate(r[1]); const start = naCzas(r[2]); const end = naCzas(r[3]);
+    if (!name || !date || !start || !end || /nazwisko|pracownik/i.test(name)) return;
+    const hours = r[4] != null && !isNaN(parseFloat(String(r[4]).replace(',', '.'))) ? parseFloat(String(r[4]).replace(',', '.')) : null;
+    const station = String(r[5] || '').trim().toUpperCase();
+    shifts.push({ date, name: name.toUpperCase(), start, end, hours: hours != null ? hours : (() => { const [a, b] = [start, end].map((t) => { const [h2, m2] = t.split(':').map(Number); return h2 * 60 + m2; }); let d2 = b - a; if (d2 <= 0) d2 += 1440; return Math.round(d2 / 6) / 10; })(), station });
+  });
+  if (!shifts.length) throw new Error('Nie rozpoznano formatu pliku (ani matryca pozioma, ani tabela Nazwisko|Data|Od|Do).');
+  const daty = shifts.map((x) => x.date).sort();
+  const [y, mm] = daty[0].split('-').map(Number);
+  return { shifts, roster: [...new Set(shifts.map((x) => x.name))].sort(), meta: { year: y, month: mm - 1, monthName: ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'][mm - 1], shiftCount: shifts.length, employeeCount: new Set(shifts.map((x) => x.name)).size, firstDate: daty[0], lastDate: daty[daty.length - 1], prostaTabela: true } };
+}
+
+const STACJE_IMPORT = [...Object.keys(stationColors)];
+
 const ImportPage = ({ data }) => {
   const [preview, setPreview] = useState(null);
   const [expM, setExpM] = useState(() => { const m = (data.months || []); return m.length ? m[m.length - 1].key : ''; });
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState('');
+  const [stOverride, setStOverride] = useState({});     // nadpisane stanowiska per wiersz
+  const [stAll, setStAll] = useState('MANAGER');
   const fileRef = useRef();
+  const stacjaWiersza = (sx, i) => stOverride[i] || sx.station || 'MANAGER';
+  const zEfektywnymiStacjami = () => preview.shifts.map((sx, i) => ({ ...sx, station: stacjaWiersza(sx, i) }));
 
   const handleFile = async (file) => {
     if (!file) return;
     setError(''); setParsing(true); setPreview(null);
     try {
-      const result = file.name.toLowerCase().endsWith('.csv')
-        ? parseExportCSV(await file.text())
-        : parseGrafik(await file.arrayBuffer());
+      let result;
+      if (file.name.toLowerCase().endsWith('.csv')) result = parseExportCSV(await file.text());
+      else {
+        const buf = await file.arrayBuffer();
+        try { result = parseGrafik(buf); if (!result.shifts || !result.shifts.length) throw new Error('pusto'); }
+        catch { result = parseProstaTabela(buf); }
+      }
+      setStOverride({}); setStAll('MANAGER');
       setPreview(result);
     } catch (e) {
       setError(e.message || 'Błąd odczytu pliku');
@@ -705,9 +753,15 @@ const ImportPage = ({ data }) => {
 
   const confirmImport = async () => {
     if (!preview) return;
-    await data.importSchedule(preview);
+    await data.importSchedule({ ...preview, shifts: zEfektywnymiStacjami() });
     setPreview(null);
     if (fileRef.current) fileRef.current.value = '';
+  };
+  // DOPISANIE godzin (np. MGR) do istniejącego grafiku — nic nie zastępuje
+  const confirmDopisz = async () => {
+    if (!preview) return;
+    const ok = await data.addHoursBulk(zEfektywnymiStacjami());
+    if (ok) { setPreview(null); if (fileRef.current) fileRef.current.value = ''; }
   };
 
   return (
@@ -747,15 +801,32 @@ const ImportPage = ({ data }) => {
               <div className="p-4 rounded-xl" style={{ backgroundColor: '#f0fdf4' }}><p className="text-lg font-bold" style={{ color: '#558B2F' }}>{preview.meta.monthName} {preview.meta.year}</p><p className="text-sm" style={{ color: '#7CB342' }}>Miesiąc</p></div>
               <div className="p-4 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-sm font-bold" style={{ color: colors.primary.dark }}>{preview.meta.firstDate} → {preview.meta.lastDate}</p><p className="text-sm" style={{ color: colors.primary.light }}>Zakres</p></div>
             </div>
-            <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.accent.bg }}><div className="flex items-start gap-2"><AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: colors.accent.dark }} /><span className="text-sm" style={{ color: colors.accent.dark }}>Import <strong>zastąpi</strong> poprzedni grafik w systemie. Pracownicy zobaczą nowe zmiany po zalogowaniu.</span></div></div>
+            <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.accent.bg }}><div className="flex items-start gap-2"><AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: colors.accent.dark }} /><span className="text-sm" style={{ color: colors.accent.dark }}><strong>„Dodaj godziny do grafiku"</strong> dopisze zmiany do już istniejących (duplikaty osoba+data+godziny są pomijane). <strong>„Zastąp miesiąc"</strong> nadpisze cały miesiąc z pliku.</span></div></div>
+            <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: colors.primary.bgLight }}>
+              <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>Stanowisko dla importowanych godzin:</span>
+              <select value={stAll} onChange={(e) => setStAll(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+                {STACJE_IMPORT.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+              <button onClick={() => setStOverride(Object.fromEntries(preview.shifts.map((_, i) => [i, stAll])))} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zastosuj dla wszystkich</button>
+              {Object.keys(stOverride).length > 0 && <button onClick={() => setStOverride({})} className="text-xs font-medium" style={{ color: '#bd4f45' }}>wyczyść nadpisania</button>}
+              <span className="text-xs" style={{ color: colors.primary.light }}>Możesz też ustawić stanowisko pojedynczo w tabeli poniżej.</span>
+            </div>
             <div className="max-h-64 overflow-y-auto rounded-xl border" style={{ borderColor: colors.primary.bg }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0"><tr style={{ backgroundColor: colors.primary.bg }}><th className="text-left px-4 py-2 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Data</th><th className="text-left px-4 py-2 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Pracownik</th><th className="text-left px-4 py-2 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Godziny</th><th className="text-left px-4 py-2 text-xs font-semibold uppercase" style={{ color: colors.primary.light }}>Stanowisko</th></tr></thead>
-                <tbody>{preview.shifts.slice(0, 50).map((s, i) => (<tr key={i} className="border-b" style={{ borderColor: colors.primary.bgLight }}><td className="px-4 py-1.5">{s.date}</td><td className="px-4 py-1.5 font-medium">{s.name}</td><td className="px-4 py-1.5">{s.start}–{s.end} ({s.hours}h)</td><td className="px-4 py-1.5"><span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: stationColor(s.station) + '20', color: stationColor(s.station) }}>{s.station}</span></td></tr>))}</tbody>
+                <tbody>{preview.shifts.slice(0, 100).map((s, i) => (<tr key={i} className="border-b" style={{ borderColor: colors.primary.bgLight }}><td className="px-4 py-1.5">{s.date}</td><td className="px-4 py-1.5 font-medium">{s.name}</td><td className="px-4 py-1.5">{s.start}–{s.end} ({s.hours}h)</td><td className="px-4 py-1.5">
+                  <select value={stacjaWiersza(s, i)} onChange={(e) => setStOverride((o) => ({ ...o, [i]: e.target.value }))} className="text-xs px-2 py-1 rounded-lg border font-medium" style={{ borderColor: colors.primary.bg, color: stationColor(stacjaWiersza(s, i)) }}>
+                    {[...new Set([stacjaWiersza(s, i), ...STACJE_IMPORT])].map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                </td></tr>))}</tbody>
               </table>
-              {preview.shifts.length > 50 && <p className="text-center py-2 text-xs" style={{ color: colors.primary.light }}>... i {preview.shifts.length - 50} więcej</p>}
+              {preview.shifts.length > 100 && <p className="text-center py-2 text-xs" style={{ color: colors.primary.light }}>... i {preview.shifts.length - 100} więcej (nadpisanie „Zastosuj dla wszystkich" obejmuje też te wiersze)</p>}
             </div>
-            <div className="flex justify-end gap-3 mt-6"><Btn variant="secondary" onClick={() => setPreview(null)}>Anuluj</Btn><Btn variant="success" icon={Check} onClick={confirmImport} loading={data.loading}>Zatwierdź import</Btn></div>
+            <div className="flex justify-end gap-3 mt-6">
+              <Btn variant="secondary" onClick={() => setPreview(null)}>Anuluj</Btn>
+              <Btn icon={Plus} onClick={confirmDopisz} loading={data.loading}>Dodaj godziny do grafiku (dopisz)</Btn>
+              <Btn variant="success" icon={Check} onClick={confirmImport} loading={data.loading}>Zastąp miesiąc</Btn>
+            </div>
           </div>
         )}
       </div>
@@ -4654,6 +4725,15 @@ const useData = () => {
   // Dodanie osoby do grafiku z poziomu planowania — od razu tworzy też wpis wykonania (Actual)
   // DATA-03: wysyłamy znaną wersję miesiąca; 409 = ktoś edytował równolegle → odśwież
   const wersjaMiesiaca = (date) => { const m = monthsRef.current.find((x) => x.key === String(date || '').slice(0, 7)); return m ? m.version : undefined; };
+  // Import dopisujący (np. godziny MGR): dodaje do istniejącego grafiku, duplikaty pomijane
+  const addHoursBulk = useCallback(async (shifts) => {
+    const r = await api('/schedule?action=add-bulk', 'POST', { shifts });
+    if (!r.success) { show(r.error || 'Nie udało się dopisać godzin', 'error'); return false; }
+    await sync();
+    const nie = Object.keys(r.nieprzypisane || {});
+    show(`Dopisano ${r.dodane} zmian (${r.miesiace.join(', ')})${r.pominiete ? ` · ${r.pominiete} duplikatów pominięto` : ''}${nie.length ? ` · bez konta: ${nie.slice(0, 3).join(', ')}${nie.length > 3 ? '…' : ''}` : ''}`, nie.length ? 'error' : 'success');
+    return true;
+  }, [sync]);
   const addShiftManual = useCallback(async (payload) => {
     const r = await api('/schedule?action=add', 'POST', { ...payload, expectedVersion: wersjaMiesiaca(payload.date) });
     if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
@@ -4732,7 +4812,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek, addHoursBulk };
 };
 
 // ===================== MAIN =====================
