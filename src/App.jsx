@@ -103,7 +103,7 @@ const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
 const dfmt = (ds) => { const d = new Date(ds); const dni = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb']; return `${dni[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const opisZmiany = (s) => `${dfmt(s.date)} · ${s.station} · ${s.start}–${s.end} (${s.hours}h)`;
 const statusZamiany = (s) => {
-  if (s.status === 'approved') return { txt: `Zatwierdzona — przejęła: ${s.approvedVolunteer}`, kol: '#347363', bg: '#e8f2ef' };
+  if (s.status === 'approved') return { txt: `Zatwierdzona — przejmuje: ${s.approvedVolunteerDisplay || s.approvedVolunteer}`, kol: '#347363', bg: '#e8f2ef' };
   if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#bd4f45', bg: '#fff0ed' };
   if (s.status === 'cancelled') return { txt: 'Anulowana', kol: '#94a3b8', bg: '#f1f5f9' };
   return s.volunteers.length ? { txt: `Zgłoszeń: ${s.volunteers.length}`, kol: '#F5B000', bg: '#fff8e6' } : { txt: 'Otwarta', kol: colors.primary.medium, bg: colors.primary.bgLight };
@@ -3006,12 +3006,12 @@ const AdminSwaps = ({ data }) => {
             <div className="space-y-3">
               {doAkceptacji.map(s => (
                 <div key={s.id} className="rounded-xl p-4" style={{ backgroundColor: colors.primary.bgLight }}>
-                  <p className="text-sm" style={{ color: colors.primary.dark }}><b style={{ color: colors.primary.darkest }}>{s.requester}</b> oddaje zmianę: {opisZmiany(s.shift)}</p>
+                  <p className="text-sm" style={{ color: colors.primary.dark }}><b style={{ color: colors.primary.darkest }}>{s.requesterDisplay || s.requester}</b> oddaje zmianę: {opisZmiany(s.shift)}</p>
                   {s.note && <p className="text-xs italic mt-0.5" style={{ color: colors.primary.light }}>„{s.note}"</p>}
                   <p className="text-xs mt-3 mb-1" style={{ color: colors.primary.light }}>Zgłoszeni — wybierz, kto przejmie:</p>
                   <div className="flex flex-wrap gap-2 mb-3">
-                    {s.volunteers.map(v => { const on = chosen(s) === v; return (
-                      <button key={v} onClick={() => setWyb(w => ({ ...w, [s.id]: v }))} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{v}</button>
+                    {s.volunteers.map(v => { const on = chosen(s) === v; const etyk = ((s.volunteersDisplay || []).find(x => x.alias === v) || {}).display || v; return (
+                      <button key={v} onClick={() => setWyb(w => ({ ...w, [s.id]: v }))} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{etyk}</button>
                     ); })}
                   </div>
                   <div className="flex gap-2">
@@ -3030,7 +3030,7 @@ const AdminSwaps = ({ data }) => {
             <div className="space-y-2">
               {oczekujace.map(s => (
                 <div key={s.id} className="rounded-xl p-3 flex items-center justify-between" style={{ backgroundColor: colors.primary.bgLight }}>
-                  <p className="text-sm" style={{ color: colors.primary.dark }}><b>{s.requester}</b> — {opisZmiany(s.shift)}</p>
+                  <p className="text-sm" style={{ color: colors.primary.dark }}><b>{s.requesterDisplay || s.requester}</b> — {opisZmiany(s.shift)}</p>
                   <span className="text-xs" style={{ color: colors.primary.light }}>brak zgłoszeń</span>
                 </div>
               ))}
@@ -3044,7 +3044,7 @@ const AdminSwaps = ({ data }) => {
             <div className="space-y-2">
               {historia.map(s => { const st = statusZamiany(s); return (
                 <div key={s.id} className="rounded-xl p-3" style={{ backgroundColor: st.bg }}>
-                  <p className="text-xs" style={{ color: colors.primary.dark }}><b>{s.requester}</b> — {opisZmiany(s.shift)}</p>
+                  <p className="text-xs" style={{ color: colors.primary.dark }}><b>{s.requesterDisplay || s.requester}</b> — {opisZmiany(s.shift)}</p>
                   <p className="text-xs mt-0.5 font-medium" style={{ color: st.kol }}>{st.txt}</p>
                 </div>
               ); })}
