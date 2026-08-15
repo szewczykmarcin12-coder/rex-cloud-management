@@ -3802,11 +3802,14 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
   // R-03/TNA-01: wykonanie budowane AUTOMATYCZNIE z odbić REX Clock (projekcja event store).
   // Zasady: wpisy source:'clock' są odświeżane, ręczne korekty (source:'manual' lub starsze) NIGDY nie są nadpisywane.
+  const [projDnia, setProjDnia] = useState([]);
+  useEffect(() => { setProjDnia([]); }, [day]);
   const synchronizujOdbicia = useCallback(async (cichy) => {
     if (locked) return;
     const r = await api(`/clock?action=projection&date=${day}`);
     if (!r || !r.success) { if (!cichy) data.show((r && r.error) || 'Nie udało się pobrać odbić', 'error'); return; }
     const proj = r.projection || [];
+    setProjDnia(proj);                                                 // wyjątki „praca bez planu" w widoku
     const map = {}; let n = 0, niepelne = 0, chronione = 0;
     dayShifts(day).forEach((s) => {
       const pr = proj.find((x) => s.accountId && x.accountId === s.accountId);
@@ -3838,14 +3841,14 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     const wcLabel = 'PLK 201043 · Kraków Galeria Krakowska';
     const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
     return (
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         <Header title="WorkRhythm" subtitle="Schedule · Actual · Blueprints · ShiftCycles · Time & Attendance" />
         <div className="px-8 pt-3 flex gap-1 bg-white border-b" style={{ borderColor: colors.primary.bg }}>
           {[['schedule', 'Schedule'], ['actual', 'Actual'], ['blueprints', 'Blueprints'], ['cycles', 'ShiftCycles'], ['tna', 'Time & Attendance']].map(([k, l]) => (
             <button key={k} onClick={() => setWrTab(k)} className="px-4 py-2 rounded-t-lg text-sm font-semibold" style={{ backgroundColor: wrTab === k ? colors.primary.bgLight : 'transparent', color: wrTab === k ? colors.primary.darkest : colors.primary.light, borderBottom: wrTab === k ? `3px solid ${colors.primary.medium}` : '3px solid transparent' }}>{l}</button>
           ))}
         </div>
-        <div className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+        <div className="flex-1 min-h-0 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
           {wrTab === 'schedule' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Planowanie obsady — kliknij tydzień, aby otworzyć siatkę planowania.</p>}
           {wrTab === 'schedule' && canEdit && <PublishCard data={data} />}
           {wrTab === 'actual' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Wykonanie (Working Time) — kliknij tydzień, aby rozliczyć wbicia, przerwy i korekty.</p>}
@@ -4038,6 +4041,38 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             })}
           </div>
         </div>
+        {(() => {
+          // A-12: odbicie bez zaplanowanej zmiany = jawny wyjątek, nie niewidzialna praca
+          const planId = new Set(dayShifts(day).map((x) => x.accountId).filter(Boolean));
+          const planNazwy = new Set(dayShifts(day).map((x) => String(x.name || '').toUpperCase().trim()));
+          const bezPlanu = (projDnia || []).filter((pr) => pr.in && !(pr.accountId && planId.has(pr.accountId)) && !planNazwy.has(String(pr.name || '').toUpperCase().trim()));
+          if (!bezPlanu.length) return null;
+          return (
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: '#f3d9be', borderLeftWidth: 4, borderLeftColor: '#c06a35' }}>
+              <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b" style={{ borderColor: '#f8ecdd', backgroundColor: '#fffaf3' }}>
+                <p className="text-sm font-bold" style={{ color: '#B26A00' }}>Praca bez planu ({bezPlanu.length})</p>
+                <p className="text-[11px]" style={{ color: colors.primary.light }}>Odbicia z REX Clock bez zaplanowanej zmiany — dodaj do grafiku, aby weszły do rozliczenia.</p>
+              </div>
+              {bezPlanu.map((pr) => { const konto = (data.accounts || []).find((a) => a.id === pr.accountId); return (
+                <div key={pr.accountId || pr.name} className="px-4 py-2.5 flex flex-wrap items-center gap-3 border-b last:border-0" style={{ borderColor: '#faf3ea' }}>
+                  <p className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{(konto && konto.name) || pr.name}</p>
+                  <span className="text-xs font-mono font-semibold" style={{ color: colors.primary.dark }}>{pr.in}–{pr.out || '…'}</span>
+                  {pr.out
+                    ? <span className="text-xs" style={{ color: colors.primary.medium }}>{Math.round((pr.workedMin || 0) / 6) / 10} h netto{(pr.breaks || []).length ? ` · przerwy: ${pr.breaks.length}` : ''}</span>
+                    : <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#e8f2ef', color: '#347363' }}>teraz w pracy</span>}
+                  {(pr.anomalies || []).filter((a2) => !a2.includes('brak wyjścia')).length > 0 && <span className="text-[11px]" style={{ color: '#bd4f45' }}>{pr.anomalies.filter((a2) => !a2.includes('brak wyjścia')).join(' · ')}</span>}
+                  {canEdit && !locked && pr.out && (
+                    <span className="ml-auto flex items-center gap-2">
+                      <select defaultValue={wszystkieStacje[0]} id={`bp-st-${pr.accountId}`} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: colors.primary.bg }}>{wszystkieStacje.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+                      <button onClick={async () => { const el = document.getElementById(`bp-st-${pr.accountId}`); const ok = await data.addShiftManual({ date: day, name: (konto && konto.grafikName) || pr.name, station: (el && el.value) || wszystkieStacje[0], start: pr.in, end: pr.out, accountId: pr.accountId || undefined }); if (ok) synchronizujOdbicia(true); }} className="text-xs px-3 py-1.5 rounded-lg text-white font-semibold" style={{ backgroundColor: '#c06a35' }}>Dodaj do grafiku</button>
+                    </span>
+                  )}
+                  {!pr.out && <span className="ml-auto text-[11px]" style={{ color: colors.primary.light }}>dodasz do grafiku po wybiciu</span>}
+                </div>
+              ); })}
+            </div>
+          );
+        })()}
         <p className="text-xs text-slate-400">Górny pasek = plan (Shift), dolny = wykonanie (Actual); czerwony segment = przerwa niepłatna. Korekty nanoś po zakończeniu zmiany pracownika. Tolerancja 5 min (micros ↔ girnet).</p>
         </>)}
         </>)}
