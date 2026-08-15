@@ -902,6 +902,127 @@ const PrintPage = ({ data }) => {
 
 // ===================== SETTINGS =====================
 
+// ── WFM-01: publikacja grafiku — snapshot dla pracowników, wersje i potwierdzenia ──
+const PublishCard = ({ data }) => {
+  const [ym, setYm] = useState('');
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { const m = data.months || []; if (m.length && !ym) setYm(m[m.length - 1].key); }, [data.months]);
+  const zaladuj = (k) => { if (!k) return; api(`/schedule?action=pubinfo&pubmonth=${k}`).then((r) => { if (r && r.success) setInfo(r); }).catch(() => {}); };
+  useEffect(() => { zaladuj(ym); }, [ym]);
+  const publikuj = async () => {
+    if (!ym) return;
+    if (info && info.opublikowany && !confirm(`Publikujesz nową wersję (${info.wersjaPub + 1}) — potwierdzenia pracowników wyzerują się. Kontynuować?`)) return;
+    setBusy(true);
+    const r = await api('/schedule?action=publish', 'POST', { month: ym });
+    setBusy(false);
+    if (r.success) { data.show(`Opublikowano ${ym} — wersja ${r.wersjaPub} (${r.zmian} zmian)`); zaladuj(ym); }
+    else data.show(r.error || 'Błąd publikacji', 'error');
+  };
+  const rozn = info && info.roznice;
+  return (
+    <div className="bg-white rounded-xl p-4 shadow-sm border mb-3" style={{ borderColor: colors.primary.bg }}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-bold" style={{ color: colors.primary.darkest }}>Publikacja grafiku</span>
+        <select value={ym} onChange={(e) => setYm(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+          {(data.months || []).map((m) => <option key={m.key} value={m.key}>{m.key}</option>)}
+        </select>
+        {info && (info.opublikowany
+          ? <span className="text-xs" style={{ color: colors.primary.medium }}>wersja <b>{info.wersjaPub}</b> · {new Date(info.at).toLocaleString('pl-PL')} · {info.by} · potwierdziło <b>{(info.potwierdzenia || []).length}/{info.osobOczekiwane}</b> osób</span>
+          : <span className="text-xs font-medium" style={{ color: '#c06a35' }}>nieopublikowany — pracownicy nie widzą tego miesiąca po pierwszej publikacji systemu</span>)}
+        {rozn && rozn.razem > 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>zmiany od publikacji: +{rozn.dodane} / ±{rozn.zmienione} / −{rozn.usuniete}</span>}
+        {rozn && rozn.razem === 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#e8f2ef', color: '#347363' }}>zgodny z publikacją</span>}
+        <button disabled={busy || !ym} onClick={publikuj} className="ml-auto px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.darkest }}>
+          {busy ? 'Publikuję…' : info && info.opublikowany ? (rozn && rozn.razem > 0 ? 'Opublikuj nową wersję' : 'Opublikuj ponownie') : 'Opublikuj miesiąc'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── WFM-03: wnioski o urlop / absencje — decyzje kierownika ──
+const AbsencesAdmin = ({ data }) => {
+  const [lista, setLista] = useState(null);
+  const zaladuj = () => { api('/absences').then((r) => { if (r && r.success) setLista(r.absences || []); }).catch(() => {}); };
+  useEffect(zaladuj, []);
+  const decyzja = async (a, akcja) => {
+    const r = await api('/absences', 'PUT', { id: a.id, action: akcja });
+    if (r.success) { zaladuj(); data.show(akcja === 'approve' ? `Zatwierdzono: ${a.name} ${a.from}–${a.to}` : 'Wniosek odrzucony'); }
+    else data.show(r.error || 'Błąd', 'error');
+  };
+  const TY = { urlop: 'Urlop wypocz.', uz: 'Na żądanie', l4: 'L4', inne: 'Inna' };
+  const otwarte = (lista || []).filter((a) => a.status === 'open');
+  const rozpatrzone = (lista || []).filter((a) => a.status !== 'open').slice(0, 8);
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #6B8E23' }}>
+      <h3 className="text-lg font-semibold mb-1" style={{ color: colors.primary.darkest }}>Wnioski o urlop / absencje ({otwarte.length})</h3>
+      <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Zatwierdzona absencja blokuje planowanie zmian w tym zakresie (WFM-05).</p>
+      {lista === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : otwarte.length === 0 ? <p className="text-sm" style={{ color: colors.primary.light }}>Brak wniosków do rozpatrzenia.</p> : (
+        <div className="space-y-2 mb-3">
+          {otwarte.map((a) => (
+            <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-xl p-3" style={{ backgroundColor: colors.primary.bgLight }}>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{a.name} <span className="font-normal text-xs" style={{ color: colors.primary.medium }}>· {TY[a.type] || a.type}</span></p>
+                <p className="text-xs" style={{ color: colors.primary.light }}>{a.from} → {a.to}{a.reason ? ` · „${a.reason}"` : ''}</p>
+              </div>
+              <button onClick={() => decyzja(a, 'approve')} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#347363' }}>Zatwierdź</button>
+              <button onClick={() => decyzja(a, 'reject')} className="px-3 py-1.5 rounded-lg text-sm font-semibold" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Odrzuć</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {rozpatrzone.length > 0 && (
+        <div className="pt-2 border-t" style={{ borderColor: '#eef2f7' }}>
+          {rozpatrzone.map((a) => (
+            <p key={a.id} className="text-[11.5px] py-0.5" style={{ color: colors.primary.light }}>
+              {a.name} · {TY[a.type] || a.type} {a.from}→{a.to} — <b style={{ color: a.status === 'approved' ? '#347363' : a.status === 'rejected' ? '#bd4f45' : '#94a3b8' }}>{a.status === 'approved' ? 'zatwierdzony' : a.status === 'rejected' ? 'odrzucony' : 'wycofany'}</b>{a.decidedBy ? ` (${a.decidedBy})` : ''}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── WFM-02: dostępność — akceptacja propozycji pracowników ──
+const DNI_KROTKIE = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
+const opisDnia = (w) => !w || w.tryb === 'pelna' ? 'cały dzień' : w.tryb === 'brak' ? '—' : `${w.od}–${w.do}`;
+const AvailabilityAdmin = ({ data }) => {
+  const [lista, setLista] = useState(null);
+  const zaladuj = () => { api('/availability').then((r) => { if (r && r.success) setLista(r.list || []); }).catch(() => {}); };
+  useEffect(zaladuj, []);
+  const decyzja = async (rec, akcja) => {
+    const r = await api('/availability', 'POST', { accountId: rec.accountId, action: akcja });
+    if (r.success) { zaladuj(); data.show(akcja === 'approve' ? `Dostępność ${rec.name} zatwierdzona` : 'Propozycja odrzucona'); }
+    else data.show(r.error || 'Błąd', 'error');
+  };
+  const oczekujace = (lista || []).filter((x) => x.pending);
+  if (!oczekujace.length) return null;
+  const kolejnosc = [1, 2, 3, 4, 5, 6, 0];
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #5C4B8A' }}>
+      <h3 className="text-lg font-semibold mb-1" style={{ color: colors.primary.darkest }}>Propozycje dostępności ({oczekujace.length})</h3>
+      <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Po zatwierdzeniu planer blokuje dni „niedostępny" i ostrzega poza oknem godzin (WFM-02/05).</p>
+      <div className="space-y-3">
+        {oczekujace.map((rec) => (
+          <div key={rec.accountId} className="rounded-xl p-3" style={{ backgroundColor: colors.primary.bgLight }}>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm font-semibold flex-1" style={{ color: colors.primary.darkest }}>{rec.name}</p>
+              <button onClick={() => decyzja(rec, 'approve')} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#347363' }}>Zatwierdź</button>
+              <button onClick={() => decyzja(rec, 'reject')} className="px-3 py-1.5 rounded-lg text-sm font-semibold" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Odrzuć</button>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+              {kolejnosc.map((d) => { const nowy = (rec.pending.wzor || {})[d]; const stary = (rec.wzor || {})[d]; const zmiana = JSON.stringify(nowy) !== JSON.stringify(stary); return (
+                <span key={d} className="text-[11.5px]" style={{ color: zmiana ? '#B26A00' : colors.primary.light, fontWeight: zmiana ? 700 : 400 }}>{DNI_KROTKIE[d]}: {opisDnia(nowy)}</span>
+              ); })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // ── Dziennik audytu (DATA-04): niezmienny zapis operacji wrażliwych ──
 const AuditCard = () => {
   const [wpisy, setWpisy] = useState(null);
@@ -1200,6 +1321,57 @@ const OptWidokDnia = ({ dem, kc, cover, shifts }) => {
           <text x={PL + c.s * cw + 3} y={11 + i * 15} fontSize="7.5" fill="#fff">{c.len * cw > 70 ? c.t.n : ""}</text>
         </g>))}
       </svg>
+    </div>
+  );
+};
+
+// ── P4: jakość prognozy — backtest MAPE/WAPE + korekty dnia z uzasadnieniem ──
+const ForecastQuality = ({ data }) => {
+  const [dane, setDane] = useState(null);
+  const [edytuj, setEdytuj] = useState(null);   // { date, value, reason }
+  const zaladuj = () => { api('/forecast?days=14').then((r) => { if (r && r.success) setDane(r); }).catch(() => {}); };
+  useEffect(zaladuj, []);
+  const zapisz = async () => {
+    if (!edytuj) return;
+    const r = await api('/forecast?action=override', 'POST', edytuj);
+    if (r.success) { setEdytuj(null); zaladuj(); data.show(edytuj.value == null || edytuj.value === '' ? 'Korekta usunięta' : `Korekta ${edytuj.date} zapisana`); }
+    else data.show(r.error || 'Błąd korekty', 'error');
+  };
+  const bt = dane && dane.backtest;
+  const DK = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
+  return (
+    <div className="bg-white rounded-xl p-4 shadow-sm border mb-3" style={{ borderColor: colors.primary.bg }}>
+      <div className="flex flex-wrap items-center gap-4 mb-3">
+        <span className="text-sm font-bold" style={{ color: colors.primary.darkest }}>Jakość prognozy (baseline sezonowy)</span>
+        {bt && bt.dni > 0 ? (<>
+          <span className="text-xs" style={{ color: colors.primary.medium }}>MAPE <b style={{ color: bt.mape > 15 ? '#bd4f45' : '#347363' }}>{String(bt.mape).replace('.', ',')}%</b></span>
+          <span className="text-xs" style={{ color: colors.primary.medium }}>WAPE <b style={{ color: bt.wape > 12 ? '#bd4f45' : '#347363' }}>{String(bt.wape).replace('.', ',')}%</b></span>
+          <span className="text-xs text-slate-400">backtest: {bt.dni} zakończonych dni · prognoza liczona tylko z danych sprzed dnia</span>
+        </>) : <span className="text-xs" style={{ color: '#c06a35' }}>za mało historii sprzedaży do pomiaru błędu — importuj dane dzienne</span>}
+      </div>
+      {dane && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {dane.days.map((d) => (
+            <button key={d.date} onClick={() => setEdytuj({ date: d.date, value: d.override ? d.override.value : (d.baseline ?? ''), reason: d.override ? d.override.reason : '' })}
+              className="shrink-0 w-[92px] rounded-lg border px-2 py-1.5 text-left hover:shadow-sm"
+              style={{ borderColor: d.override ? '#d67943' : colors.primary.bg, backgroundColor: d.override ? '#fff4e0' : 'white' }}>
+              <p className="text-[10px] font-bold" style={{ color: colors.primary.light }}>{DK[d.dow]} {d.date.slice(8)}.{d.date.slice(5, 7)}</p>
+              <p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{d.forecast != null ? d.forecast.toLocaleString('pl-PL') : '—'}</p>
+              <p className="text-[9.5px] truncate" style={{ color: d.override ? '#B26A00' : colors.primary.light }}>{d.override ? `korekta: ${d.override.reason}` : (d.baseline != null ? 'baseline' : 'brak historii')}</p>
+            </button>
+          ))}
+        </div>
+      )}
+      {edytuj && (
+        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg p-3" style={{ backgroundColor: colors.primary.bgLight }}>
+          <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>Korekta {edytuj.date}:</span>
+          <div><label className="block text-[10px]" style={{ color: colors.primary.light }}>Prognoza (zł)</label><input type="number" value={edytuj.value} onChange={(e) => setEdytuj((x) => ({ ...x, value: e.target.value }))} className="w-28 px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+          <div className="flex-1 min-w-[180px]"><label className="block text-[10px]" style={{ color: colors.primary.light }}>Uzasadnienie (wymagane)</label><input value={edytuj.reason} onChange={(e) => setEdytuj((x) => ({ ...x, reason: e.target.value }))} placeholder="np. promocja, mecz, święto" className="w-full px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+          <button onClick={zapisz} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zapisz</button>
+          <button onClick={() => { setEdytuj((x) => ({ ...x, value: '' })); }} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Usuń korektę</button>
+          <button onClick={() => setEdytuj(null)} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: 'white', color: colors.primary.dark }}>Anuluj</button>
+        </div>
+      )}
     </div>
   );
 };
@@ -1537,6 +1709,7 @@ const ForecastPlan = ({ data, setPage }) => {
         </>)}
 
         {tab === "prognoza" && (<>
+          <ForecastQuality data={data} />
           {!PRED ? (
             <Sekcja kolor="#c06a35" tytul="Brak historii sprzedaży">
               <p className="text-sm" style={{ color: colors.primary.dark }}>Aby prognozować kolejny miesiąc, zaimportuj najpierw raport „Sales Day by Day" z co najmniej kilku tygodni. Im dłuższa historia, tym stabilniejszy profil dni tygodnia i trend.</p>
@@ -1639,6 +1812,13 @@ const ForecastPlan = ({ data, setPage }) => {
         )}
 
         {tab === "dane" && (<>
+          {(() => { const sd = data.salesData || {}; const braki = sd.braki || []; const meta = sd.meta; return (
+            <div className="rounded-xl p-3 mb-3 text-xs flex flex-wrap items-center gap-x-5 gap-y-1" style={{ backgroundColor: braki.length ? '#fff4e0' : '#e8f2ef', color: braki.length ? '#B26A00' : '#347363' }}>
+              <b>Jakość danych sprzedaży (P4):</b>
+              {meta ? <span>import v{meta.wersja} · {new Date(meta.importedAt).toLocaleString('pl-PL')} · {meta.source} · {meta.importedBy}</span> : <span>brak zarejestrowanych importów</span>}
+              {braki.length ? <span>braki w ostatnich 30 dniach: <b>{braki.length}</b> ({braki.slice(0, 5).join(', ')}{braki.length > 5 ? '…' : ''})</span> : <span>komplet danych za ostatnie 30 dni</span>}
+            </div>
+          ); })()}
           <Sekcja kolor={colors.primary.medium} tytul="Średnie wg dnia tygodnia">
             <div className="overflow-x-auto"><div className="min-w-[520px]">
               <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 px-2 py-2 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Dzień</span><span className="text-right">Śr. sprzedaż</span><span className="text-right">Śr. grafik h</span><span className="text-right">Śr. silnik h</span><span className="text-right">Δ h</span></div>
@@ -2041,7 +2221,19 @@ const BudgetPlan = ({ data, setPage }) => {
   const year = useMemo(() => { const ys = data.shifts.map((s) => +s.date.slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
   const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
   const planDaily = Array.from({ length: daysInMonth }, (_, i) => { const ds = `${year}-${String(mIdx + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`; return data.shifts.filter((s) => s.date === ds && !jestInstruktor(s)).reduce((a, s) => a + godzZ(s), 0); });
-  const actualDaily = planDaily.map((h, i) => { if (!h) return 0; const d = ((i * 37 + 13) % 11) - 5; return Math.max(0, +(h * (1 + d / 100)).toFixed(1)); });
+  // P0-2 (audyt P4): wykonanie WYŁĄCZNIE z realnych danych ts:data (odbicia/korekty);
+  // dzień bez wykonania = 0 — żadnych wartości syntetycznych z planu.
+  const actualDaily = Array.from({ length: daysInMonth }, (_, i) => {
+    const ds = `${year}-${String(mIdx + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+    let min = 0;
+    data.shifts.filter((x) => x.date === ds && !jestInstruktor(x)).forEach((x) => {
+      const a = wtAct(((data.ts || {}).actuals) || {}, x);
+      if (!a) return;
+      const przerwy = (a.breaks || []).filter((b) => b.platna === false).reduce((acc, b) => acc + wtDur(b.start != null ? b.start : b.od, b.end != null ? b.end : b.do), 0);
+      min += Math.max(wtDur(a.start, a.end) - przerwy, 0);
+    });
+    return +(min / 60).toFixed(1);
+  });
   const avgHourly = godzTotal ? col / godzTotal : 0;
   const colDaily = planDaily.map((h) => +(h * avgHourly).toFixed(0));
   const dayLabels = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
@@ -2181,7 +2373,7 @@ const BudgetPlan = ({ data, setPage }) => {
 
         {tab === 'analiza' && (<>
           <p className="text-sm" style={{ color: colors.primary.light }}>Analityka dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]} {year}</b> — dane dzienne z grafiku.</p>
-          <Sekcja kolor={colors.primary.medium} tytul="Grafik: godziny plan vs wykonanie (dni miesiąca)"><BPLine labels={dayLabels} unit="h" series={[{ name: 'Plan', color: colors.primary.bg, data: planDaily, fill: true }, { name: 'Wykonanie', color: colors.primary.medium, data: actualDaily }]} /></Sekcja>
+          <Sekcja kolor={colors.primary.medium} tytul="Grafik: godziny plan vs wykonanie z odbić (dni miesiąca)"><BPLine labels={dayLabels} unit="h" series={[{ name: 'Plan', color: colors.primary.bg, data: planDaily, fill: true }, { name: 'Wykonanie', color: colors.primary.medium, data: actualDaily }]} /></Sekcja>
           <Sekcja kolor="#12423f" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#12423f', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
           <Sekcja kolor="#455A64" tytul="Cost of Labour — udział kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
 
@@ -2263,7 +2455,7 @@ const FUNKCJE = [
   { id: 'RGM', label: 'Kierownik restauracji' },
 ];
 const funkcjaLabel = (id) => (FUNKCJE.find((f) => f.id === id) || {}).label || id;
-const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false, grafikName: '', aliasy: '' };
+const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false, grafikName: '', aliasy: '', wymiarTygH: '', maxDobaH: '', stanowiska: '' };
 
 const CopyField = ({ label, value }) => {
   const [ok, setOk] = useState(false);
@@ -2311,6 +2503,14 @@ const EmpForm = ({ init, onSave, onClose }) => {
             <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>{f.umowa === 'UOP' ? 'Wynagr. mies. (zł)' : 'Stawka (zł/h)'}</label><input type="number" value={f.stawka} onChange={(e) => set({ stawka: Number(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
           </div>
           <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={f.zus} onChange={(e) => set({ zus: e.target.checked })} />Pracownik oskładkowany (ZUS){f.umowa === 'UOP' ? ' — dla UOP zawsze' : ''}</label>
+          <div className="rounded-lg p-3 space-y-3" style={{ backgroundColor: colors.primary.bgLight }}>
+            <p className="text-[11px] font-semibold" style={{ color: colors.primary.dark }}>Reguły pracy (WFM-04) — planer ostrzega przy przekroczeniu</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Wymiar tygodniowy (h)</label><input type="number" value={f.wymiarTygH ?? ''} onChange={(e) => set({ wymiarTygH: e.target.value })} placeholder="np. 40 (puste = brak)" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Maks. na dobę (h)</label><input type="number" value={f.maxDobaH ?? ''} onChange={(e) => set({ maxDobaH: e.target.value })} placeholder="np. 12" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+            </div>
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dozwolone stanowiska (po przecinku; puste = wszystkie)</label><input value={f.stanowiska || ''} onChange={(e) => set({ stanowiska: e.target.value })} placeholder="np. FRYTKI, PREP, ZMYWAK" className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+          </div>
           </>)}
           {f.funkcja === 'CREW' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={!!f.instruktor} onChange={(e) => set({ instruktor: e.target.checked })} />Instruktor (szkoli innych pracowników)</label>}
         </div>
@@ -2327,7 +2527,7 @@ const AdminEmployees = ({ data }) => {
   const [q, setQ] = useState('');
 
   const save = async (f) => {
-    const payload = { ...f, grafikName: (f.grafikName || '').trim(), aliasy: String(f.aliasy || '').split(',').map((x) => x.trim()).filter(Boolean) };
+    const payload = { ...f, grafikName: (f.grafikName || '').trim(), aliasy: String(f.aliasy || '').split(',').map((x) => x.trim()).filter(Boolean), stanowiska: String(f.stanowiska || '').split(',').map((x) => x.trim()).filter(Boolean) };
     if (f.funkcja === 'REST' && !String(payload.name || '').trim()) payload.name = String(payload.login || '').trim().toUpperCase();
     if (form.id) { await data.updateAccount(form.id, payload); data.show('Zapisano zmiany'); }
     else { const c = await data.addAccount(payload); if (c) { if (c.haslo) setCred(c); else data.show(`Konto ${c.login} utworzone — loguje się własnym PIN-em`, 'success'); } }
@@ -2356,7 +2556,7 @@ const AdminEmployees = ({ data }) => {
               <span className="text-center">{e.zus ? <Check size={16} style={{ color: '#347363' }} className="inline" /> : <span className="text-slate-300">—</span>}</span>
               <span className="font-mono font-semibold" style={{ color: colors.primary.dark }}>{e.login}</span>
               <span className="flex items-center justify-end gap-1">
-                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', ') })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
+                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', '), wymiarTygH: e.wymiarTygH || '', maxDobaH: e.maxDobaH || '', stanowiska: (e.stanowiska || []).join(', ') })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
                 <button onClick={() => reset(e)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}><Lock size={12} />PIN</button>
                 <button onClick={() => del(e)} className="text-red-400 p-1"><Trash2 size={15} /></button>
               </span>
@@ -2512,12 +2712,16 @@ const AdminSwaps = ({ data }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Giełda zamian" subtitle="Prośby o zamianę od pracowników — akceptacja przenosi zmianę na grafik" />
+      <Header title="Zamiany i wnioski" subtitle="Zamiany zmian oraz wnioski urlopowe pracowników — decyzje kierownika" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="flex items-center justify-between">
           <div />
           <Btn variant="secondary" icon={RefreshCw} onClick={data.refreshSwaps}>Odśwież</Btn>
         </div>
+
+        <AbsencesAdmin data={data} />
+
+        <AvailabilityAdmin data={data} />
 
         <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #F5B000' }}>
           <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Do akceptacji ({doAkceptacji.length})</h3>
@@ -3355,6 +3559,18 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   }, [data.shifts, data.accounts, data.salesData, weekDays]);
 
   useEffect(() => { if (wrNonce) setView('list'); }, [wrNonce]);   // klik w menu WorkRhythm wraca do listy zakładki
+  // WFM-10: eksport payroll — wyłącznie zamknięte tygodnie (audytowany na backendzie)
+  const pobierzPayroll = async (weekStart) => {
+    try {
+      const tok = store.get('admin_token');
+      const rf = await fetch(`${API_BASE}/timesheets?action=payroll&week=${weekStart}&format=csv`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {} });
+      if (!rf.ok) { const j = await rf.json().catch(() => ({})); return data.show(j.error || 'Eksport nieudany', 'error'); }
+      const blob = await rf.blob();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `payroll_${weekStart}.csv`; a.click(); URL.revokeObjectURL(a.href);
+      data.show(`Payroll ${weekStart} pobrany (CSV)`);
+    } catch { data.show('Eksport nieudany', 'error'); }
+  };
+
   const openWeek = (w, tryb) => {
     setWeekStart(w.start); setDay(w.days[0]); setView('week');
     if (tryb === 'wykonanie') { setZakresTyg('dzien'); setTrybDnia('wykonanie'); }
@@ -3411,6 +3627,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         </div>
         <div className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
           {wrTab === 'schedule' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Planowanie obsady — kliknij tydzień, aby otworzyć siatkę planowania.</p>}
+          {wrTab === 'schedule' && canEdit && <PublishCard data={data} />}
           {wrTab === 'actual' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Wykonanie (Working Time) — kliknij tydzień, aby rozliczyć wbicia, przerwy i korekty.</p>}
           {wrTab === 'tna' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Time & Attendance — statusy tygodni: oznaczaj dni jako Completed, potem Reviewed i Closed (blokada edycji).</p>}
           <div className="flex items-center gap-2 mb-3"><span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: colors.primary.light }}>Work Center</span><div className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{wcLabel}</div></div>
@@ -3420,10 +3637,13 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             {weeks.length === 0 ? <div className="p-8 text-center text-slate-400">Brak grafiku. Zaimportuj miesiąc.</div> : weeks.map((w, idx) => {
               const done = weekDone(w); const st = wsOf(w.start);
               const toggleReviewed = (e) => { e.stopPropagation(); if (!canEdit) return; if (!done) return data.show('Najpierw zamknij wszystkie dni (Completed)', 'error'); data.tsSetWeek(w.start, { ...st, reviewed: !st.reviewed }); };
-              const toggleClosed = (e) => { e.stopPropagation(); if (!canEdit) return; if (st.closed) { data.tsSetWeek(w.start, { ...st, closed: false }); data.show('Tydzień otwarty ponownie'); return; } if (!done) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsSetWeek(w.start, { reviewed: true, closed: true }); data.show('Tydzień zamknięty'); };
+              const toggleClosed = (e) => { e.stopPropagation(); if (!canEdit) return; if (st.closed) { data.tsReopenWeek(w.start); return; } if (!done) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsCloseWeek(w.start); };
               return (
                 <div key={w.start} className="grid grid-cols-[1fr_110px_110px_110px_56px] px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#eef2f7', backgroundColor: idx % 2 ? '#f8fafc' : 'white' }}>
-                  <button onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')} className="text-left font-medium hover:underline" style={{ color: colors.primary.darkest }}>{range(w)}<span className="text-xs text-slate-400 ml-2">({w.days.length} dni)</span></button>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <button onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')} className="text-left font-medium hover:underline truncate" style={{ color: colors.primary.darkest }}>{range(w)}<span className="text-xs text-slate-400 ml-2">({w.days.length} dni)</span></button>
+                    {wrTab === 'tna' && st.closed && canEdit && <button onClick={(e) => { e.stopPropagation(); pobierzPayroll(w.start); }} className="text-[10.5px] px-2 py-0.5 rounded-full font-bold shrink-0" style={{ backgroundColor: '#e8f2ef', color: '#347363' }} title="Eksport płatnych minut zamkniętego tygodnia">Payroll CSV</button>}
+                  </span>
                   <span className="flex justify-center">{done ? <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e8f2ef' }}><Check size={15} style={{ color: '#347363' }} /></span> : <span className="text-slate-300">…</span>}</span>
                   <span className="flex justify-center"><button onClick={toggleReviewed} title="Reviewed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.reviewed ? '#347363' : colors.primary.bg, backgroundColor: st.reviewed ? '#e8f2ef' : 'white' }}>{st.reviewed && <Check size={14} style={{ color: '#347363' }} />}</button></span>
                   <span className="flex justify-center"><button onClick={toggleClosed} title="Closed" className="w-6 h-6 rounded-full flex items-center justify-center border" style={{ borderColor: st.closed ? '#bd4f45' : colors.primary.bg, backgroundColor: st.closed ? '#fff0ed' : 'white' }}>{st.closed && <Check size={14} style={{ color: '#bd4f45' }} />}</button></span>
@@ -3644,6 +3864,8 @@ const useData = () => {
   const [budget, setBudget] = useState(null);
   const [salesData, setSalesData] = useState(null);
   const [templates, setTemplates] = useState([]);
+  const [absences, setAbsences] = useState([]);
+  const [availPending, setAvailPending] = useState(0);
   const [lastSync, setLastSync] = useState(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -3665,9 +3887,13 @@ const useData = () => {
       const rb = await api('/budget');
       if (rb.success) setBudget(rb.data || { employees: [], settings: null, sprzedaz: {}, transakcje: {}, dniS: {} });
       const rsl = await api('/sales');
-      if (rsl.success) setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null });
+      if (rsl.success) setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [] });
       const rtpl = await api('/templates');
       if (rtpl.success) setTemplates(rtpl.templates || []);
+      const rab = await api('/absences');
+      if (rab.success) setAbsences(rab.absences || []);
+      const rav = await api('/availability');
+      if (rav.success) setAvailPending(rav.pending || 0);
     } catch { show('Błąd synchronizacji', 'error'); }
     setLastSync(new Date());
     setLoading(false);
@@ -3763,6 +3989,21 @@ const useData = () => {
   const tsPutActualsBulk = useCallback((map) => { const cur = tsRef.current; persistTs({ ...cur, actuals: { ...cur.actuals, ...map } }); }, [persistTs]);
   const tsToggleCompleted = useCallback((date) => { const cur = tsRef.current; persistTs({ ...cur, completed: { ...cur.completed, [date]: !cur.completed[date] } }); }, [persistTs]);
   const tsSetWeek = useCallback((ws, statusObj) => { const cur = tsRef.current; persistTs({ ...cur, weekStatus: { ...cur.weekStatus, [ws]: statusObj } }); }, [persistTs]);
+  // P4-02: CLOSED zmienia wyłącznie serwer (akcje z audytem); PUT odrzuca zmiany flagi
+  const tsCloseWeek = useCallback(async (ws) => {
+    const r = await api('/timesheets?action=close-week', 'POST', { week: ws });
+    if (r.success) { const cur = tsRef.current; const next = { ...cur, weekStatus: { ...cur.weekStatus, [ws]: r.weekStatus } }; tsRef.current = next; setTs(next); show('Tydzień zamknięty (podpis: ' + (r.weekStatus.closedBy || '—') + ')'); }
+    else show(r.error || 'Nie udało się zamknąć tygodnia', 'error');
+    return r.success;
+  }, []);
+  const tsReopenWeek = useCallback(async (ws) => {
+    const powod = prompt('Ponowne otwarcie zamkniętego tygodnia wymaga powodu (trafi do audytu):');
+    if (powod == null || !powod.trim()) return false;
+    const r = await api('/timesheets?action=reopen-week', 'POST', { week: ws, reason: powod.trim() });
+    if (r.success) { const cur = tsRef.current; const next = { ...cur, weekStatus: { ...cur.weekStatus, [ws]: r.weekStatus } }; tsRef.current = next; setTs(next); show('Tydzień otwarty ponownie'); }
+    else show(r.error || 'Nie udało się otworzyć tygodnia', 'error');
+    return r.success;
+  }, []);
 
   // Dodanie osoby do grafiku z poziomu planowania — od razu tworzy też wpis wykonania (Actual)
   // DATA-03: wysyłamy znaną wersję miesiąca; 409 = ktoś edytował równolegle → odśwież
@@ -3772,7 +4013,8 @@ const useData = () => {
     if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
     const sh = r.shift;
     await sync();                                        // COR-02: wykonanie powstaje wyłącznie z odbić / korekty
-    show(`Dodano: ${sh.name} ${sh.start}–${sh.end} (grafik)`);
+    if (r.warnings && r.warnings.length) show(`Dodano z ostrzeżeniem: ${r.warnings[0]}`, 'error');
+    else show(`Dodano: ${sh.name} ${sh.start}–${sh.end} (grafik)`);
     return true;
   }, [sync]);
 
@@ -3780,7 +4022,8 @@ const useData = () => {
     const r = await api('/schedule?action=update', 'POST', { ...ident, nowe, expectedVersion: wersjaMiesiaca(ident.date) });
     if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się zapisać zmiany', 'error'); return false; }
     await sync();
-    show(`Zapisano: ${r.shift.name} ${r.shift.start}–${r.shift.end}`);
+    if (r.warnings && r.warnings.length) show(`Zapisano z ostrzeżeniem: ${r.warnings[0]}`, 'error');
+    else show(`Zapisano: ${r.shift.name} ${r.shift.start}–${r.shift.end}`);
     return true;
   }, [sync]);
 
@@ -3843,7 +4086,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek };
 };
 
 // ===================== MAIN =====================
@@ -3876,7 +4119,7 @@ export default function App() {
   // Kierownik zmiany: strona domowa, grafik i wydruk. ASM: wszystko.
   const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'wt'];
   const widok = dozwolone.includes(page) ? page : 'dashboard';
-  const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length;
+  const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length + (data.absences || []).filter(a => a.status === 'open').length + (data.availPending || 0);
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
