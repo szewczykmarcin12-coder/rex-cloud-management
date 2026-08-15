@@ -1009,16 +1009,28 @@ const DyspoAdmin = ({ data, setPage }) => {
   const [q, setQ] = useState('');
   const [nota, setNota] = useState('');
   const [busy, setBusy] = useState(false);
+  const [okno, setOkno] = useState(null);
   const weekEnd = dyAddDays(weekStart, 6);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const date = dyAddDays(weekStart, i); const d = new Date(date + 'T12:00:00'); return { date, label: new Intl.DateTimeFormat('pl-PL', { weekday: 'short' }).format(d).replace('.', '').toUpperCase(), day: String(d.getDate()) }; }), [weekStart]);
+  // FIX: lista i KPI obejmują WSZYSTKIE zgłoszenia (nie tylko widoczny tydzień) — siatka filtruje lokalnie
   const zaladuj = useCallback(() => {
-    api(`/availability?reqs=1&from=${weekStart}&to=${weekEnd}`).then((r) => {
+    api('/availability?reqs=1').then((r) => {
       if (!r || !r.success) return;
       setReqs(r.requests || []);
       setSelId((cur) => cur && (r.requests || []).some((x) => x.id === cur) ? cur : ((r.requests || [])[0] || {}).id || null);
     }).catch(() => {});
-  }, [weekStart, weekEnd]);
+    api('/availability?window=1').then((r) => { if (r && r.success) setOkno(r.okno); }).catch(() => {});
+  }, []);
   useEffect(zaladuj, [zaladuj]);
+  // start: pokaż tydzień miesiąca, na który zbieramy dyspozycje
+  useEffect(() => { if (okno && okno.targetMonth) setWeekStart((w) => w === dyStartOfWeek(new Date().toISOString().slice(0, 10)) ? dyStartOfWeek(`${okno.targetMonth}-01`) : w); }, [okno && okno.targetMonth]);
+  const przelaczOkno = async () => {
+    if (!okno) return;
+    const r = await api('/availability?action=window', 'POST', { open: !okno.otwarte });
+    if (r.success) { setOkno(r.okno); data.show(r.okno.otwarte ? 'Okno dyspozycji otwarte' : 'Okno dyspozycji zamknięte'); }
+    else data.show(r.error || 'Błąd', 'error');
+  };
+  const mcNazwa = (ym) => { const [y, m] = String(ym || '').split('-').map(Number); return y ? new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1)) : ''; };
   const sel = reqs.find((x) => x.id === selId) || null;
   useEffect(() => { setNota((sel && sel.managerNote) || ''); }, [selId]);
   const osoby = useMemo(() => { const m = new Map(); reqs.forEach((r) => m.set(r.accountId, { id: r.accountId, name: r.name, login: r.login })); return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl')); }, [reqs]);
@@ -1040,6 +1052,14 @@ const DyspoAdmin = ({ data, setPage }) => {
           <div><span>WORKRHYTHM · DYSPOZYCYJNOŚĆ</span><h1>Dyspozycyjność zespołu</h1><p>Preferencje pracowników, decyzje managera i konflikty z grafikiem.</p></div>
           <div><button className="rex-av-btn secondary" onClick={zaladuj}><RefreshCw size={16} /> Odśwież</button><button className="rex-av-btn primary" onClick={() => setPage('wt')}><CalendarCheck2 size={16} /> Otwórz w Schedule</button></div>
         </header>
+        {okno && (
+          <div className="rounded-xl px-4 py-3 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style={{ backgroundColor: okno.otwarte ? '#e6f2ef' : '#fff0ed', border: `1px solid ${okno.otwarte ? '#bcd8d0' : '#f3c5c2'}`, color: okno.otwarte ? '#16705b' : '#9f312b' }}>
+            <strong>Okno dyspozycji na {mcNazwa(okno.targetMonth)}: {okno.otwarte ? 'OTWARTE' : 'ZAMKNIĘTE'}</strong>
+            <span>{okno.otwarte ? `pracownicy składają do 20.${okno.deadline.slice(5, 7)}.${okno.deadline.slice(0, 4)}` : 'termin (20. dzień miesiąca) minął — otworzyć może wyłącznie ASM'}</span>
+            {okno.reczne && <span className="text-xs">ręcznie {okno.reczne.open ? 'otwarte' : 'zamknięte'} przez {okno.reczne.by}</span>}
+            <button onClick={przelaczOkno} className="ml-auto px-3 py-1.5 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: okno.otwarte ? '#a93b36' : '#16705b' }}>{okno.otwarte ? 'Zamknij okno' : 'Otwórz okno (ASM)'}</button>
+          </div>
+        )}
         <section className="rex-av-kpis">
           <article><span className="amber"><Clock3 /></span><div><small>DO DECYZJI</small><strong>{licz.pending}</strong><em>zgłoszeń</em></div></article>
           <article><span className="green"><UserCheck /></span><div><small>ZAAKCEPTOWANE</small><strong>{licz.approved}</strong><em>w tym tygodniu</em></div></article>
@@ -1116,7 +1136,11 @@ const TaLive = ({ data }) => {
     } catch {}
   }, []);
   useEffect(() => { zaladuj(); const t = setInterval(zaladuj, 10000); return () => clearInterval(t); }, [zaladuj]);
-  const ostatniPerOsoba = useMemo(() => { const m = new Map(); [...(events || [])].reverse().forEach((e) => m.set(e.accountId, e)); return [...m.values()].sort((a, b) => b.at - a.at); }, [events]);
+  const ostatniPerOsoba = useMemo(() => {
+    const m = new Map();
+    (events || []).forEach((e) => { const cur = m.get(e.accountId); if (!cur || e.at > cur.at) m.set(e.accountId, e); });   // FIX: zawsze NAJNOWSZE odbicie
+    return [...m.values()].sort((a, b) => b.at - a.at);
+  }, [events]);
   const stan = (e) => e.type === 'clock_out' ? 'done' : e.type === 'break_start' ? 'break' : 'working';
   const summary = { working: ostatniPerOsoba.filter((e) => stan(e) === 'working').length, przerwa: ostatniPerOsoba.filter((e) => stan(e) === 'break').length, done: ostatniPerOsoba.filter((e) => stan(e) === 'done').length };
   const aktywne = terminale.filter((t) => t.active !== false).length;
