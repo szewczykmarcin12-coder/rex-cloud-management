@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2 } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
@@ -235,6 +235,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
       { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: FileSpreadsheet },
       { id: 'wr-cycles', page: 'wt', wr: 'cycles', label: 'ShiftCycles', icon: RefreshCw },
       { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Check },
+      { id: 'dyspo', label: 'Dyspozycyjność', icon: CalendarCheck2 },
     ] },
     { naglowek: 'Zespół', items: [
       { id: 'emps', label: 'Pracownicy i konta', icon: Users },
@@ -980,6 +981,187 @@ const AbsencesAdmin = ({ data }) => {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// ═════════ REX WorkRhythm Modules v1.0.0 — Dyspozycyjność (panel) ═════════
+const CLOCK_APP_URL = 'https://rex-clock.vercel.app';
+const DY_TYPY = {
+  available: { short: 'Dostępny', label: 'Mogę pracować' },
+  unavailable: { short: 'Niedost.', label: 'Nie mogę pracować' },
+  from_time: { short: 'Od', label: 'Mogę pracować od godziny' },
+  until_time: { short: 'Do', label: 'Mogę pracować do godziny' },
+  specific_shift: { short: 'Zmiana', label: 'Preferowana konkretna zmiana' },
+};
+const dyAddDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const dyStartOfWeek = (iso) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+const dyTime = (r) => r.type === 'from_time' ? `od ${r.startTime}` : r.type === 'until_time' ? `do ${r.endTime}` : r.type === 'specific_shift' ? `${r.startTime}–${r.endTime}` : 'cały dzień';
+const dyInicjaly = (n) => String(n || '?').split(' ').map((x) => x[0]).join('').slice(0, 2);
+const dyData = (d) => new Intl.DateTimeFormat('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(d + 'T12:00:00'));
+const dyKlasa = (t) => t === 'available' ? 'available' : t === 'unavailable' ? 'unavailable' : 'limited';
+
+const DyspoAdmin = ({ data, setPage }) => {
+  const [weekStart, setWeekStart] = useState(dyStartOfWeek(new Date().toISOString().slice(0, 10)));
+  const [reqs, setReqs] = useState([]);
+  const [selId, setSelId] = useState(null);
+  const [filtr, setFiltr] = useState('pending');
+  const [q, setQ] = useState('');
+  const [nota, setNota] = useState('');
+  const [busy, setBusy] = useState(false);
+  const weekEnd = dyAddDays(weekStart, 6);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const date = dyAddDays(weekStart, i); const d = new Date(date + 'T12:00:00'); return { date, label: new Intl.DateTimeFormat('pl-PL', { weekday: 'short' }).format(d).replace('.', '').toUpperCase(), day: String(d.getDate()) }; }), [weekStart]);
+  const zaladuj = useCallback(() => {
+    api(`/availability?reqs=1&from=${weekStart}&to=${weekEnd}`).then((r) => {
+      if (!r || !r.success) return;
+      setReqs(r.requests || []);
+      setSelId((cur) => cur && (r.requests || []).some((x) => x.id === cur) ? cur : ((r.requests || [])[0] || {}).id || null);
+    }).catch(() => {});
+  }, [weekStart, weekEnd]);
+  useEffect(zaladuj, [zaladuj]);
+  const sel = reqs.find((x) => x.id === selId) || null;
+  useEffect(() => { setNota((sel && sel.managerNote) || ''); }, [selId]);
+  const osoby = useMemo(() => { const m = new Map(); reqs.forEach((r) => m.set(r.accountId, { id: r.accountId, name: r.name, login: r.login })); return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl')); }, [reqs]);
+  const widoczne = useMemo(() => { const n = q.trim().toLocaleLowerCase('pl'); return reqs.filter((r) => (filtr === 'all' || (filtr === 'conflict' ? r.conflict : r.status === filtr)) && (!n || r.name.toLocaleLowerCase('pl').includes(n))); }, [filtr, q, reqs]);
+  const licz = { pending: reqs.filter((r) => r.status === 'pending').length, approved: reqs.filter((r) => r.status === 'approved').length, conflict: reqs.filter((r) => r.conflict).length, osoby: new Set(reqs.map((r) => r.accountId)).size };
+  const decyzja = async (status) => {
+    if (!sel) return; setBusy(true);
+    const r = await api('/availability?action=decide', 'POST', { id: sel.id, status, managerNote: nota });
+    setBusy(false);
+    if (r.success) { setReqs((xs) => xs.map((x) => x.id === r.request.id ? r.request : x)); data.show(status === 'approved' ? 'Dyspozycja zaakceptowana' : 'Dyspozycja odrzucona'); }
+    else data.show(r.error || 'Nie udało się zapisać decyzji', 'error');
+  };
+  const weekLabel = `${new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' }).format(new Date(weekStart + 'T12:00:00'))}–${new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(weekEnd + 'T12:00:00'))}`;
+  const naDzien = (aid, date) => reqs.find((r) => r.accountId === aid && (r.date === date || (r.recurrence === 'weekly' && r.date <= date && (!r.repeatUntil || r.repeatUntil >= date) && new Date(r.date + 'T12:00:00').getDay() === new Date(date + 'T12:00:00').getDay())));
+  return (
+    <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: '#f5f8fa' }}>
+      <div className="rex-av-admin">
+        <header className="rex-av-heading">
+          <div><span>WORKRHYTHM · DYSPOZYCYJNOŚĆ</span><h1>Dyspozycyjność zespołu</h1><p>Preferencje pracowników, decyzje managera i konflikty z grafikiem.</p></div>
+          <div><button className="rex-av-btn secondary" onClick={zaladuj}><RefreshCw size={16} /> Odśwież</button><button className="rex-av-btn primary" onClick={() => setPage('wt')}><CalendarCheck2 size={16} /> Otwórz w Schedule</button></div>
+        </header>
+        <section className="rex-av-kpis">
+          <article><span className="amber"><Clock3 /></span><div><small>DO DECYZJI</small><strong>{licz.pending}</strong><em>zgłoszeń</em></div></article>
+          <article><span className="green"><UserCheck /></span><div><small>ZAAKCEPTOWANE</small><strong>{licz.approved}</strong><em>w tym tygodniu</em></div></article>
+          <article><span className="red"><AlertTriangle /></span><div><small>KONFLIKTY</small><strong>{licz.conflict}</strong><em>z grafikiem</em></div></article>
+          <article><span className="teal"><Users /></span><div><small>PRACOWNICY</small><strong>{licz.osoby}</strong><em>ze zgłoszeniami</em></div></article>
+        </section>
+        <section className="rex-av-toolbar">
+          <div className="rex-av-tabs">
+            {[['pending', `Do decyzji · ${licz.pending}`], ['all', 'Wszystkie'], ['conflict', `Konflikty · ${licz.conflict}`], ['approved', 'Zaakceptowane']].map(([id, label]) => <button key={id} className={filtr === id ? 'active' : ''} onClick={() => setFiltr(id)}>{label}</button>)}
+          </div>
+          <div className="rex-av-tools">
+            <label><Search size={15} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj pracownika..." /></label>
+            <button aria-label="Filtry"><Filter size={16} /></button>
+            <div><button onClick={() => setWeekStart(dyAddDays(weekStart, -7))}><ChevronLeft size={16} /></button><strong>{weekLabel}</strong><button onClick={() => setWeekStart(dyAddDays(weekStart, 7))}><ChevronRight size={16} /></button></div>
+          </div>
+        </section>
+        <div className="rex-av-layout">
+          <main>
+            <section className="rex-av-week-grid">
+              <div className="rex-av-grid-head"><div>PRACOWNIK</div>{days.map((d) => <div key={d.date}><span>{d.label}</span><strong>{d.day}</strong></div>)}</div>
+              {osoby.map((o) => <div className="rex-av-grid-row" key={o.id}>
+                <div className="rex-av-person"><span>{dyInicjaly(o.name)}</span><div><strong>{o.name}</strong><small>{o.login}</small></div></div>
+                {days.map((d) => { const it = naDzien(o.id, d.date); return <button key={d.date} className={`rex-av-cell ${it ? `${dyKlasa(it.type)} ${it.status}` : 'empty'} ${it && it.conflict ? 'conflict' : ''}`} onClick={() => it && setSelId(it.id)} disabled={!it}>
+                  {it ? <><span>{DY_TYPY[it.type].short}</span><strong>{dyTime(it)}</strong>{it.recurrence === 'weekly' && <Repeat2Icon />}{it.conflict && <AlertTriangle size={10} />}</> : <i>—</i>}
+                </button>; })}
+              </div>)}
+              {!osoby.length && <div className="rex-av-empty">Brak zgłoszeń w wybranym tygodniu.</div>}
+              <div className="rex-av-legend"><span><i className="available" /> Dostępny</span><span><i className="limited" /> Ograniczenie</span><span><i className="unavailable" /> Niedostępny</span><span><i className="pending" /> Oczekuje</span><span><AlertTriangle size={11} /> Konflikt</span></div>
+            </section>
+            <section className="rex-av-queue">
+              <header><div><strong>Lista zgłoszeń</strong><span>{widoczne.length} pozycji</span></div><small>aktualizacja po decyzji</small></header>
+              {widoczne.map((r) => <button key={r.id} className={sel && sel.id === r.id ? 'active' : ''} onClick={() => setSelId(r.id)}>
+                <span className="rex-av-avatar">{dyInicjaly(r.name)}</span>
+                <span><strong>{r.name}</strong><small>{DY_TYPY[r.type].label} · {dyTime(r)}</small></span>
+                <time>{new Intl.DateTimeFormat('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date(r.date + 'T12:00:00'))}</time>
+                {r.conflict && <em className="conflict"><AlertTriangle size={11} /> konflikt</em>}
+                <b className={r.status}>{r.status === 'pending' ? 'Do decyzji' : r.status === 'approved' ? 'Zaakceptowana' : 'Odrzucona'}</b>
+              </button>)}
+            </section>
+          </main>
+          <aside className="rex-av-review">
+            {sel ? <>
+              <header><div><span>{dyInicjaly(sel.name)}</span><div><small>ZGŁOSZENIE #{String(sel.id).slice(-4).toUpperCase()}</small><strong>{sel.name}</strong><em>{sel.login} · PLK 201043</em></div></div><b className={sel.status}>{sel.status === 'pending' ? 'Do decyzji' : sel.status === 'approved' ? 'Zaakceptowana' : 'Odrzucona'}</b></header>
+              {sel.conflict && <div className="rex-av-warning"><AlertTriangle size={16} /><div><strong>Konflikt z opublikowanym grafikiem</strong><span>Decyzja może wymagać korekty grafiku.</span></div></div>}
+              <div className="rex-av-review-grid"><span><small>DATA</small><strong>{dyData(sel.date)}</strong></span><span><small>TYP</small><strong>{DY_TYPY[sel.type].label}</strong></span><span><small>GODZINY</small><strong>{dyTime(sel)}</strong></span><span><small>POWTARZALNOŚĆ</small><strong>{sel.recurrence === 'weekly' ? `Co tydzień do ${sel.repeatUntil}` : 'Tylko ten dzień'}</strong></span></div>
+              <div className="rex-av-note"><MessageSquare size={15} /><div><small>KOMENTARZ PRACOWNIKA</small><p>{sel.note || 'Brak komentarza.'}</p></div></div>
+              <label className="rex-av-manager-note"><span>Notatka managera</span><textarea value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Opcjonalna informacja dla pracownika..." /></label>
+              <div className="rex-av-actions"><button className="reject" disabled={busy} onClick={() => decyzja('rejected')}><X size={15} /> Odrzuć</button><button className="approve" disabled={busy} onClick={() => decyzja('approved')}><Check size={15} /> Akceptuj</button></div>
+              <button className="rex-av-schedule-link" onClick={() => setPage('wt')}><CalendarCheck2 size={14} /> Pokaż w grafiku</button>
+            </> : <div className="rex-av-empty">Wybierz zgłoszenie z listy.</div>}
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+};
+const Repeat2Icon = () => <RefreshCw size={10} />;
+
+// ═════════ REX WorkRhythm Modules v1.0.0 — Time & Attendance (live) ═════════
+const TA_NAZWY = { clock_in: 'Wejście', break_start: 'Start przerwy', break_end: 'Koniec przerwy', clock_out: 'Wyjście' };
+const taTone = (t) => t === 'clock_in' ? 'in' : t === 'clock_out' ? 'out' : 'break';
+const taCzas = (ts) => new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Warsaw' }).format(new Date(ts));
+const TaLive = ({ data }) => {
+  const [events, setEvents] = useState(null);
+  const [terminale, setTerminale] = useState([]);
+  const [syncAt, setSyncAt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const zaladuj = useCallback(async () => {
+    try {
+      const r = await api('/clock');
+      if (r && r.success) { setEvents(r.events || []); setSyncAt(Date.now()); }
+      const t = await api('/clock?action=terminals');
+      if (t && t.success) setTerminale(t.terminals || []);
+    } catch {}
+  }, []);
+  useEffect(() => { zaladuj(); const t = setInterval(zaladuj, 10000); return () => clearInterval(t); }, [zaladuj]);
+  const ostatniPerOsoba = useMemo(() => { const m = new Map(); [...(events || [])].reverse().forEach((e) => m.set(e.accountId, e)); return [...m.values()].sort((a, b) => b.at - a.at); }, [events]);
+  const stan = (e) => e.type === 'clock_out' ? 'done' : e.type === 'break_start' ? 'break' : 'working';
+  const summary = { working: ostatniPerOsoba.filter((e) => stan(e) === 'working').length, przerwa: ostatniPerOsoba.filter((e) => stan(e) === 'break').length, done: ostatniPerOsoba.filter((e) => stan(e) === 'done').length };
+  const aktywne = terminale.filter((t) => t.active !== false).length;
+  const odswiez = async () => { setBusy(true); await zaladuj(); setBusy(false); data.show('Odświeżono dane z REX Clock'); };
+  const kontoOf = (e) => (data.accounts || []).find((a) => a.id === e.accountId) || {};
+  const posortowane = [...(events || [])].sort((a, b) => b.at - a.at);
+  return (
+    <div className="rex-ta-admin mb-4">
+      <header className="rex-ta-heading">
+        <div><span>WORKRHYTHM · TIME &amp; ATTENDANCE</span><h1>Rejestracja czasu pracy</h1><p>Centralny podgląd odbić i przerw z osobnej aplikacji REX Clock na POS.</p></div>
+        <div><button className="rex-ta-btn secondary" onClick={odswiez} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} /> Odśwież</button><a className="rex-ta-btn primary" href={CLOCK_APP_URL} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Otwórz REX Clock</a></div>
+      </header>
+      <section className="rex-ta-kpis">
+        <article><span className="green"><LogIn /></span><div><small>AKTUALNIE W PRACY</small><strong>{summary.working}</strong><em>według ostatniego odbicia</em></div></article>
+        <article><span className="orange"><Coffee /></span><div><small>NA PRZERWIE</small><strong>{summary.przerwa}</strong><em>płatne i niepłatne</em></div></article>
+        <article><span className="red"><CheckCircle2 /></span><div><small>ZAKOŃCZONE</small><strong>{summary.done}</strong><em>zamknięte zmiany</em></div></article>
+        <article><span className="blue"><Monitor /></span><div><small>AKTYWNE TERMINALE</small><strong>{aktywne}</strong><em>ostatni sync {syncAt ? taCzas(syncAt) : '—'}</em></div></article>
+      </section>
+      <div className="rex-ta-grid">
+        <section className="rex-ta-live">
+          <header><div><h2>Live attendance</h2><p>Bieżący stan zespołu · doba 06:00–06:00</p></div><span><i /> LIVE</span></header>
+          {ostatniPerOsoba.length ? <div className="rex-ta-team">
+            {ostatniPerOsoba.slice(0, 8).map((e) => { const st2 = stan(e); const k = kontoOf(e); return <article key={e.accountId}><div className="rex-ta-avatar">{dyInicjaly(e.name)}</div><div><strong>{e.name}</strong><span>{k.funkcja || 'CREW'} · {taCzas(e.at)}</span></div><em className={st2}>{st2 === 'done' ? 'Zamknięta' : st2 === 'break' ? 'Przerwa' : 'W pracy'}</em><b>{e.method === 'card' ? 'Karta' : 'Kod'}</b></article>; })}
+          </div> : <div className="rex-ta-empty"><Clock3 size={26} /><strong>{events === null ? 'Pobieram stan zespołu…' : 'Brak odbić w tej dobie'}</strong><span>Pierwsze zdarzenie z terminala pojawi się tutaj automatycznie.</span></div>}
+          <button className="rex-ta-more" onClick={odswiez}>Synchronizuj teraz <RefreshCw size={15} /></button>
+        </section>
+        <section className="rex-ta-terminal">
+          <header><span><Monitor size={20} /></span><div><small>OSOBNA APLIKACJA POS</small><strong>{terminale[0] ? `REX Clock · ${terminale[0].id}` : 'REX Clock · POS'}</strong></div><em><i /> {aktywne ? 'CONNECTED' : 'BRAK TERMINALI'}</em></header>
+          <div className="rex-ta-terminal-preview"><div><Cloud size={22} /><span><strong>REX</strong> Clock</span></div><Clock3 size={36} /><strong>06:00–06:00</strong><span>Karta magnetyczna lub Employee ID + Code</span></div>
+          <dl><div><dt>Lokalizacja</dt><dd>PLK 201043 · Galeria Krakowska</dd></div><div><dt>Przesyłanie</dt><dd>Wspólny backend</dd></div><div><dt>Zakres</dt><dd>Wejście · przerwa · wyjście</dd></div></dl>
+          <a className="rex-ta-btn primary" href={CLOCK_APP_URL} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Uruchom aplikację POS</a>
+        </section>
+      </div>
+      <section className="rex-ta-events">
+        <header><div><h2>Ostatnie odbicia</h2><p>Surowe zdarzenia POS są przechowywane niezależnie od grafiku.</p></div><span><Wifi size={14} /> Synchronizacja co 10 s</span></header>
+        <div className="rex-ta-event-head"><span>Czas</span><span>Pracownik</span><span>Zdarzenie</span><span>Szczegóły</span><span>Metoda</span><span>Status</span></div>
+        {posortowane.length ? posortowane.slice(0, 12).map((e) => { const k = kontoOf(e); return <div className="rex-ta-event-row" key={e.cid}>
+          <strong>{taCzas(e.at)}</strong>
+          <div><span className="rex-ta-event-avatar">{dyInicjaly(e.name)}</span><strong>{e.name}</strong></div>
+          <span className={`rex-ta-event-action ${taTone(e.type)}`}>{TA_NAZWY[e.type]}</span>
+          <span>{e.type === 'break_start' ? `${e.paid ? 'Płatna' : 'Niepłatna'} przerwa · ${k.funkcja || 'CREW'}` : `${k.funkcja || 'CREW'} · doba ${e.opDay}`}</span>
+          <span><CreditCard size={14} /> {e.method === 'card' ? 'Card' : 'Code'}</span>
+          <em><CheckCircle2 size={14} /> Zapisane</em>
+        </div>; }) : <div className="rex-ta-empty"><Clock3 size={25} /><strong>{events === null ? 'Pobieram zdarzenia…' : 'Brak zarejestrowanych zdarzeń'}</strong><span>Użyj REX Clock na POS, a odbicie zostanie przesłane do tego widoku.</span></div>}
+      </section>
     </div>
   );
 };
@@ -3629,7 +3811,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           {wrTab === 'schedule' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Planowanie obsady — kliknij tydzień, aby otworzyć siatkę planowania.</p>}
           {wrTab === 'schedule' && canEdit && <PublishCard data={data} />}
           {wrTab === 'actual' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Wykonanie (Working Time) — kliknij tydzień, aby rozliczyć wbicia, przerwy i korekty.</p>}
-          {wrTab === 'tna' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Time & Attendance — statusy tygodni: oznaczaj dni jako Completed, potem Reviewed i Closed (blokada edycji).</p>}
+          {wrTab === 'tna' && <TaLive data={data} />}
+          {wrTab === 'tna' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Statusy tygodni: oznaczaj dni jako Completed, potem Reviewed i Closed (blokada edycji na serwerze).</p>}
           <div className="flex items-center gap-2 mb-3"><span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: colors.primary.light }}>Work Center</span><div className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{wcLabel}</div></div>
           {['schedule', 'actual', 'tna'].includes(wrTab) && (<>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border" style={{ borderColor: colors.primary.bg }}>
@@ -4112,6 +4295,7 @@ export default function App() {
     print: <PrintPage data={data} />,
     forecast: <PlanFinanse data={data} setPage={setPage} />,
     plan: <PlanFinanse data={data} setPage={setPage} />,
+    dyspo: <DyspoAdmin data={data} setPage={setPage} />,
     emps: <AdminEmployees data={data} />,
     swaps: <AdminSwaps data={data} />,
     settings: <SettingsPage data={data} />
