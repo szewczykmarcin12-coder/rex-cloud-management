@@ -3733,6 +3733,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const curWeek = () => weeks.find((w) => w.start === weekStart) || { days: [] };
 
   const hasAct = (s) => !!wtAct(ts.actuals, s);                       // R-04: wykonanie istnieje tylko z odbić/korekty
+  // Actual pokazuje pełne imię i nazwisko z KONTA (nazwa z grafiku to alias techniczny)
+  const pelnaNazwa = (s) => { const k = s.accountId && (data.accounts || []).find((a) => a.id === s.accountId); return (k && k.name) || s.name; };
   const act = (s) => wtAct(ts.actuals, s) || { start: s.start, end: s.end, breaks: [] };
   const setAct = (s, patch) => { if (locked) return data.show('Tydzień zamknięty — tylko podgląd', 'error'); data.tsPutActual(wtKey(s), { ...act(s), ...patch, source: 'manual' }); };
   const unpaid = (a) => (a.breaks || []).filter((b) => b.platna === false).reduce((x, b) => x + wtDur(b.start, b.end), 0);
@@ -3798,25 +3800,37 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const plannedActMin = rowsAct.reduce((x, s) => x + wtDur(s.start, s.end), 0);
   const eff = plannedActMin ? Math.round((actualMin / plannedActMin) * 100) : 0;
 
-  // R-03/TNA-01: wykonanie budowane z realnych odbić REX Clock (projekcja event store).
-  // Odbicia surowe pozostają niezmienne w backendzie; wpis tutaj to audytowalna projekcja (source: 'clock').
-  const pobierzOdbicia = async () => {
+  // R-03/TNA-01: wykonanie budowane AUTOMATYCZNIE z odbić REX Clock (projekcja event store).
+  // Zasady: wpisy source:'clock' są odświeżane, ręczne korekty (source:'manual' lub starsze) NIGDY nie są nadpisywane.
+  const synchronizujOdbicia = useCallback(async (cichy) => {
     if (locked) return;
     const r = await api(`/clock?action=projection&date=${day}`);
-    if (!r || !r.success) return data.show((r && r.error) || 'Nie udało się pobrać odbić', 'error');
+    if (!r || !r.success) { if (!cichy) data.show((r && r.error) || 'Nie udało się pobrać odbić', 'error'); return; }
     const proj = r.projection || [];
-    const map = {}; let n = 0, niepelne = 0;
+    const map = {}; let n = 0, niepelne = 0, chronione = 0;
     dayShifts(day).forEach((s) => {
       const pr = proj.find((x) => s.accountId && x.accountId === s.accountId);
       if (!pr || !pr.in) return;
       if (!pr.out) { niepelne++; return; }                             // brak wybicia → wyjątek, nie wykonanie
-      map[wtKey(s)] = { start: pr.in, end: pr.out, breaks: (pr.breaks || []).map((b) => ({ platna: !!b.paid, start: b.start, end: b.end })), source: 'clock' };
-      n++;
+      const istnieje = wtAct(ts.actuals, s);
+      if (istnieje && istnieje.source !== 'clock') { chronione++; return; }   // ręczna korekta ma pierwszeństwo
+      const nowy = { start: pr.in, end: pr.out, breaks: (pr.breaks || []).map((b) => ({ platna: !!b.paid, start: b.start, end: b.end })), source: 'clock' };
+      if (istnieje && istnieje.start === nowy.start && istnieje.end === nowy.end && JSON.stringify(istnieje.breaks || []) === JSON.stringify(nowy.breaks)) return;
+      map[wtKey(s)] = nowy; n++;
     });
-    if (!n && !niepelne) return data.show('Brak odbić z REX Clock dla tego dnia', 'error');
     if (n) data.tsPutActualsBulk(map);
-    data.show(`Odbicia z REX Clock: ${n}${niepelne ? ` · ${niepelne} bez wybicia (pominięte)` : ''}`, n ? 'success' : 'error');
-  };
+    if (!cichy) {
+      if (n) data.show(`Odbicia z REX Clock: ${n}${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} z ręczną korektą (bez zmian)` : ''}`);
+      else data.show(niepelne || chronione ? `Bez zmian${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} ręcznych` : ''}` : 'Brak odbić z REX Clock dla tego dnia', 'error');
+    }
+  }, [day, locked, ts, data]);
+  // auto-sync: przy wejściu w Wykonanie i co 60 s, dopóki widok otwarty
+  useEffect(() => {
+    if (trybDnia !== 'wykonanie' || locked) return;
+    synchronizujOdbicia(true);
+    const t = setInterval(() => synchronizujOdbicia(true), 60000);
+    return () => clearInterval(t);
+  }, [trybDnia, day, locked, synchronizujOdbicia]);
 
   const dateLabel = (d) => { const dt = new Date(d); return `${dniPelne[dt.getDay()]}, ${dt.getDate()} ${monthsGen[dt.getMonth()]} ${dt.getFullYear()}`; };
 
@@ -3987,7 +4001,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
           <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
           <select value={order} onChange={(e) => setOrder(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="entry">Kolejność wpisu</option><option value="az">Alfabetycznie</option><option value="diff">Wg różnicy</option></select>
-          <button disabled={locked} onClick={pobierzOdbicia} className="ml-auto text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Pobierz odbicia z REX Clock</button>
+          <span className="ml-auto flex items-center gap-2"><span className="text-[10.5px] font-medium" style={{ color: '#347363' }}>● auto-sync z REX Clock co 60 s</span><button disabled={locked} onClick={() => synchronizujOdbicia(false)} className="text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Synchronizuj teraz</button></span>
         </div>
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto border" style={{ borderColor: colors.primary.bg }}>
           <div className="min-w-[820px]">
@@ -4007,7 +4021,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               return (
                 <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#eef2f7' }}>
                   <div className="w-64 shrink-0 px-3 py-2">
-                    <p className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{s.name}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ sid: s.sid, date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
+                    <p title={`W grafiku: ${s.name}`} className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{pelnaNazwa(s)}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ sid: s.sid, date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
                     <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className="text-[11px] font-medium" style={{ color: tol ? '#347363' : '#bd4f45' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="text-[11px] font-medium" style={{ color: '#c06a35' }}>brak odbić</span>}</div>
                     <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
                   </div>
