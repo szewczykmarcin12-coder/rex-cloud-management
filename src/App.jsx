@@ -64,7 +64,10 @@ const wtToMin = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); ret
 const wtClock = (m) => { m = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 const wtRel = (t) => ((wtToMin(t) - WT_BASE) + 1440) % 1440;
 const wtDur = (a, b) => { let s = wtToMin(a), e = wtToMin(b); if (e <= s) e += 1440; return e - s; };
-const wtKey = (s) => `${s.name}|${s.date}|${s.station}|${s.start}|${s.end}`;
+const wtKeyLegacy = (s) => `${s.name}|${s.date}|${s.station}|${s.start}|${s.end}`;
+// DATA-02/COR-03: klucz wykonania po stabilnym sid — edycja godzin/osoby nie osieroca wpisu
+const wtKey = (s) => (s && s.sid ? `sid:${s.sid}` : wtKeyLegacy(s));
+const wtAct = (actuals, s) => (actuals || {})[wtKey(s)] || (actuals || {})[wtKeyLegacy(s)];
 const wtMonday = (ds) => { const d = new Date(ds); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return ymd(d); };
 const wtHours = (min) => (min / 60).toFixed(2).replace('.', ',');
 const WT_TICKS = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
@@ -418,7 +421,7 @@ const Dashboard = ({ data, setPage, userName }) => {
   const dniMies = (() => { const [Y, M] = dzis.slice(0, 7).split('-').map(Number); const n = new Date(Y, M, 0).getDate(); return Array.from({ length: n }, (_, i) => `${Y}-${String(M).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`); })();
   const oknoDni = zakresD === 'dzien' ? [dzis] : zakresD === 'tydzien' ? tydzien : dniMies;
   const aktNetto = (sx) => {
-    const rec = ((data.ts || {}).actuals || {})[wtKey(sx)];
+    const rec = wtAct((data.ts || {}).actuals, sx);
     if (!rec) return 0;                                   // R-04: bez odbić nie ma wykonania
     const a = rec;
     let sp = wtToMin(a.end) - wtToMin(a.start); if (sp <= 0) sp += 1440;
@@ -431,7 +434,7 @@ const Dashboard = ({ data, setPage, userName }) => {
     const zs = data.shifts.filter((x) => x.date === d && !jestInstruktor(x));
     const plan = zs.reduce((a, x) => a + godzZ(x), 0);
     const zamkniety = !!complMap[d];
-    const akt = (d < dzis || zamkniety) && plan > 0 ? (() => { const zRec = zs.filter((x) => ((data.ts || {}).actuals || {})[wtKey(x)]); return zRec.length ? zRec.reduce((a, x) => a + aktNetto(x), 0) : null; })() : null;   // R-04
+    const akt = (d < dzis || zamkniety) && plan > 0 ? (() => { const zRec = zs.filter((x) => wtAct((data.ts || {}).actuals, x)); return zRec.length ? zRec.reduce((a, x) => a + aktNetto(x), 0) : null; })() : null;   // R-04
     const sp = salesAll[d] || 0;
     return { d, plan, akt, sp, splh: sp && plan ? sp / plan : null, zamkniety };
   });
@@ -461,6 +464,10 @@ const Dashboard = ({ data, setPage, userName }) => {
   const stanKontClock = {};
   ((clockDzis && clockDzis.events) || []).forEach((e) => { stanKontClock[e.accountId] = e.type; });
   const terazWPracy = Object.values(stanKontClock).filter((t) => t === 'clock_in' || t === 'break_end' || t === 'break_start').length;
+  // TNA-05: zaplanowana zmiana wystartowała >15 min temu, a konto nie ma dziś żadnego wejścia
+  const wbiciDzis = new Set(((clockDzis && clockDzis.events) || []).filter((e) => e.type === 'clock_in').map((e) => e.accountId));
+  const terazM = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); })();
+  const brakOdbicia = data.shifts.filter((x) => x.date === dzis && !jestInstruktor(x) && x.accountId && !wbiciDzis.has(x.accountId) && (wtToMin(x.start) + 15 < terazM) && wtToMin(x.start) <= terazM).length;
 
   const stats = [
     { label: 'Zmiany (wszystkie miesiące)', val: data.shifts.length, icon: Calendar, color: colors.primary.medium },
@@ -631,6 +638,7 @@ const Dashboard = ({ data, setPage, userName }) => {
                 <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: '#315f5b' }}>{zamknZmian}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>zamknięte zmiany</p></div>
                 <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: doWeryf ? '#fff2e8' : '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: doWeryf ? '#a46135' : '#315f5b' }}>{doWeryf}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>do weryfikacji</p></div>
                 <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: '#12423f' }}>{clockDzis ? terazWPracy : '—'}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>teraz w pracy</p></div>
+                <div className="rounded-lg px-2 py-2.5 text-center" style={{ backgroundColor: brakOdbicia > 0 ? '#fff0ed' : '#eef2f1' }}><p className="text-[16px] font-bold" style={{ color: brakOdbicia > 0 ? '#bd4f45' : '#12423f' }}>{clockDzis ? brakOdbicia : '—'}</p><p className="text-[8.5px]" style={{ color: '#71817f' }}>bez odbicia po starcie</p></div>
               </div>
             </div>
             <button onClick={() => setPage && setPage('wt')} className="mt-4 w-full py-2.5 rounded-lg text-[12.5px] font-semibold border flex items-center justify-center gap-1.5" style={{ borderColor: '#dfe6e5', color: '#12423f' }}>Przejdź do Actual <ChevronRight size={14} /></button>
@@ -894,6 +902,43 @@ const PrintPage = ({ data }) => {
 
 // ===================== SETTINGS =====================
 
+// ── Dziennik audytu (DATA-04): niezmienny zapis operacji wrażliwych ──
+const AuditCard = () => {
+  const [wpisy, setWpisy] = useState(null);
+  const [filtr, setFiltr] = useState('');
+  const zaladuj = (f) => { api(`/audit?limit=100${f ? `&action=${encodeURIComponent(f)}` : ''}`).then((r) => { if (r && r.success) setWpisy(r.entries || []); }).catch(() => {}); };
+  useEffect(() => { zaladuj(''); }, []);
+  const opis = { 'auth.login': 'logowanie', 'auth.login-failed': 'nieudane logowanie', 'schedule.add': 'dodanie zmiany', 'schedule.update': 'edycja zmiany', 'schedule.remove': 'usunięcie zmiany', 'schedule.import': 'import grafiku', 'swap.approve': 'zamiana zatwierdzona', 'swap.reject': 'zamiana odrzucona', 'timesheet.write': 'zapis wykonania', 'account.create': 'nowe konto', 'account.update': 'edycja konta', 'account.delete': 'usunięcie konta', 'account.reset-password': 'reset hasła', 'terminal.add': 'nowy terminal', 'template.apply': 'użycie szablonu' };
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm max-w-3xl">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-bold" style={{ color: colors.primary.darkest }}>Dziennik audytu</h3>
+        <select value={filtr} onChange={(e) => { setFiltr(e.target.value); zaladuj(e.target.value); }} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: colors.primary.bg }}>
+          <option value="">wszystkie operacje</option>
+          <option value="auth.">logowania</option>
+          <option value="schedule.">grafik</option>
+          <option value="swap.">zamiany</option>
+          <option value="timesheet.">wykonanie</option>
+          <option value="account.">konta</option>
+          <option value="terminal.">terminale</option>
+        </select>
+      </div>
+      <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Zapis niezmienny (append-only) — kto, co i kiedy; wartości przed/po dostępne w API (/api/audit).</p>
+      {wpisy === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : wpisy.length === 0 ? <p className="text-sm text-slate-400">Brak wpisów.</p> : (
+        <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
+          {wpisy.map((w, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-[12px]" style={{ backgroundColor: i % 2 ? '#fff' : colors.primary.bgLight }}>
+              <span className="shrink-0 tabular-nums" style={{ color: colors.primary.light }}>{new Date(w.at).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="font-semibold shrink-0" style={{ color: w.action === 'auth.login-failed' ? '#bd4f45' : colors.primary.darkest }}>{opis[w.action] || w.action}</span>
+              <span className="truncate" style={{ color: colors.primary.medium }}>{w.actor}{w.role ? ` (${w.role})` : ''}{w.target ? ` → ${w.target}` : ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Rejestr terminali REX Clock (SEC-04): odbicia tylko z urządzeń dodanych przez ASM ──
 const TerminalsCard = ({ data }) => {
   const [terms, setTerms] = useState(null);
@@ -979,6 +1024,8 @@ const SettingsPage = ({ data }) => {
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
 
         <TerminalsCard data={data} />
+
+        <AuditCard />
 
         {resetReqs.length > 0 && (
           <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #d67943` }}>
@@ -2804,7 +2851,7 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
   const sumaDniaH = (d) => wiersze.reduce((a, w) => a + w.moje.filter((x) => x.date === d).reduce((x2, y) => x2 + godzZ(y), 0), 0);
 
   const klikPusta = (w, d) => { if (locked) return; setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER', start: '08:00', end: '16:00', date: d }); };
-  const klikChip = (w, x, e) => { e.stopPropagation(); if (locked) return; setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, date: x.date, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { date: x.date, name: x.name, start: x.start, end: x.end } }); };
+  const klikChip = (w, x, e) => { e.stopPropagation(); if (locked) return; setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, date: x.date, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { sid: x.sid, date: x.date, name: x.name, start: x.start, end: x.end } }); };
   const zapisz = async () => {
     if (!modal) return; setSaving(true);
     let ok;
@@ -3004,7 +3051,7 @@ const DayPlanner = ({ data, day, locked }) => {
   const klikPasek = (w, x, e) => {
     e.stopPropagation();
     if (locked) return;
-    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { date: x.date, name: x.name, start: x.start, end: x.end } });
+    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { sid: x.sid, date: x.date, name: x.name, start: x.start, end: x.end } });
   };
   const zapisz = async () => {
     if (!modal) return;
@@ -3275,8 +3322,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const weekDone = (w) => w.days.length > 0 && w.days.every((d) => ts.completed[d]);
   const curWeek = () => weeks.find((w) => w.start === weekStart) || { days: [] };
 
-  const hasAct = (s) => !!ts.actuals[wtKey(s)];                       // R-04: wykonanie istnieje tylko z odbić/korekty
-  const act = (s) => ts.actuals[wtKey(s)] || { start: s.start, end: s.end, breaks: [] };
+  const hasAct = (s) => !!wtAct(ts.actuals, s);                       // R-04: wykonanie istnieje tylko z odbić/korekty
+  const act = (s) => wtAct(ts.actuals, s) || { start: s.start, end: s.end, breaks: [] };
   const setAct = (s, patch) => { if (locked) return data.show('Tydzień zamknięty — tylko podgląd', 'error'); data.tsPutActual(wtKey(s), { ...act(s), ...patch, source: 'manual' }); };
   const unpaid = (a) => (a.breaks || []).filter((b) => b.platna === false).reduce((x, b) => x + wtDur(b.start, b.end), 0);
   const actualNet = (s) => hasAct(s) ? wtDur(act(s).start, act(s).end) - unpaid(act(s)) : 0;
@@ -3533,7 +3580,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               return (
                 <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#eef2f7' }}>
                   <div className="w-64 shrink-0 px-3 py-2">
-                    <p className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{s.name}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
+                    <p className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{s.name}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#fff4e0', color: '#B26A00' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ sid: s.sid, date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
                     <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className="text-[11px] font-medium" style={{ color: tol ? '#347363' : '#bd4f45' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="text-[11px] font-medium" style={{ color: '#c06a35' }}>brak odbić</span>}</div>
                     <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
                   </div>
@@ -3584,6 +3631,8 @@ const useData = () => {
   const [roster, setRoster] = useState([]);
   const [meta, setMeta] = useState({});
   const [months, setMonths] = useState([]);
+  const monthsRef = useRef([]);
+  useEffect(() => { monthsRef.current = months; }, [months]);
   const [planowanie, setPlanowanie] = useState({});
   const planRef = useRef({});
   useEffect(() => { planRef.current = planowanie; }, [planowanie]);
@@ -3716,9 +3765,11 @@ const useData = () => {
   const tsSetWeek = useCallback((ws, statusObj) => { const cur = tsRef.current; persistTs({ ...cur, weekStatus: { ...cur.weekStatus, [ws]: statusObj } }); }, [persistTs]);
 
   // Dodanie osoby do grafiku z poziomu planowania — od razu tworzy też wpis wykonania (Actual)
+  // DATA-03: wysyłamy znaną wersję miesiąca; 409 = ktoś edytował równolegle → odśwież
+  const wersjaMiesiaca = (date) => { const m = monthsRef.current.find((x) => x.key === String(date || '').slice(0, 7)); return m ? m.version : undefined; };
   const addShiftManual = useCallback(async (payload) => {
-    const r = await api('/schedule?action=add', 'POST', payload);
-    if (!r.success) { show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
+    const r = await api('/schedule?action=add', 'POST', { ...payload, expectedVersion: wersjaMiesiaca(payload.date) });
+    if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
     const sh = r.shift;
     await sync();                                        // COR-02: wykonanie powstaje wyłącznie z odbić / korekty
     show(`Dodano: ${sh.name} ${sh.start}–${sh.end} (grafik)`);
@@ -3726,16 +3777,16 @@ const useData = () => {
   }, [sync]);
 
   const updateShiftManual = useCallback(async (ident, nowe) => {
-    const r = await api('/schedule?action=update', 'POST', { ...ident, nowe });
-    if (!r.success) { show(r.error || 'Nie udało się zapisać zmiany', 'error'); return false; }
+    const r = await api('/schedule?action=update', 'POST', { ...ident, nowe, expectedVersion: wersjaMiesiaca(ident.date) });
+    if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się zapisać zmiany', 'error'); return false; }
     await sync();
     show(`Zapisano: ${r.shift.name} ${r.shift.start}–${r.shift.end}`);
     return true;
   }, [sync]);
 
   const removeShiftManual = useCallback(async (payload) => {
-    const r = await api('/schedule?action=remove', 'POST', payload);
-    if (!r.success) { show(r.error || 'Nie udało się usunąć', 'error'); return false; }
+    const r = await api('/schedule?action=remove', 'POST', { ...payload, expectedVersion: wersjaMiesiaca(payload.date) });
+    if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się usunąć', 'error'); return false; }
     await sync();
     show('Usunięto zmianę');
     return true;
