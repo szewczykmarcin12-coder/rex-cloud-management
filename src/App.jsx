@@ -7,9 +7,9 @@ import { parseGrafik, exportPoziomy } from './parseGrafik.js';
 import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
 import { DailyRosterPrint } from './DailyRosterPrint.jsx';
+import MonthlyForecast from './MonthlyForecast.jsx';
 
-const API_BASE = 'https://rex-cloud-backend.vercel.app/api';
-// ^ Zmień na URL swojego backendu po wdrożeniu
+const API_BASE = String(import.meta.env.VITE_API_BASE || 'https://rex-cloud-backend.vercel.app/api').replace(/\/$/, '');
 
 const colors = {
   primary: { darkest: '#12423f', dark: '#315f5b', medium: '#59807c', light: '#96aaa9', bg: '#dfe6e5', bgLight: '#f4f7f6' },
@@ -4032,16 +4032,16 @@ const PlanObsada = ({ data, setPage }) => {
 };
 
 const PlanFinanse = ({ data, setPage }) => {
-  const [sek, setSek] = useState('obsada');
-  const nav = (id) => { if (id === 'plan') setSek('budzet'); else if (id === 'forecast') setSek('opty'); else if (id === 'optymalizacja') setSek('opty'); else setPage(id); };
+  const [sek, setSek] = useState('forecast-col');
+  const nav = (id) => { if (id === 'plan') setSek('budzet'); else if (id === 'forecast') setSek('forecast-col'); else if (id === 'optymalizacja') setSek('opty'); else setPage(id); };
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-8 pt-5 flex gap-1 bg-white border-b" style={{ borderColor: colors.primary.bg }}>
-        {[['obsada', 'Planowanie obsady'], ['opty', 'Optymalizacja i prognoza'], ['budzet', 'Budżet i koszty pracy (COL)']].map(([k, l]) => (
+        {[['forecast-col', 'Forecast miesiąca / COL'], ['obsada', 'Planowanie obsady'], ['opty', 'Optymalizacja dzienna'], ['budzet', 'Rozliczenie kosztów']].map(([k, l]) => (
           <button key={k} onClick={() => setSek(k)} className="px-5 py-2.5 rounded-t-xl text-sm font-semibold" style={{ backgroundColor: sek === k ? colors.primary.bgLight : 'transparent', color: sek === k ? colors.primary.darkest : colors.primary.light, borderBottom: sek === k ? `3px solid ${colors.primary.medium}` : '3px solid transparent' }}>{l}</button>
         ))}
       </div>
-      {sek === 'obsada' ? <PlanObsada data={data} setPage={nav} /> : sek === 'opty' ? <ForecastPlan data={data} setPage={nav} /> : <BudgetPlan data={data} setPage={nav} />}
+      {sek === 'forecast-col' ? <MonthlyForecast api={api} data={data} /> : sek === 'obsada' ? <PlanObsada data={data} setPage={nav} /> : sek === 'opty' ? <ForecastPlan data={data} setPage={nav} /> : <BudgetPlan data={data} setPage={nav} />}
     </div>
   );
 };
