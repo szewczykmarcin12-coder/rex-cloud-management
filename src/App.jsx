@@ -3630,7 +3630,10 @@ const scalParyPlan = (arr) => {
   arr.forEach((x) => (jestInstruktor(x) ? instr : zwykle).push(x));
   const out = zwykle.map((x) => ({ ...x }));
   instr.forEach((i) => {
-    const para = out.find((x) => x.date === i.date && plnMin(x.start) < plnMin(i.end) + (plnMin(i.end) <= plnMin(i.start) ? 1440 : 0) && plnMin(i.start) < plnMin(x.end) + (plnMin(x.end) <= plnMin(x.start) ? 1440 : 0));
+    // FIX: wiersz instruktorski łączy się wyłącznie ze zmianą TEJ SAMEJ osoby
+    // (wcześniej: tylko data+nakładanie godzin — przy dwóch szkoleniach dnia pary się mieszały)
+    const taOsoba = (x) => (i.accountId && x.accountId) ? x.accountId === i.accountId : String(x.name).toUpperCase().trim() === String(i.name).toUpperCase().trim();
+    const para = out.find((x) => taOsoba(x) && x.date === i.date && plnMin(x.start) < plnMin(i.end) + (plnMin(i.end) <= plnMin(i.start) ? 1440 : 0) && plnMin(i.start) < plnMin(x.end) + (plnMin(x.end) <= plnMin(x.start) ? 1440 : 0));
     if (para) { para.szkoli = true; para.partnerSzk = i.partner || i.uczen || null; para.paraInstr = { date: i.date, name: i.name, start: i.start, end: i.end }; }
     else out.push({ ...i, szkoli: true });
   });
@@ -4168,6 +4171,25 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
                 <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Koniec</label><input type="time" step="900" value={modal.end} onChange={(e) => setModal({ ...modal, end: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
               </div>
               <p className="text-xs" style={{ color: colors.primary.light }}>Czas trwania: <b style={{ color: colors.primary.darkest }}>{(() => { let a = plnMin(modal.start), b = plnMin(modal.end); if (b <= a) b += 1440; return ((b - a) / 60).toFixed(2).replace('.', ','); })()} h</b>{plnMin(modal.end) <= plnMin(modal.start) ? ' (przez północ)' : ''}</p>
+              {modal.tryb === 'edycja' && (
+                <div className="rounded-lg p-3 space-y-2" style={{ backgroundColor: colors.primary.bgLight }}>
+                  <label className="flex items-center gap-2 text-sm font-medium" style={{ color: colors.primary.dark }}>
+                    <input type="checkbox" checked={!!modal.szkoliChk} onChange={(e) => setModal({ ...modal, szkoliChk: e.target.checked })} />
+                    Instruktor — szkoli tego dnia
+                  </label>
+                  {modal.szkoliChk && (
+                    <div>
+                      <label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Uczeń (osoba szkolona)</label>
+                      <select value={modal.uczenSel || ''} onChange={(e) => setModal({ ...modal, uczenSel: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+                        <option value="">— wybierz ucznia —</option>
+                        {[...new Set(data.shifts.filter((x) => x.date === (modal.ident ? modal.ident.date : day) && !jestInstruktor(x) && String(x.name).toUpperCase() !== String(modal.osoba).toUpperCase()).map((x) => x.name))].sort().map((n) => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((al) => String(al).toUpperCase() === String(n).toUpperCase())); return <option key={n} value={n}>{(k && k.name) || n}</option>; })}
+                      </select>
+                      <p className="text-[10px] mt-1" style={{ color: colors.primary.light }}>Uczeń dostanie oznaczenie szkolenia, a instruktor równoległy wiersz INSTRUKTOR na godziny ucznia.</p>
+                    </div>
+                  )}
+                  {modal.szkoli && !modal.szkoliChk && <p className="text-[10.5px] font-medium" style={{ color: '#bd4f45' }}>Odznaczone — zapis rozepnie parę szkoleniową.</p>}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-5">
               {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Usuń zmianę</button>}
@@ -4273,7 +4295,7 @@ const DayPlanner = ({ data, day, locked }) => {
   const klikPasek = (w, x, e) => {
     e.stopPropagation();
     if (locked) return;
-    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { sid: x.sid, date: x.date, name: x.name, start: x.start, end: x.end } });
+    setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, szkoli: !!x.szkoli, szkoliChk: !!x.szkoli, uczenSel: x.partnerSzk || '', paraInstr: x.paraInstr || null, ident: { sid: x.sid, date: x.date, name: x.name, start: x.start, end: x.end } });
   };
   const zapisz = async () => {
     if (!modal) return;
@@ -4283,6 +4305,16 @@ const DayPlanner = ({ data, day, locked }) => {
     else {
       ok = await data.updateShiftManual(modal.ident, { station: modal.station, start: modal.start, end: modal.end });
       if (ok && modal.paraInstr) await data.updateShiftManual(modal.paraInstr, { start: modal.start, end: modal.end });   // wiersz szkoleniowy trzyma te same godziny
+      // rola instruktora + przypisanie ucznia
+      if (ok && modal.tryb === 'edycja') {
+        const bylo = !!modal.szkoli, jest = !!modal.szkoliChk;
+        const uczen = String(modal.uczenSel || '').trim();
+        const zmianaPary = jest !== bylo || (jest && uczen.toUpperCase() !== String(modal.partnerSzkOrg || modal.uczenSel || '').toUpperCase());
+        if (jest && !uczen) { data.show('Wybierz ucznia dla instruktora', 'error'); ok = false; }
+        else if (jest !== bylo || (jest && uczen)) {
+          ok = await data.ustawSzkolenie({ date: modal.ident.date || day, instruktor: { sid: modal.ident.sid, name: modal.osoba }, uczen: jest ? uczen : null });
+        }
+      }
     }
     setSaving(false);
     if (ok) setModal(null);
@@ -5082,6 +5114,13 @@ const useData = () => {
     show(`Dopisano ${r.dodane} zmian (${r.miesiace.join(', ')})${r.pominiete ? ` · ${r.pominiete} duplikatów pominięto` : ''}${nie.length ? ` · bez konta: ${nie.slice(0, 3).join(', ')}${nie.length > 3 ? '…' : ''}` : ''}`, nie.length ? 'error' : 'success');
     return true;
   }, [sync]);
+  const ustawSzkolenie = useCallback(async (payload) => {
+    const r = await api('/schedule?action=szkolenie', 'POST', payload);
+    if (!r.success) { show(r.error || 'Nie udało się zapisać szkolenia', 'error'); return false; }
+    await sync();
+    show(r.uczen ? `Szkolenie: ${r.instruktor} szkoli ${r.uczen}` : `Rozpięto parę szkoleniową (${r.instruktor})`);
+    return true;
+  }, [sync]);
   const addShiftManual = useCallback(async (payload) => {
     const r = await api('/schedule?action=add', 'POST', { ...payload, expectedVersion: wersjaMiesiaca(payload.date) });
     if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
@@ -5160,7 +5199,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek, addHoursBulk };
+  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek, addHoursBulk, ustawSzkolenie };
 };
 
 // ===================== MAIN =====================
