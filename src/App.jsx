@@ -4076,7 +4076,7 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
   const sumaDniaH = (d) => wiersze.reduce((a, w) => a + w.moje.filter((x) => x.date === d).reduce((x2, y) => x2 + godzZ(y), 0), 0);
 
   const klikPusta = (w, d) => { if (locked) return; setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER', start: '08:00', end: '16:00', date: d }); };
-  const klikChip = (w, x, e) => { e.stopPropagation(); if (locked) return; setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, date: x.date, szkoli: !!x.szkoli, paraInstr: x.paraInstr || null, ident: { sid: x.sid, date: x.date, name: x.name, start: x.start, end: x.end } }); };
+  const klikChip = (w, x, e) => { e.stopPropagation(); if (locked) return; setModal({ tryb: 'edycja', osoba: x.name, accountId: x.accountId || w.id, station: x.station, start: x.start, end: x.end, date: x.date, szkoli: !!x.szkoli, szkoliChk: !!x.szkoli, uczenSel: x.partnerSzk || '', paraInstr: x.paraInstr || null, ident: { sid: x.sid, date: x.date, name: x.name, start: x.start, end: x.end } }); };
   const zapisz = async () => {
     if (!modal) return; setSaving(true);
     let ok;
@@ -4084,6 +4084,14 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
     else {
       ok = await data.updateShiftManual(modal.ident, { station: modal.station, start: modal.start, end: modal.end });
       if (ok && modal.paraInstr) await data.updateShiftManual(modal.paraInstr, { start: modal.start, end: modal.end });
+      if (ok && modal.tryb === 'edycja') {
+        const bylo = !!modal.szkoli, jest = !!modal.szkoliChk;
+        const uczen = String(modal.uczenSel || '').trim();
+        if (jest && !uczen) { data.show('Wybierz ucznia dla instruktora', 'error'); ok = false; }
+        else if (jest !== bylo || (jest && uczen)) {
+          ok = await data.ustawSzkolenie({ date: modal.ident.date, instruktor: { sid: modal.ident.sid, name: modal.osoba }, uczen: jest ? uczen : null });
+        }
+      }
     }
     setSaving(false); if (ok) setModal(null);
   };
@@ -4457,6 +4465,25 @@ const DayPlanner = ({ data, day, locked }) => {
                 <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Koniec</label><input type="time" step="900" value={modal.end} onChange={(e) => setModal({ ...modal, end: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
               </div>
               <p className="text-xs" style={{ color: colors.primary.light }}>Czas trwania: <b style={{ color: colors.primary.darkest }}>{(() => { let a = plnMin(modal.start), b = plnMin(modal.end); if (b <= a) b += 1440; return ((b - a) / 60).toFixed(2).replace('.', ','); })()} h</b>{plnMin(modal.end) <= plnMin(modal.start) ? ' (przez północ)' : ''}</p>
+              {modal.tryb === 'edycja' && (
+                <div className="rounded-lg p-3 space-y-2" style={{ backgroundColor: colors.primary.bgLight }}>
+                  <label className="flex items-center gap-2 text-sm font-medium" style={{ color: colors.primary.dark }}>
+                    <input type="checkbox" checked={!!modal.szkoliChk} onChange={(e) => setModal({ ...modal, szkoliChk: e.target.checked })} />
+                    Instruktor — szkoli tego dnia
+                  </label>
+                  {modal.szkoliChk && (
+                    <div>
+                      <label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Uczeń (osoba szkolona)</label>
+                      <select value={modal.uczenSel || ''} onChange={(e) => setModal({ ...modal, uczenSel: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
+                        <option value="">— wybierz ucznia —</option>
+                        {[...new Set(data.shifts.filter((x) => x.date === (modal.ident ? modal.ident.date : day) && !jestInstruktor(x) && String(x.name).toUpperCase() !== String(modal.osoba).toUpperCase()).map((x) => x.name))].sort().map((n) => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((al) => String(al).toUpperCase() === String(n).toUpperCase())); return <option key={n} value={n}>{(k && k.name) || n}</option>; })}
+                      </select>
+                      <p className="text-[10px] mt-1" style={{ color: colors.primary.light }}>Uczeń dostanie oznaczenie szkolenia, a instruktor równoległy wiersz INSTRUKTOR na godziny ucznia.</p>
+                    </div>
+                  )}
+                  {modal.szkoli && !modal.szkoliChk && <p className="text-[10.5px] font-medium" style={{ color: '#bd4f45' }}>Odznaczone — zapis rozepnie parę szkoleniową.</p>}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-5">
               {modal.tryb === 'edycja' && <button disabled={saving} onClick={usun} className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: '#fff0ed', color: '#bd4f45' }}>Usuń zmianę</button>}
