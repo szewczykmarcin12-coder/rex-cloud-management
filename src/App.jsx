@@ -4516,6 +4516,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     const poNazR = new Map((data.accounts || []).flatMap((a) => [a.grafikName, a.name, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
     const kontoZ = (x) => poIdR.get(x.accountId) || poNazR.get(String(x.name || '').toUpperCase().trim()) || null;
     const pelne = (x) => { const k = kontoZ(x); return (k && k.name ? k.name : (x.name || '')).toUpperCase(); };
+    // pełne nazwisko z aliasu (partner pary szkoleniowej)
+    const pelneN = (n) => { if (!n) return ''; const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((al) => String(al).toUpperCase().trim() === String(n).toUpperCase().trim())); return (k && k.name ? k.name : n).toUpperCase(); };
     const nazwisko = (x) => { const cz = pelne(x).split(/\s+/); return cz[cz.length - 1]; };
     const fH = (h) => `${h.toFixed(1).replace('.', ',')} h`;
     const dzienne = data.shifts.filter((x) => x.date === d);
@@ -4552,8 +4554,9 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         id: g.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: g === 'OBSADA' ? 'Obsada' : g, code: g.slice(0, 3), tone: TONE[g] || 'teal', hours: fH(hGr),
         people: wpisy.map((x, i2) => { const k = kontoZ(x); return {
           id: `${g}-${i2}`, name: pelne(x), time: `${x.start}–${x.end}`, hours: `${godzZ(x).toFixed(0)} h`,
-          badge: k && MGRF.has(k.funkcja) ? 'Manager' : (k && k.instruktor ? 'Trener' : undefined),
-          detail: x.paraInstr ? `instr.: ${pelne(x.paraInstr)}` : undefined,
+          badge: k && MGRF.has(k.funkcja) ? 'Manager' : (x.szkoli || (k && k.instruktor) ? 'Trener' : undefined),
+          // instruktor → „szkoli: UCZEŃ"; uczeń → „instr.: INSTRUKTOR" (wcześniej: własne nazwisko z wiersza technicznego)
+          detail: x.szkoli ? `szkoli: ${pelneN(x.partnerSzk) || '—'}` : (x.rola === 'training' && x.partner ? `instr.: ${pelneN(x.partner)}` : undefined),
         }; }),
       };
     });
