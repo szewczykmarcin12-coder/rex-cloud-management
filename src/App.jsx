@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2 } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
@@ -5275,10 +5275,26 @@ export default function App() {
   const widok = dozwolone.includes(page) ? page : 'dashboard';
   const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length + (data.absences || []).filter(a => a.status === 'open').length + (data.availPending || 0);
 
+  const TYTULY = { dashboard: 'Dashboard', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
   return (
     <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
       <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} />
-      <div className="flex-1 flex flex-col overflow-hidden"><div className={widok === 'wt' ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 overflow-y-auto"}>{pages[widok] || pages.print}</div></div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* topbar wg wzorca ORDO Workforce Studio */}
+        <div className="topbar" style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#71656a', minWidth: 0 }}>
+            <b style={{ color: '#2b171e', whiteSpace: 'nowrap' }}>ORDO Workforce Studio</b>
+            <ChevronRight size={14} />
+            <span style={{ color: '#2b171e', fontWeight: 600, whiteSpace: 'nowrap' }}>{TYTULY[widok] || 'Panel'}</span>
+          </div>
+          <label className="search"><Search size={15} /><input placeholder="Szukaj w ORDO Workforce Studio…" onKeyDown={(e) => { if (e.key === 'Enter') { const q = e.target.value.toLowerCase(); const cel = Object.entries(TYTULY).find(([, l]) => l.toLowerCase().includes(q)); if (cel) setPage(cel[0]); } }} /><kbd>Enter</kbd></label>
+          <div className="top-actions">
+            <button className="icon-button notification" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><Bell size={16} />{pendingSwaps > 0 && <i />}</button>
+            <div className="top-avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div>
+          </div>
+        </div>
+        <div className={widok === 'wt' ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 min-h-0 overflow-y-auto"}>{pages[widok] || pages.print}</div>
+      </div>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </div>
   );
