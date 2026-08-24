@@ -18,7 +18,7 @@ export function DailyRosterPrint({
   open,
   data,
   onClose,
-  brandName = "REX Cloud",
+  brandName = "ORDO Workforce Studio",
   moduleName = "WORKRHYTHM · DAILY ROSTER",
   onBeforePrint,
 }) {
