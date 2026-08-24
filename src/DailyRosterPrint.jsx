@@ -1,289 +1,107 @@
-import "./daily-roster-print.css";
-import { useEffect } from "react";
-import { Cloud, Printer, X } from "lucide-react";
-function coverageState(slot) {
-  if (slot.state) return slot.state;
-  if (slot.scheduled < slot.required) return "deficit";
-  if (slot.scheduled > slot.required) return "excess";
-  return "ok";
-}
+import { useEffect } from 'react';
+import { Printer, X } from 'lucide-react';
 
-function badgeClass(person) {
-  return person.badge?.toLowerCase().includes("manager")
-    ? "manager"
-    : "trainer";
-}
+// Karta wydruku dziennego 1:1 wg wzorca ORDO (klasy ordo-print-* z ordo-views.css).
+// A4 poziomo, jedna strona: tabela obsady z mini-osią 06→02, pokrycie godzinowe,
+// podsumowanie godzin, priorytety zmiany i podpisy managerów.
 
-export function DailyRosterPrint({
-  open,
-  data,
-  onClose,
-  brandName = "ORDO Workforce Studio",
-  moduleName = "WORKRHYTHM · DAILY ROSTER",
-  onBeforePrint,
-}) {
+const OSIE = [6, 8, 10, 12, 14, 16, 18, 20, 22, 0, 2];
+const gL = (h) => String(h).padStart(2, '0');
+
+export const DailyRosterPrint = ({ open, data, onClose }) => {
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, onClose]);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const esc = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', esc);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', esc); };
+  }, [onClose, open]);
+  if (!open || !data) return null;
 
-  if (!open) return null;
-
-  const slots = data.coverage.slice(0, 24);
-  const handlePrint = () => {
-    onBeforePrint?.();
-    window.requestAnimationFrame(() => window.print());
-  };
+  const d = data;
+  const people = d.people || [];
+  const need = d.needHours || [];
+  const plan = d.planHours || [];
+  const kosztLbl = d.koszt != null ? `${Math.round(d.koszt).toLocaleString('pl-PL')} zł` : '—';
+  const kosztSub = d.sprzedaz ? `${(d.koszt / d.sprzedaz * 100).toFixed(1).replace('.', ',')}% sprzedaży` : 'wg stawek kont';
 
   return (
-    <div
-      className="rex-print-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Podgląd wydruku grafiku dziennego"
-    >
-      <div className="rex-print-toolbar">
-        <div className="rex-print-toolbar-title">
-          <Printer size={18} />
-          <span>
-            <strong>Podgląd wydruku</strong>
-            <small>A4 · orientacja pozioma · 1 strona</small>
-          </span>
-        </div>
-        <div className="rex-print-toolbar-actions">
-          <button type="button" className="rex-print-btn secondary" onClick={onClose}>
-            <X size={15} /> Zamknij
-          </button>
-          <button type="button" className="rex-print-btn primary" onClick={handlePrint}>
-            <Printer size={15} /> Drukuj / zapisz PDF
-          </button>
-        </div>
+    <div className="ordo-print-overlay" role="dialog" aria-modal="true" aria-label="Podgląd wydruku grafiku dziennego">
+      <div className="ordo-print-toolbar">
+        <div><Printer size={18} /><span><strong>Podgląd wydruku dnia</strong><small>A4 poziomo • cały grafik na jednej stronie</small></span></div>
+        <div><button onClick={onClose}><X size={15} /> Zamknij</button><button className="primary" onClick={() => window.print()}><Printer size={15} /> Drukuj / zapisz PDF</button></div>
       </div>
 
-      <article className="rex-print-page">
-        <header className="rex-print-header">
-          <div className="rex-print-brand">
-            <span className="rex-print-brand-mark">
-              <Cloud size={24} />
-            </span>
-            <span>
-              <strong>{brandName}</strong>
-              <small>{moduleName}</small>
-            </span>
-          </div>
-          <div className="rex-print-title">
-            <span>GRAFIK OBSADY</span>
-            <h1>{data.dateLabel}</h1>
-            <p>
-              {data.operationalDayLabel ?? "Doba operacyjna 06:00–06:00"}
-              {data.versionLabel ? ` · ${data.versionLabel}` : ""}
-            </p>
-          </div>
-          <div className="rex-print-location">
-            <span>RESTAURACJA</span>
-            <strong>{data.restaurantName}</strong>
-            <small>
-              {data.restaurantDetail}
-              {data.locationCode ? ` · ${data.locationCode}` : ""}
-            </small>
-          </div>
+      <article className="ordo-print-page">
+        <header className="ordo-print-header">
+          <div className="ordo-print-brand"><b style={{ color: '#741334', fontSize: 26, letterSpacing: '.26em', fontWeight: 800 }}>ORDO</b><span>Workforce Studio</span></div>
+          <div className="ordo-print-title"><span>WORKFORCE • SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong><small>{d.operationalDayLabel} • {d.versionLabel?.toLowerCase()}</small></div>
+          <div className="ordo-print-location"><span>RESTAURACJA</span><strong>{d.restaurantName} • {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
         </header>
 
-        <section className="rex-print-summary">
-          <div>
-            <span>Zmiany</span>
-            <strong>{data.shiftCount}</strong>
-            <small>{data.employeeCount} pracowników</small>
-          </div>
-          <div>
-            <span>Plan godzin</span>
-            <strong>{data.plannedHours}</strong>
-            <small>netto</small>
-          </div>
-          <div>
-            <span>Coverage</span>
-            <strong>{data.coveragePercent}%</strong>
-            <small>{data.coverageAttentionLabel ?? "Bez uwag"}</small>
-          </div>
-          <div>
-            <span>Manager</span>
-            <strong>{data.managerHours}</strong>
-            <small>otwarcie + zamknięcie</small>
-          </div>
-          <div>
-            <span>Szkolenia</span>
-            <strong>{data.trainingHours}</strong>
-            <small>{data.trainingPeopleLabel ?? "—"}</small>
-          </div>
-          <div className="rex-print-management">
-            <span>Kierownictwo dnia</span>
-            <strong>Otwarcie: {data.openingManager}</strong>
-            <strong>Zamknięcie: {data.closingManager}</strong>
-          </div>
+        <section className="ordo-print-summary">
+          <div><span>Pracownicy</span><strong>{d.employeeCount}</strong><small>pełna obsada dnia</small></div>
+          <div><span>Zmiany</span><strong>{d.shiftCount}</strong><small>w tym podziały stanowisk</small></div>
+          <div><span>Godziny planu</span><strong>{d.plannedHours}</strong><small>łącznie</small></div>
+          <div><span>Godziny managerów</span><strong>{d.managerHours}</strong><small>otwarcie + zamknięcie</small></div>
+          <div><span>Pokrycie</span><strong>{d.coveragePercent}%</strong><small>{d.coverageAttentionLabel}</small></div>
+          <div><span>Koszt szacowany</span><strong>{kosztLbl}</strong><small>{kosztSub}</small></div>
         </section>
 
-        <main className="rex-print-layout">
-          <section className="rex-print-staffing">
-            <div className="rex-print-section-title">
-              <div>
-                <span>01</span>
-                <div>
-                  <strong>Obsada według stanowisk</strong>
-                  <small>Godziny pracy netto · funkcje przy nazwisku</small>
+        <main className="ordo-print-layout">
+          <section className="ordo-print-roster">
+            <div className="ordo-print-section-head"><span>01</span><div><strong>Obsada i stanowiska</strong><small>Plan pracy wszystkich osób na jednej osi dnia</small></div></div>
+            <div className="ordo-print-table">
+              <div className="ordo-print-table-head"><span>PRACOWNIK</span><span>FUNKCJA</span><span>GODZINY</span><span>STANOWISKO</span><span>PRZERWA</span><span className="ordo-print-timeline-head">{OSIE.map((h) => <i key={h}>{gL(h)}</i>)}</span></div>
+              {people.map((p) => (
+                <div className="ordo-print-person" key={p.name}>
+                  <span className="ordo-print-name"><i>{p.initials}</i><strong>{p.name}</strong></span>
+                  <span>{p.job.replace('Młodszy ', 'Mł. ')}</span>
+                  <strong>{p.segments.map((s) => s.time).join(' / ')}</strong>
+                  <span>{p.segments.map((s) => s.role).join(' → ')}</span>
+                  <span>{p.przerwa}</span>
+                  <span className="ordo-print-timeline">
+                    <i className="ordo-print-grid">{Array.from({ length: 10 }, (_, i) => <b key={i} />)}</i>
+                    {p.segments.map((s, i) => <em key={i} style={{ left: `${Math.max(0, (s.start - 6) / 20) * 100}%`, width: `${Math.min((s.end - s.start) / 20, 1 - Math.max(0, (s.start - 6) / 20)) * 100}%` }}><small>{i ? s.role : p.initials}</small></em>)}
+                  </span>
                 </div>
-              </div>
-              <div className="rex-print-flags">
-                <span><i className="trainer" /> Trener</span>
-                <span><i className="manager" /> Manager</span>
-              </div>
-            </div>
-
-            <div className="rex-print-station-grid">
-              {data.stations.map((station) => (
-                <section
-                  className={`rex-print-station ${station.tone}`}
-                  key={station.id}
-                >
-                  <header>
-                    <span className="rex-print-station-code">{station.code}</span>
-                    <strong>{station.name}</strong>
-                    <em>{station.hours}</em>
-                  </header>
-                  {station.people.map((person) => (
-                    <div className="rex-print-person" key={person.id}>
-                      <span>
-                        <strong>{person.name}</strong>
-                        {person.badge && (
-                          <i className={badgeClass(person)}>{person.badge}</i>
-                        )}
-                        {person.detail && <small>{person.detail}</small>}
-                      </span>
-                      <time>{person.time}</time>
-                      <em>{person.hours}</em>
-                    </div>
-                  ))}
-                </section>
               ))}
             </div>
           </section>
 
-          <aside className="rex-print-aside">
-            <section className="rex-print-coverage">
-              <div className="rex-print-section-title">
-                <div>
-                  <span>02</span>
-                  <div>
-                    <strong>Pokrycie godzinowe</strong>
-                    <small>Plan względem obsady idealnej</small>
-                  </div>
-                </div>
-                <b>{data.coveragePercent}%</b>
-              </div>
-              <div className="rex-print-coverage-hours">
-                {slots.map((slot, index) => (
-                  <span key={`${slot.label}-${index}`}>{slot.label}</span>
-                ))}
-              </div>
-              <div className="rex-print-coverage-row">
-                <label>Idealna</label>
-                <div>
-                  {slots.map((slot, index) => (
-                    <span key={index}>{slot.required}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="rex-print-coverage-row planned">
-                <label>Plan</label>
-                <div>
-                  {slots.map((slot, index) => (
-                    <span className={coverageState(slot)} key={index}>
-                      {slot.scheduled}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="rex-print-coverage-legend">
-                <span><i className="ok" /> Pokrycie</span>
-                <span><i className="deficit" /> Niedobór</span>
-                <span><i className="excess" /> Nadmiar</span>
-              </div>
+          <aside className="ordo-print-side">
+            <section className="ordo-print-coverage">
+              <div className="ordo-print-section-head"><span>02</span><div><strong>Pokrycie godzinowe</strong><small>Plan względem personelu idealnego</small></div><b>{d.coveragePercent}%</b></div>
+              <div className="ordo-print-coverage-hours">{Array.from({ length: 20 }, (_, i) => <span key={i}>{i % 2 === 0 ? gL((6 + i) % 24) : ''}</span>)}</div>
+              <div className="ordo-print-coverage-row"><label>IDEAŁ</label><div>{need.map((v, i) => <span key={i}>{v || ''}</span>)}</div></div>
+              <div className="ordo-print-coverage-row plan"><label>PLAN</label><div>{plan.map((v, i) => <span className={v < need[i] ? 'deficit' : v > need[i] + 2 ? 'excess' : ''} key={i}>{v || ''}</span>)}</div></div>
+              <p><i /> pokrycie <i /> zapas <i /> niedobór</p>
             </section>
 
-            <section className="rex-print-hours">
-              <div className="rex-print-section-title">
-                <div>
-                  <span>03</span>
-                  <div>
-                    <strong>Podsumowanie godzin</strong>
-                    <small>Plan i wykonanie</small>
-                  </div>
-                </div>
-              </div>
-              <div className="rex-print-hours-head">
-                <span>Kategoria</span><span>Plan</span><span>Realizacja</span>
-              </div>
-              {data.hoursSummary.map((row) => (
-                <div className="rex-print-hours-row" key={row.id}>
-                  <span>{row.label}</span>
-                  <strong>{row.planned}</strong>
-                  {row.actual ? <strong>{row.actual}</strong> : <i />}
-                </div>
-              ))}
-              <div className="rex-print-hours-total">
-                <span>RAZEM</span>
-                <strong>{data.plannedHours}</strong>
-                <i />
-              </div>
+            <section className="ordo-print-hours">
+              <div className="ordo-print-section-head"><span>03</span><div><strong>Podsumowanie godzin</strong><small>Podział dnia według funkcji</small></div></div>
+              {(d.hoursSummary || []).map((w) => <div key={w.id}><span>{w.label}</span><strong>{w.planned}</strong><i /></div>)}
             </section>
 
-            <section className="rex-print-notes">
-              <div className="rex-print-section-title">
-                <div>
-                  <span>04</span>
-                  <div>
-                    <strong>Priorytety zmiany</strong>
-                    <small>Do omówienia na pre-shifcie</small>
-                  </div>
-                </div>
-              </div>
-              <ol>
-                {data.priorities.slice(0, 3).map((priority) => (
-                  <li key={priority}>{priority}</li>
-                ))}
-              </ol>
-              <label>
-                {data.managerNotesLabel ?? "Uwagi kierownika"}<span />
-              </label>
+            <section className="ordo-print-priorities">
+              <div className="ordo-print-section-head"><span>04</span><div><strong>Priorytety zmiany</strong><small>Do omówienia na pre-shifcie</small></div></div>
+              <ol>{(d.priorities || []).map((x, i) => <li key={i}>{x}</li>)}</ol>
+              <label>Uwagi kierownika<i /></label>
             </section>
 
-            <section className="rex-print-signature">
-              <div>
-                <span>Kierownik zamykający</span>
-                <strong>{data.closingManager}</strong>
-              </div>
-              <label>Podpis<span /></label>
+            <section className="ordo-print-signatures">
+              <div><span>Manager otwierający</span><strong>{d.openingManager}</strong></div>
+              <div><span>Manager zamykający</span><strong>{d.closingManager}</strong></div>
+              <label>Podpis<i /></label>
             </section>
           </aside>
         </main>
 
-        <footer className="rex-print-footer">
-          <span>{brandName} · {moduleName.split(" · ")[0]}</span>
-          <span>{data.generatedAt ? `Wygenerowano ${data.generatedAt}` : ""}</span>
-          <span>
-            {data.documentLabel ?? "Dokument operacyjny"}
-            {data.locationCode ? ` · ${data.locationCode}` : ""} · strona 1/1
-          </span>
-        </footer>
+        <footer className="ordo-print-footer"><span>ORDO Workforce Studio • Schedule</span><span>{d.generatedAt}</span><span>{d.documentLabel}</span></footer>
       </article>
     </div>
   );
-}
+};
+
+export default DailyRosterPrint;

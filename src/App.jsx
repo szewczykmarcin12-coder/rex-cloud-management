@@ -4311,6 +4311,25 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         }; }),
       };
     });
+    // ── karta wzorca: wiersze per osoba z segmentami na osi 06→02 ──
+    const FUNK = { RGM: 'General Manager', ASM: 'Zastępca kierownika', SM: 'Kierownik zmiany', JSM: 'Mł. kierownik zmiany' };
+    const osobyM = new Map();
+    scalone.filter((x) => !jestInstruktor(x)).forEach((x) => {
+      const key = pelne(x);
+      const k = kontoZ(x);
+      const o = osobyM.get(key) || { name: key, initials: key.split(/\s+/).map((c) => c[0]).join('').slice(0, 2), job: (k && (FUNK[k.funkcja] || 'Pracownik restauracji')) || 'Pracownik restauracji', h: 0, segments: [] };
+      let sa = mn(x.start) / 60, sb = mn(x.end) / 60;
+      if (sa < 6) sa += 24;
+      if (sb <= sa) sb += 24;
+      o.segments.push({ start: sa, end: Math.min(sb, 26), role: (x.station || 'OBSADA').toUpperCase() + (x.szkoli ? ' 🎓' : ''), time: `${x.start}–${x.end}` });
+      o.h += godzZ(x);
+      osobyM.set(key, o);
+    });
+    const people = [...osobyM.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl')).map((o) => ({ ...o, hours: fH(o.h), przerwa: o.h >= 6 ? '30 min' : '—', segments: o.segments.sort((a, b) => a.start - b.start) }));
+    const needHours = [], planHours = [];
+    for (let gi = 0; gi < 20; gi++) { let nn = 0, pp = 0; for (let k2 = gi * 4; k2 < gi * 4 + 4; k2++) { nn = Math.max(nn, req96[k2]); pp = Math.max(pp, sch96[k2]); } needHours.push(Math.ceil(nn)); planHours.push(Math.round(pp)); }
+    let kosztW = 0;
+    bezInstr.forEach((x) => { kosztW += kosztGodzin(kontoZ(x), godzZ(x)); });
     const d0 = new Date(d + 'T12:00:00');
     const dniP = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
     const mcP = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
@@ -4324,7 +4343,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       coverageAttentionLabel: zle ? `${zle} ${zle === 1 ? 'slot' : zle < 5 ? 'sloty' : 'slotów'} do kontroli` : 'Bez uwag',
       managerHours: fH(mgrH), trainingHours: fH(szkH), trainingPeopleLabel: szkOs ? `${szkOs} ${szkOs === 1 ? 'osoba' : szkOs < 5 ? 'osoby' : 'osób'}` : '—',
       openingManager: otw ? nazwisko(otw) : '—', closingManager: zam ? nazwisko(zam) : '—',
-      stations, coverage,
+      stations, coverage, people, needHours, planHours, koszt: kosztW, sprzedaz: sp,
       hoursSummary: [
         { id: 'crew', label: 'CREW', planned: fH(planH - mgrH - szkH) },
         { id: 'mgr', label: 'MANAGER', planned: fH(mgrH) },
@@ -4608,7 +4627,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <div className="ml-auto flex items-center gap-2 shrink-0">
             {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#F5E3E8', color: '#8E1B3C' }}>🔒 tylko podgląd</span>}
             <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
-            <button onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: printOpen ? colors.primary.medium : colors.primary.bg, color: colors.primary.darkest, backgroundColor: printOpen ? colors.primary.bgLight : 'white' }}><Printer size={13} /> Wydruk dnia</button>
+            <button title="Pełny ekran (F11 / Esc aby wyjść)" onClick={() => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch {} }} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest, backgroundColor: 'white' }}><Monitor size={13} /> Pełny ekran</button>
+            <button onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: printOpen ? colors.primary.medium : colors.primary.bg, color: colors.primary.darkest, backgroundColor: printOpen ? colors.primary.bgLight : 'white' }}><Printer size={13} /> {zakresTyg === 'dzien' ? 'Drukuj ten dzień' : 'Wydruk dnia'}</button>
             <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
           </div>
       </div>
