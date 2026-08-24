@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
@@ -147,15 +147,24 @@ const Btn = ({ children, variant = 'primary', icon: Icon, onClick, disabled, loa
 
 const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]); const bg = { success: '#7CB342', error: '#bd4f45', info: colors.primary.medium }[type] || colors.primary.medium; return <div className="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-lg z-50 flex items-center gap-2" style={{ backgroundColor: bg }}>{type === 'success' ? <Check className="w-5 h-5" /> : type === 'error' ? <X className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}{message}</div>; };
 
-const StatCard = ({ label, value, icon: Icon, color }) => (<div className="bg-white rounded-2xl p-5 shadow-sm" style={{ borderLeft: `4px solid ${color}` }}><div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: color + '15', color }}><Icon className="w-5 h-5" /></div><p className="text-3xl font-bold mt-3" style={{ color: colors.primary.darkest }}>{value}</p><p className="text-sm mt-1" style={{ color: colors.primary.light }}>{label}</p></div>);
+const StatCard = ({ label, value, icon: Icon, color }) => (
+  <article className="metric-card">
+    <span className="metric-icon" style={{ color, background: `${color}1a` }}><Icon size={18} /></span>
+    <div className="metric-copy"><span>{String(label).toUpperCase()}</span><strong>{value}</strong><small>ORDO Workforce Studio</small></div>
+    <span className="metric-progress"><i style={{ width: '62%' }} /></span>
+  </article>
+);
 
 const Header = ({ title, subtitle, children }) => (
-  <div className="border-b px-6 sticky top-0 z-10 flex items-center justify-between shrink-0" style={{ height: 62, backgroundColor: 'rgba(255,255,255,.94)', backdropFilter: 'blur(14px)', borderColor: '#ecdce1' }}>
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5 text-[11px]"><span style={{ color: '#8a9997' }}>REX Cloud</span><ChevronRight size={11} style={{ color: '#c3b3ba' }} /><strong className="font-semibold" style={{ color: '#344c49' }}>{title}</strong></div>
-      {subtitle && <p className="text-[11px] mt-0.5 truncate" style={{ color: '#71656a' }}>{subtitle}</p>}
+  <div className="page-wrap" style={{ paddingTop: 24, paddingBottom: 0 }}>
+    <div className="page-heading" style={{ marginBottom: 6 }}>
+      <div>
+        <div className="eyebrow"><span className="status-pulse" /> ORDO WORKFORCE STUDIO</div>
+        <h1>{title}</h1>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+      {children && <div className="heading-actions">{children}</div>}
     </div>
-    <div className="flex items-center gap-2.5 shrink-0">{children}</div>
   </div>);
 
 // ===================== LOGIN =====================
@@ -222,96 +231,61 @@ const Login = ({ onLogin }) => {
   );
 };
 
+const HUB_URL = String(import.meta.env.VITE_HUB_URL || 'https://rex-cloud-app.vercel.app');
 const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName }) => {
-  const [zwiniety, setZwiniety] = useState(false);
-  const SEKCJE = [
-    { naglowek: 'Główne', items: [
-      { id: 'dashboard', label: 'Dashboard', icon: Home },
-      { id: 'forecast', label: 'Planowanie i popyt', icon: Clock },
-    ] },
-    { naglowek: 'WorkRhythm', items: [
-      { id: 'wr-schedule', page: 'wt', wr: 'schedule', label: 'Schedule', icon: Calendar },
-      { id: 'wr-actual', page: 'wt', wr: 'actual', label: 'Actual', icon: Clock },
-      { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: FileSpreadsheet },
-      { id: 'wr-cycles', page: 'wt', wr: 'cycles', label: 'ShiftCycles', icon: RefreshCw },
-      { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Check },
-      { id: 'dyspo', label: 'Dyspozycyjność', icon: CalendarCheck2 },
-    ] },
-    { naglowek: 'Zespół', items: [
-      { id: 'emps', label: 'Pracownicy i konta', icon: Users },
-      { id: 'swaps', label: 'Giełda zamian', icon: RefreshCw, badge: pendingSwaps },
-    ] },
-    { naglowek: 'Narzędzia', items: [
-      { id: 'import', label: 'Import / eksport godzin', icon: Upload },
-    ] },
-    { naglowek: 'System', items: [ { id: 'settings', label: 'Ustawienia', icon: Settings } ] },
+  const items = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
+    { id: 'forecast', label: 'Planowanie i popyt', icon: TrendingUp, section: 'main' },
+    { id: 'wr-schedule', page: 'wt', wr: 'schedule', label: 'Schedule', icon: Calendar, section: 'workforce' },
+    { id: 'wr-actual', page: 'wt', wr: 'actual', label: 'Actual', icon: Activity, section: 'workforce' },
+    { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: BookOpen, section: 'workforce' },
+    { id: 'wr-cycles', page: 'wt', wr: 'cycles', label: 'ShiftCycles', icon: TimerReset, section: 'workforce' },
+    { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Clock3, live: true, section: 'workforce' },
+    { id: 'dyspo', label: 'Dyspozycyjność', icon: CalendarCheck2, section: 'workforce' },
+    { id: 'emps', label: 'Pracownicy i konta', icon: Users, section: 'team' },
+    { id: 'swaps', label: 'Zamiany i wnioski', icon: RefreshCw, badge: pendingSwaps || null, section: 'team' },
+    { id: 'import', label: 'Import / eksport godzin', icon: Upload, section: 'tools' },
   ];
+  const sections = [['main', 'GŁÓWNE'], ['workforce', 'WORKFORCE'], ['team', 'ZESPÓŁ'], ['tools', 'NARZĘDZIA']];
   const widoczne = role === 'asm' ? null : ['dashboard', 'wt'];
-  const sekcje = SEKCJE
-    .map((g) => ({ ...g, items: g.items.filter((m) => !widoczne || widoczne.includes(m.page || m.id)) }))
-    .filter((g) => g.items.length > 0);
-
+  const klik = (m) => { if (m.page === 'wt') { setPage('wt'); setWrTab(m.wr); bumpWr(); } else setPage(m.id); };
+  const aktywny = (m) => page === (m.page || m.id) && (!m.wr || wrTab === m.wr);
   return (
-    <div className="relative h-screen flex flex-col shrink-0 transition-all duration-200" style={{ width: zwiniety ? 72 : 248, background: `linear-gradient(180deg, #1a2541 0%, #131b30 100%)` }}>
-      {/* zwijanie — okrągły przycisk na krawędzi */}
-      <button onClick={() => setZwiniety((v) => !v)} title={zwiniety ? 'Rozwiń menu' : 'Zwiń menu'}
-        className="absolute -right-3 top-16 z-40 w-6 h-6 rounded-full flex items-center justify-center bg-white shadow-md border"
-        style={{ borderColor: colors.primary.bg, color: colors.primary.dark }}>
-        {zwiniety ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-      </button>
-
-      {/* logo */}
-      <div className={`flex items-center gap-3 px-4 pt-5 pb-4 ${zwiniety ? 'justify-center px-0' : ''}`}>
-        <div className="w-[37px] h-[37px] rounded-[11px] flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.16)' }}><Cloud className="w-[20px] h-[20px] text-white" /></div>
-        {!zwiniety && <div className="leading-tight"><p className="text-white text-lg tracking-[0.18em]"><b className="font-bold">ORDO</b></p><p className="text-[8px] font-bold tracking-[0.24em] text-white/40">WORKFORCE STUDIO</p></div>}
-      </div>
-
-      {/* restauracja */}
-      {!zwiniety && (
-        <div className="mx-3 mb-2 px-3 py-2.5 rounded-xl flex items-center gap-2.5" style={{ backgroundColor: 'rgba(255,255,255,.07)' }}>
-          <div className="w-[31px] h-[31px] rounded-[9px] flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ backgroundColor: '#fff', color: '#3a0718' }}>PL</div>
-          <div className="leading-tight min-w-0"><p className="text-[9px] font-bold tracking-wider text-white/40 uppercase">Restauracja</p><p className="text-[13px] font-semibold text-white truncate">PLK 201043 · Galeria Krakowska</p></div>
+    <aside className="sidebar">
+      <div className="sidebar-head">
+        <div className="brand-lockup">
+          <b style={{ color: '#f2f5ff', fontSize: 21, letterSpacing: '.28em', fontWeight: 800 }}>ORDO</b>
+          <span>Workforce Studio</span>
         </div>
-      )}
-
-      {/* nawigacja */}
-      <nav className="flex-1 overflow-y-auto px-3 pb-2 space-y-3">
-        {sekcje.map((g) => (
-          <div key={g.naglowek}>
-            {!zwiniety && <p className="px-2 pt-3 pb-1 text-[8.5px] font-bold uppercase" style={{ letterSpacing: '1.25px', color: '#779a97' }}>{g.naglowek}</p>}
-            {zwiniety && <div className="my-2 mx-3 border-t border-white/10" />}
-            <div className="space-y-0.5">
-              {g.items.map((m) => {
-                const aktywny = page === (m.page || m.id) && (!m.wr || wrTab === m.wr);
-                return (
-                  <button key={m.id} title={zwiniety ? m.label : undefined}
-                    onClick={() => { if (m.wr) { setWrTab && setWrTab(m.wr); bumpWr && bumpWr(); } setPage(m.page || m.id); }}
-                    className={`w-full flex items-center gap-2.5 text-left transition-all ${zwiniety ? 'justify-center px-0' : 'px-3'}`} 
-                    style={{ height: 41, borderRadius: 9, fontSize: 12.5, color: aktywny ? '#fff' : '#a9c0be', backgroundColor: aktywny ? 'rgba(255,255,255,.12)' : 'transparent', boxShadow: aktywny ? 'inset 3px 0 0 #b8d0cd' : 'none' }}
-                    onMouseEnter={(e) => { if (!aktywny) { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,.06)'; e.currentTarget.style.color = '#fff'; } }}
-                    onMouseLeave={(e) => { if (!aktywny) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#a9c0be'; } }}>
-                    <m.icon className="w-[18px] h-[18px] shrink-0" />
-                    {!zwiniety && <span className="text-[13.5px] font-medium truncate">{m.label}</span>}
-                    {m.badge > 0 && !zwiniety && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#d87b52' }}>{m.badge}</span>}
-                    {m.badge > 0 && zwiniety && <span className="absolute translate-x-3 -translate-y-2 w-2 h-2 rounded-full" style={{ backgroundColor: '#d87b52' }} />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      {/* użytkownik */}
-      <div className={`mx-3 mt-0 px-2 pt-3 pb-2 flex items-center gap-2.5 ${zwiniety ? 'justify-center px-0' : ''}`} style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
-        <div className="w-[31px] h-[31px] rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ backgroundColor: '#d4e1df', color: '#3a0718' }}>{(userName || (role === 'asm' ? 'AS' : 'PL')).split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}</div>
-        {!zwiniety && (<>
-          <div className="leading-tight min-w-0 flex-1"><p className="text-[13px] font-semibold text-white truncate">{userName || (role === 'asm' ? 'ASM' : 'PLK 201043')}</p><p className="text-[10px] text-white/45">{role === 'asm' ? 'ASM · pełny dostęp' : 'Kierownik zmiany'}</p></div>
-          <button onClick={logout} title="Wyloguj się" className="text-red-300 hover:text-red-400 shrink-0"><LogOut className="w-[17px] h-[17px]" /></button>
-        </>)}
       </div>
-      {zwiniety && <button onClick={logout} title="Wyloguj się" className="mb-3 mx-auto text-red-300 hover:text-red-400"><LogOut className="w-[17px] h-[17px]" /></button>}
-    </div>
+      <button className="unit-switcher" type="button">
+        <div className="unit-avatar">PL</div>
+        <div><span>Restauracja</span><strong>PLK 201043 · Galeria Krakowska</strong></div>
+        <ChevronDown size={16} />
+      </button>
+      <nav aria-label="Nawigacja główna">
+        {sections.map(([sid, slabel]) => {
+          const grupa = items.filter((m) => m.section === sid && (!widoczne || widoczne.includes(m.page || m.id)));
+          if (!grupa.length) return null;
+          return (
+            <div className="nav-section" key={sid}>
+              <p>{slabel}</p>
+              {grupa.map((m) => { const Icon = m.icon; return (
+                <button key={m.id} className={aktywny(m) ? 'active' : ''} onClick={() => klik(m)}>
+                  <Icon size={19} /><span>{m.label}</span>{m.live && <i className="live-dot" />}{m.badge ? <b>{m.badge}</b> : null}
+                </button>
+              ); })}
+            </div>
+          );
+        })}
+      </nav>
+      <div className="sidebar-bottom">
+        <a className="employee-app-link" href={HUB_URL} target="_blank" rel="noreferrer"><SmartphoneIcon size={18} /><span>ORDO Employee Hub</span><ChevronRight size={16} /></a>
+        {role === 'asm' && <button onClick={() => setPage('settings')}><Settings size={18} /><span>Ustawienia</span></button>}
+        <button onClick={logout}><LogOut size={18} /><span>Wyloguj się</span></button>
+        <div className="user-card"><div className="avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div><div><strong>{userName || 'Kierownik zmiany'}</strong><span>{role === 'asm' ? 'General Manager' : 'Kierownik zmiany'}</span></div><MoreHorizontal size={18} /></div>
+      </div>
+    </aside>
   );
 };
 
@@ -5277,25 +5251,20 @@ export default function App() {
 
   const TYTULY = { dashboard: 'Dashboard', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
   return (
-    <div className="flex h-screen" style={{ backgroundColor: colors.primary.bgLight }}>
+    <main className="app-shell">
       <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* topbar wg wzorca ORDO Workforce Studio */}
-        <div className="topbar" style={{ position: 'relative', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#71656a', minWidth: 0 }}>
-            <b style={{ color: '#2b171e', whiteSpace: 'nowrap' }}>ORDO Workforce Studio</b>
-            <ChevronRight size={14} />
-            <span style={{ color: '#2b171e', fontWeight: 600, whiteSpace: 'nowrap' }}>{TYTULY[widok] || 'Panel'}</span>
-          </div>
-          <label className="search"><Search size={15} /><input placeholder="Szukaj w ORDO Workforce Studio…" onKeyDown={(e) => { if (e.key === 'Enter') { const q = e.target.value.toLowerCase(); const cel = Object.entries(TYTULY).find(([, l]) => l.toLowerCase().includes(q)); if (cel) setPage(cel[0]); } }} /><kbd>Enter</kbd></label>
+      <section className="workspace" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+        <header className="topbar" style={{ flexShrink: 0 }}>
+          <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
           <div className="top-actions">
-            <button className="icon-button notification" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><Bell size={16} />{pendingSwaps > 0 && <i />}</button>
+            <button className="icon-button" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><MessageSquare size={18} /></button>
+            <button className="icon-button notification" title="Oczekujące decyzje" onClick={() => setPage('swaps')}><Bell size={18} />{pendingSwaps > 0 && <i />}</button>
             <div className="top-avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div>
           </div>
-        </div>
-        <div className={widok === 'wt' ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 min-h-0 overflow-y-auto"}>{pages[widok] || pages.print}</div>
-      </div>
+        </header>
+        <div className={widok === 'wt' ? 'flex-1 min-h-0 flex flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>{pages[widok] || pages.print}</div>
+      </section>
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
-    </div>
+    </main>
   );
 }
