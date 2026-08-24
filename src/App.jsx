@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal, Sparkles } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal, Sparkles, Menu } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
@@ -232,7 +232,7 @@ const Login = ({ onLogin }) => {
 };
 
 const HUB_URL = String(import.meta.env.VITE_HUB_URL || 'https://rex-cloud-app.vercel.app');
-const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName }) => {
+const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName, mini, setMini, open, onClose }) => {
   const items = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
     { id: 'forecast', label: 'Planowanie i popyt', icon: TrendingUp, section: 'main' },
@@ -251,17 +251,18 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
   const klik = (m) => { if (m.page === 'wt') { setPage('wt'); setWrTab(m.wr); bumpWr(); } else setPage(m.id); };
   const aktywny = (m) => page === (m.page || m.id) && (!m.wr || wrTab === m.wr);
   return (
-    <aside className="sidebar">
+    <aside className={'sidebar' + (mini ? ' mini' : '') + (open ? ' open' : '')}>
       <div className="sidebar-head">
         <div className="brand-lockup">
-          <b style={{ color: '#FBF5F7', fontSize: 21, letterSpacing: '.28em', fontWeight: 800 }}>ORDO</b>
-          <span>Workforce Studio</span>
+          <b style={{ color: '#FBF5F7', fontSize: mini ? 12 : 21, letterSpacing: '.28em', fontWeight: 800 }}>ORDO</b>
+          {!mini && <span>Workforce Studio</span>}
         </div>
+        <button className="sidebar-collapse" type="button" title={mini ? 'Rozwiń menu' : 'Zwiń menu do ikon'} onClick={() => setMini(!mini)}>{mini ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}</button>
+        <button className="sidebar-close" type="button" aria-label="Zamknij menu" onClick={onClose}><X size={18} /></button>
       </div>
       <button className="unit-switcher" type="button">
         <div className="unit-avatar">PL</div>
-        <div><span>Restauracja</span><strong>PLK 201043 · Galeria Krakowska</strong></div>
-        <ChevronDown size={16} />
+        {!mini && <><div><span>Restauracja</span><strong>PLK 201043 · Galeria Krakowska</strong></div><ChevronDown size={16} /></>}
       </button>
       <nav aria-label="Nawigacja główna">
         {sections.map(([sid, slabel]) => {
@@ -269,10 +270,10 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
           if (!grupa.length) return null;
           return (
             <div className="nav-section" key={sid}>
-              <p>{slabel}</p>
+              {!mini && <p>{slabel}</p>}
               {grupa.map((m) => { const Icon = m.icon; return (
-                <button key={m.id} className={aktywny(m) ? 'active' : ''} onClick={() => klik(m)}>
-                  <Icon size={19} /><span>{m.label}</span>{m.live && <i className="live-dot" />}{m.badge ? <b>{m.badge}</b> : null}
+                <button key={m.id} title={m.label} className={aktywny(m) ? 'active' : ''} onClick={() => { klik(m); onClose && onClose(); }}>
+                  <Icon size={18} />{!mini && <span>{m.label}</span>}{m.live && <i className="live-dot" />}{m.badge ? <b>{m.badge}</b> : null}
                 </button>
               ); })}
             </div>
@@ -280,10 +281,10 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
         })}
       </nav>
       <div className="sidebar-bottom">
-        <a className="employee-app-link" href={HUB_URL} target="_blank" rel="noreferrer"><SmartphoneIcon size={18} /><span>ORDO Employee Hub</span><ChevronRight size={16} /></a>
-        {role === 'asm' && <button onClick={() => setPage('settings')}><Settings size={18} /><span>Ustawienia</span></button>}
-        <button onClick={logout}><LogOut size={18} /><span>Wyloguj się</span></button>
-        <div className="user-card"><div className="avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div><div><strong>{userName || 'Kierownik zmiany'}</strong><span>{role === 'asm' ? 'General Manager' : 'Kierownik zmiany'}</span></div><MoreHorizontal size={18} /></div>
+        <a className="employee-app-link" href={HUB_URL} target="_blank" rel="noreferrer" title="ORDO Employee Hub"><SmartphoneIcon size={18} />{!mini && <><span>ORDO Employee Hub</span><ChevronRight size={16} /></>}</a>
+        {role === 'asm' && <button title="Ustawienia" onClick={() => { setPage('settings'); onClose && onClose(); }}><Settings size={18} />{!mini && <span>Ustawienia</span>}</button>}
+        <button title="Wyloguj się" onClick={logout}><LogOut size={18} />{!mini && <span>Wyloguj się</span>}</button>
+        <div className="user-card"><div className="avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div>{!mini && <><div><strong>{userName || 'Kierownik zmiany'}</strong><span>{role === 'asm' ? 'General Manager' : 'Kierownik zmiany'}</span></div><MoreHorizontal size={18} /></>}</div>
       </div>
     </aside>
   );
@@ -5074,12 +5075,16 @@ export default function App() {
   const widok = dozwolone.includes(page) ? page : 'dashboard';
   const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length + (data.absences || []).filter(a => a.status === 'open').length + (data.availPending || 0);
 
+  const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
+  const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
+  const [navOpen, setNavOpen] = useState(false);
   const TYTULY = { dashboard: 'Dashboard', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
   return (
     <main className="app-shell">
-      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} />
-      <section className="workspace" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} mini={navMini} setMini={setMini} open={navOpen} onClose={() => setNavOpen(false)} />
+      <section className={'workspace' + (navMini ? ' mini' : '')} style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <header className="topbar" style={{ flexShrink: 0 }}>
+          <button className="menu-button" aria-label="Otwórz menu" onClick={() => setNavOpen(true)}><Menu size={18} /></button>
           <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
           <div className="top-actions">
             <button className="icon-button" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><MessageSquare size={18} /></button>
@@ -5089,6 +5094,7 @@ export default function App() {
         </header>
         <div className={widok === 'wt' ? 'flex-1 min-h-0 flex flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>{pages[widok] || pages.print}</div>
       </section>
+      {navOpen && <button className="scrim" aria-label="Zamknij menu" onClick={() => setNavOpen(false)} />}
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </main>
   );
