@@ -3550,10 +3550,10 @@ const RotacjeWzor = ({ data, naGrafik }) => {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+      <div className="module-heading">
         <div>
-          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#741334' }}>WORKRHYTHM · SHIFTCYCLES</p>
-          <h1 className="text-[28px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Rotacje cykliczne</h1>
+          <span>WORKFORCE • CYKLE ZMIAN</span>
+          <h1>ShiftCycles</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Powtarzalne wzorce zmian zespołów z kontrolą pokrycia i regeneracji.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -3783,10 +3783,10 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
   const peak = useMemo(() => det ? bpPeakCoverage(det.sloty) : null, [det]);
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+      <div className="module-heading">
         <div>
-          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#741334' }}>WORKRHYTHM · BLUEPRINTS</p>
-          <h1 className="text-[28px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Szablony tygodniowe</h1>
+          <span>WORKFORCE • MATRYCE ZMIAN</span>
+          <h1>Blueprints</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Gotowe układy zmian, godzin i obsady do wielokrotnego użycia.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -5092,20 +5092,14 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <Header title="WorkRhythm" subtitle="ORDO WorkRhythm · Schedule · Actual · Blueprints · ShiftCycles · T&A" />
-        <div className="px-8 pt-3 flex gap-1 bg-white border-b" style={{ borderColor: colors.primary.bg }}>
-          {[['schedule', 'Schedule'], ['actual', 'Actual'], ['blueprints', 'Blueprints'], ['cycles', 'ShiftCycles'], ['tna', 'Time & Attendance']].map(([k, l]) => (
-            <button key={k} onClick={() => setWrTab(k)} className="px-4 py-2 rounded-t-lg text-sm font-semibold" style={{ backgroundColor: wrTab === k ? colors.primary.bgLight : 'transparent', color: wrTab === k ? colors.primary.darkest : colors.primary.light, borderBottom: wrTab === k ? `3px solid ${colors.primary.medium}` : '3px solid transparent' }}>{l}</button>
-          ))}
-        </div>
-        <div className="flex-1 min-h-0 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-          {wrTab === 'schedule' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Planowanie obsady — kliknij tydzień, aby otworzyć siatkę planowania.</p>}
-          {wrTab === 'schedule' && canEdit && <PublishCard data={data} />}
-          {wrTab === 'actual' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Wykonanie (Working Time) — kliknij tydzień, aby rozliczyć wbicia, przerwy i korekty.</p>}
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}><div className="page-wrap module-view" style={{ width: '100%' }}>
+          
+          
+          
           {wrTab === 'tna' && <TaLive data={data} />}
-          {wrTab === 'tna' && <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Statusy tygodni: oznaczaj dni jako Completed, potem Reviewed i Closed (blokada edycji na serwerze).</p>}
-          <div className="flex items-center gap-2 mb-3"><span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: colors.primary.light }}>Work Center</span><div className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{wcLabel}</div></div>
-          {['schedule', 'actual', 'tna'].includes(wrTab) && (() => {
+          
+          
+          {['schedule', 'actual'].includes(wrTab) && (() => {
             const stageOf = (w) => { const st = wsOf(w.start); if (st.closed) return 'Closed'; if (st.reviewed) return 'Reviewed'; if (weekDone(w)) return 'Completed'; return 'In progress'; };
             const godzTyg = (w) => data.shifts.filter((x) => w.days.includes(x.date) && !jestInstruktor(x)).reduce((a, x) => a + godzZ(x), 0);
             const kosztTyg = (w) => data.shifts.filter((x) => w.days.includes(x.date) && !jestInstruktor(x)).reduce((a, x) => a + kosztGodzin((x.accountId && (data.accounts || []).find((a2) => a2.id === x.accountId)) || null, godzZ(x)), 0);
@@ -5187,10 +5181,11 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             </DialogS>}
             </>);
           })()}
+          {wrTab === 'schedule' && canEdit && <div style={{ marginTop: 16 }}><PublishCard data={data} /></div>}
           {wrTab === 'blueprints' && canEdit && <BlueprintyWzor data={data} weeks={weeks} naGrafik={() => setWrTab('schedule')} />}
           {wrTab === 'cycles' && canEdit && <RotacjeWzor data={data} naGrafik={() => setWrTab('schedule')} />}
           {!canEdit && <p className="text-xs text-slate-400 mt-3">Widok kierownika zmiany — podgląd. Zamykanie i korekty wykonuje ASM.</p>}
-        </div>
+        </div></div>
       </div>
     );
   }
@@ -5204,32 +5199,40 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#EDE3E6', color: on ? kol.fg : '#A38D95' }}>{txt}</span>;
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <Header title="WorkRhythm" subtitle={dateLabel(day)}>
-        {chip(weekDone(curWeek()), 'Completed', { bg: '#F0E4E8', fg: '#741334' })}
-        {chip(st.reviewed, 'Reviewed', { bg: '#F0E4E8', fg: '#741334' })}
-        {chip(st.closed, 'Closed', { bg: '#F5E3E8', fg: '#8E1B3C' })}
-        <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ backgroundColor: ts.completed[day] ? '#741334' : 'white', color: ts.completed[day] ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}><Check size={15} />{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>
-      </Header>
-      <div className="px-5 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b bg-white shadow-sm shrink-0" style={{ borderColor: colors.primary.bg }}>
-          <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm shrink-0" style={{ color: colors.primary.medium }}><ChevronLeft size={16} />Tygodnie</button>
-          <div className="flex items-center gap-1 shrink-0">
-            <button onClick={() => zmienTydzien(-7)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-100" style={{ color: colors.primary.dark }}><ChevronLeft size={15} /></button>
-            <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)} – {weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)}</span>
-            <button onClick={() => zmienTydzien(7)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-100" style={{ color: colors.primary.dark }}><ChevronRight size={15} /></button>
+      <div className="shrink-0" style={{ padding: '16px 26px 0' }}>
+        <div className="module-heading" style={{ marginBottom: 10 }}>
+          <div>
+            <span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span>
+            <h1>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</h1>
+            <p>{zakresTyg === 'dzien' ? dateLabel(day) : 'Podgląd zmian całego zespołu — przewijaj dni poziomo, kolumna pracowników pozostaje na miejscu.'}{locked ? ' • tydzień zamknięty (tylko podgląd)' : ''}</p>
           </div>
-          <div className="flex gap-0.5">
+          <div className="module-actions">
+            <button className="secondary-action" onClick={() => setView('list')}><ChevronLeft size={16} /> Lista tygodni</button>
+            <button className="secondary-action" title="Pełny ekran (Esc aby wyjść)" onClick={() => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch {} }}><Monitor size={16} /> Pełny ekran</button>
+            <button className="secondary-action" onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))}><Printer size={16} /> {zakresTyg === 'dzien' ? 'Drukuj ten dzień' : 'Wydruk dnia'}</button>
+            {zakresTyg === 'dzien' && <button className={ts.completed[day] ? 'secondary-action' : 'primary-action'} disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }}><Check size={16} /> {ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>}
+            <button className="primary-action" onClick={() => data.sync()} disabled={data.loading}><RefreshCw size={16} /> {data.loading ? 'Zapisuję…' : 'Zapisz / odśwież'}</button>
+          </div>
+        </div>
+        <div className="panel scheduler-toolbar" style={{ marginBottom: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div className="week-control">
+            <button onClick={() => zmienTydzien(-7)}><ChevronLeft size={17} /></button>
+            <strong>{weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)} – {weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)}.{weekDays[6].slice(0, 4)}</strong>
+            <button onClick={() => zmienTydzien(7)}><ChevronRight size={17} /></button>
+            <button className="today-chip" onClick={() => setZakresTyg('siatka')} style={zakresTyg === 'siatka' ? { background: '#741334', color: '#fff', borderColor: '#741334' } : undefined}>Cały tydzień</button>
+          </div>
+          <div className="filter-tabs">
             {weekDays.map((d, i) => { const akt = zakresTyg === 'dzien' && day === d; return (
-              <button key={d} onClick={() => { setDay(d); setZakresTyg('dzien'); }} className="px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1" style={{ backgroundColor: akt ? colors.primary.medium : 'transparent', color: akt ? 'white' : i >= 5 ? '#8E1B3C' : colors.primary.dark, border: `1px solid ${akt ? colors.primary.medium : colors.primary.bg}` }}>{ts.completed[d] && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: akt ? 'white' : '#741334' }} />}{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}<span className="font-normal opacity-60">{dayShifts(d).length}</span></button>
+              <button key={d} className={akt ? 'active' : ''} onClick={() => { setDay(d); setZakresTyg('dzien'); }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}{dayShifts(d).length ? <b>{dayShifts(d).length}</b> : null}</button>
             ); })}
-            <button onClick={() => setZakresTyg('siatka')} className="ml-1 px-2.5 py-1 rounded-md text-[11px] font-bold" style={{ backgroundColor: zakresTyg === 'siatka' ? colors.primary.medium : 'transparent', color: zakresTyg === 'siatka' ? 'white' : colors.primary.dark, border: `1px solid ${zakresTyg === 'siatka' ? colors.primary.medium : colors.primary.bg}` }}>Tydzień</button>
           </div>
-          <div className="ml-auto flex items-center gap-2 shrink-0">
-            {locked && <span className="text-[11px] px-2 py-1 rounded-md font-semibold" style={{ backgroundColor: '#F5E3E8', color: '#8E1B3C' }}>🔒 tylko podgląd</span>}
-            <span className="text-[11px]" style={{ color: colors.primary.light }}>{data.loading ? 'Zapisuję…' : `Zapis automatyczny${data.lastSync ? ` · ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : ''}`}</span>
-            <button title="Pełny ekran (F11 / Esc aby wyjść)" onClick={() => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch {} }} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest, backgroundColor: 'white' }}><Monitor size={13} /> Pełny ekran</button>
-            <button onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border" style={{ borderColor: printOpen ? colors.primary.medium : colors.primary.bg, color: colors.primary.darkest, backgroundColor: printOpen ? colors.primary.bgLight : 'white' }}><Printer size={13} /> {zakresTyg === 'dzien' ? 'Drukuj ten dzień' : 'Wydruk dnia'}</button>
-            <button onClick={() => data.sync()} disabled={data.loading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz / odśwież</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            {chip(weekDone(curWeek()), 'Completed', { bg: '#F0E4E8', fg: '#741334' })}
+            {chip(st.reviewed, 'Reviewed', { bg: '#F0E4E8', fg: '#741334' })}
+            {chip(st.closed, 'Closed', { bg: '#F5E3E8', fg: '#8E1B3C' })}
+            <span style={{ fontSize: 10.5, color: '#806D74' }}>{data.lastSync ? `autozapis ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : 'autozapis'}</span>
           </div>
+        </div>
       </div>
 
       {printOpen && (
