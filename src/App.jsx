@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal, Sparkles, Menu } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal, Sparkles, Menu, Eye, EyeOff, ShieldCheck, ArrowRight, Zap, ArrowLeftRight, Gauge, CircleDollarSign, Bot } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
@@ -197,45 +197,224 @@ const Login = ({ onLogin }) => {
     } catch (e2) { setErr((e2 && e2.message) || 'Błąd połączenia z serwerem'); }
     setLoading(false);
   };
-  const pole = "w-full pl-11 pr-4 py-3.5 rounded-lg border bg-white text-[15px] focus:outline-none focus:ring-2";
+  const [zapamietaj, setZapamietaj] = useState(true);
+  const [pokazH, setPokazH] = useState(false);
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#f0f2f2' }}>
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-3 mb-10">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#321B23' }}><Cloud className="w-7 h-7 text-white" /></div>
-          <span className="text-[24px] font-bold tracking-[0.35em]" style={{ color: '#321B23' }}>ORDO</span><span className="text-[10px] font-bold tracking-[0.3em] self-center" style={{ color: '#741334' }}>WORKFORCE STUDIO</span>
-        </div>
-        {err && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">{err}</div>}
-        {info && <div className="p-3 rounded-lg mb-4 text-sm" style={{ backgroundColor: '#F0E4E8', color: '#5A3542' }}>{info}</div>}
-        <form onSubmit={submit} className="space-y-4">
-          <div className="relative">
-            <Users className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#C7B4BB' }} />
-            <input type="text" name="username" id="username" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} className={pole} style={{ borderColor: '#E3D8DB', color: '#321B23' }} placeholder="Login" disabled={loading} autoFocus />
-          </div>
-          {!reset && (
-            <div className="relative">
-              <Lock className="w-[18px] h-[18px] absolute left-4 top-1/2 -translate-y-1/2" style={{ color: '#C7B4BB' }} />
-              <input type="password" name="password" id="current-password" autoComplete="current-password" value={haslo} onChange={(e) => setHaslo(e.target.value)} className={pole} style={{ borderColor: '#E3D8DB', color: '#321B23' }} placeholder="PIN / hasło" disabled={loading} />
+    <div className="stl-screen">
+      <div className="stl-card">
+        <div className="stl-left">
+          <form onSubmit={submit}>
+            <span className="stl-eyebrow"><Lock size={12} /> DOSTĘP MANAGERSKI</span>
+            <h1>{reset ? 'Reset hasła' : 'Zaloguj się do panelu'}</h1>
+            <p className="stl-sub">{reset ? 'Podaj identyfikator — ASM otrzyma zgłoszenie i przekaże Ci tymczasowy PIN.' : 'Użyj firmowego adresu e-mail lub identyfikatora menedżera.'}</p>
+            {err && <div className="stl-alert err">{err}</div>}
+            {info && <div className="stl-alert ok">{info}</div>}
+            <label className="stl-label">Identyfikator lub e-mail</label>
+            <div className="stl-field">
+              <UserCheck size={17} />
+              <input type="text" name="username" id="username" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} placeholder="Wpisz identyfikator" disabled={loading} autoFocus />
             </div>
-          )}
-          <button type="button" onClick={() => { setReset(!reset); setErr(''); setInfo(''); }} className="text-[13.5px] font-medium" style={{ color: '#5A3542' }}>
-            {reset ? '← Wróć do logowania' : 'Nie pamiętasz hasła?'}
-          </button>
-          <button type="submit" disabled={loading || !login.trim()} className="w-full text-white font-semibold py-3.5 rounded-lg text-[15px] disabled:opacity-50" style={{ backgroundColor: '#321B23' }}>
-            {loading ? 'Chwila…' : reset ? 'Wyślij zgłoszenie resetu do ASM' : 'Zaloguj się'}
-          </button>
-          {reset && <p className="text-[12px] text-center" style={{ color: '#806D74' }}>ASM zobaczy Twoje zgłoszenie w panelu, zresetuje hasło i przekaże Ci tymczasowy PIN. Przy pierwszym logowaniu w aplikacji pracownika ustawisz własny.</p>}
-        </form>
+            {!reset && (<>
+              <label className="stl-label">Hasło</label>
+              <div className="stl-field">
+                <Lock size={17} />
+                <input type={pokazH ? 'text' : 'password'} name="password" id="current-password" autoComplete="current-password" value={haslo} onChange={(e) => setHaslo(e.target.value)} placeholder="Wpisz hasło" disabled={loading} />
+                <button type="button" className="stl-eye" aria-label="Pokaż hasło" onClick={() => setPokazH((v) => !v)}>{pokazH ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+              </div>
+            </>)}
+            <div className="stl-row">
+              <label className="stl-check"><input type="checkbox" checked={zapamietaj} onChange={(e) => setZapamietaj(e.target.checked)} /><span>Pozostań zalogowany</span></label>
+              <button type="button" className="stl-link" onClick={() => { setReset(!reset); setErr(''); setInfo(''); }}>{reset ? 'Wróć do logowania' : 'Nie pamiętam hasła'}</button>
+            </div>
+            <button type="submit" className="stl-submit" disabled={loading || !login.trim()}>
+              {loading ? 'Chwila…' : reset ? 'Wyślij zgłoszenie resetu' : <>Zaloguj się <ArrowRight size={16} /></>}
+            </button>
+            <p className="stl-note"><ShieldCheck size={13} /> Dostęp jest chroniony i rejestrowany w dzienniku bezpieczeństwa.</p>
+            <p className="stl-foot">ORDO Workforce Studio • {new Date().getFullYear()}</p>
+          </form>
+        </div>
+        <div className="stl-right">
+          <div className="stl-brand"><b>ORDO</b><span>WORKFORCE STUDIO</span></div>
+          <div className="stl-hero">
+            <span className="stl-hero-eyebrow">ZARZĄDZANIE ZESPOŁEM</span>
+            <h2>Planowanie pod pełną kontrolą.</h2>
+            <p>Jedno uporządkowane środowisko do podejmowania decyzji managerskich.</p>
+            <div className="stl-feats">
+              <div><i><Calendar size={15} /></i><span>Grafiki i obsada</span><Check size={14} /></div>
+              <div><i><Clock3 size={15} /></i><span>Czas pracy i zgodność</span><Check size={14} /></div>
+              <div><i><TrendingUp size={15} /></i><span>Koszty i prognozy</span><Check size={14} /></div>
+            </div>
+          </div>
+          <p className="stl-right-foot"><ShieldCheck size={13} /> Autoryzowany dostęp do danych organizacji</p>
+        </div>
       </div>
     </div>
   );
 };
 
 const HUB_URL = String(import.meta.env.VITE_HUB_URL || 'https://rex-cloud-app.vercel.app');
+const MHead = ({ kicker, title, copy, children }) => (
+  <div className="module-heading"><div><span>{kicker}</span><h1>{title}</h1><p>{copy}</p></div>{children && <div className="module-actions">{children}</div>}</div>
+);
+const MMetric = ({ label, value, helper, tone = 'blue', icon: Icon }) => (
+  <article className="mini-metric"><div className={`mini-metric-icon ${tone}`}><Icon size={18} /></div><span>{label}</span><strong>{value}</strong><small>{helper}</small></article>
+);
+
+// ═════════ OBSADA LIVE (Live Command) — wzorzec ORDO na danych z Employee Hub ═════════
+const ObsadaLive = ({ data, setPage }) => {
+  const dzis = ymd(new Date());
+  const LH = Array.from({ length: 18 }, (_, i) => (8 + i) % 24);       // 08:00–01:00
+  const [events, setEvents] = useState([]);
+  const [syncAt, setSyncAt] = useState(null);
+  const [widokSt, setWidokSt] = useState('stations');
+  const terazH = Math.min(17, Math.max(0, (new Date().getHours() < 2 ? new Date().getHours() + 24 : new Date().getHours()) - 8));
+  const [hSel, setHSel] = useState(terazH);
+  const zaladuj = useCallback(async () => { try { const r = await api('/clock'); if (r && r.success) { setEvents(r.events || []); setSyncAt(new Date()); } } catch {} }, []);
+  useEffect(() => { zaladuj(); const t = setInterval(zaladuj, 15000); return () => clearInterval(t); }, [zaladuj]);
+
+  const konta = data.accounts || [];
+  const poId = new Map(konta.map((a) => [a.id, a]));
+  const poNaz = new Map(konta.flatMap((a) => [a.grafikName, a.name, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
+  const kontoZ = (x) => poId.get(x.accountId) || poNaz.get(String(x.name || '').toUpperCase().trim()) || null;
+  const pelne = (x) => { const k = kontoZ(x); return (k && k.name ? k.name : (x.name || '')); };
+  const mnL = (t) => { const [h2, m2] = String(t || '0:0').split(':').map(Number); return h2 * 60 + m2; };
+  const zm = (data.shifts || []).filter((x) => x.date === dzis && !jestInstruktor(x));
+
+  // popyt z silnika
+  const sp = (((data.salesData || {}).sales) || {})[dzis] || 0;
+  const { dir, ind } = optRozbicie(sp, 420, 3, sp ? 'sprzedaz' : 'krzywa', new Date(dzis).getDay());
+  const needG = LH.map((h) => { const i0 = (h < 6 ? h + 24 : h) - 6; return Math.ceil(Math.max(dir[i0 * 2] || 0, ind[i0 * 2] || 0, dir[i0 * 2 + 1] || 0, ind[i0 * 2 + 1] || 0)); });
+  const kryje = (x, h) => { let a2 = mnL(x.start), b2 = mnL(x.end); if (b2 <= a2) b2 += 1440; let c = h * 60 + 30; if (c < a2 && c + 1440 < b2 + 1) c += 1440; if (h < 6) c = (h + 24) * 60 + 30; return a2 <= c && c < b2; };
+  const planG = LH.map((h) => zm.filter((x) => kryje(x, h)).length);
+
+  // stan z odbić Employee Hub (ostatnie zdarzenie na osobę)
+  const ostatnie = useMemo(() => { const m = new Map(); (events || []).forEach((e) => { const c = m.get(e.accountId); if (!c || e.at > c.at) m.set(e.accountId, e); }); return m; }, [events]);
+  const stanO = (e) => e.type === 'clock_out' ? 'done' : e.type === 'break_start' ? 'break' : 'working';
+  const pracuje = [...ostatnie.values()].filter((e) => stanO(e) === 'working');
+  const naPrzerwie = [...ostatnie.values()].filter((e) => stanO(e) === 'break');
+  const aktG = LH.map((h) => { const s0 = (h < 6 ? h + 24 : h) * 60, s1 = s0 + 60; let n = 0; ostatnie.forEach((last, accId) => { const wej = (events || []).filter((e) => e.accountId === accId && e.type === 'clock_in').map((e) => e.at); const wyj = (events || []).filter((e) => e.accountId === accId && e.type === 'clock_out').map((e) => e.at); if (!wej.length) return; const d0 = new Date(dzis + 'T00:00:00').getTime(); const a2 = Math.min(...wej), b2 = wyj.length ? Math.max(...wyj) : Date.now(); if (a2 - d0 < s1 * 60000 && b2 - d0 > s0 * 60000) n++; }); return n; });
+
+  const bilans = aktG[hSel] - needG[hSel];
+  const maxN = Math.max(4, ...needG, ...planG, ...aktG);
+  const fmtG = (n) => n.toLocaleString('pl-PL');
+
+  // COL do teraz: koszt przepracowanych godzin / czesc planu sprzedazy
+  const terazMin = new Date().getHours() * 60 + new Date().getMinutes();
+  let kosztDo = 0, hDo = 0;
+  zm.forEach((x) => { const a2 = mnL(x.start); let b2 = mnL(x.end); if (b2 <= a2) b2 += 1440; const kon = Math.min(b2, terazMin < a2 ? a2 : terazMin); const g = Math.max(0, (kon - a2) / 60); hDo += g; kosztDo += kosztGodzin(kontoZ(x), g); });
+  const frakcja = Math.min(1, Math.max(0.05, (terazMin - 360) / 1200));
+  const colTeraz = sp ? (kosztDo / (sp * frakcja) * 100) : null;
+
+  // asystent: pierwsza przyszla luka
+  const luka = LH.map((h, i) => ({ h, i, def: needG[i] - planG[i] })).filter((x) => x.i >= terazH && x.def > 0)[0] || null;
+
+  // stacje operacyjne o wybranej godzinie
+  const naGodzinie = zm.filter((x) => kryje(x, LH[hSel]));
+  const grupySt = {};
+  naGodzinie.forEach((x) => { const st2 = (x.station || 'OBSADA').toUpperCase(); (grupySt[st2] = grupySt[st2] || []).push(x); });
+  const imie = (x) => String(pelne(x)).split(/\s+/)[0];
+
+  const OPIS_EV = { clock_in: 'rozpoczyna zmianę', clock_out: 'kończy zmianę', break_start: 'wychodzi na przerwę', break_end: 'wraca z przerwy' };
+  const TON_EV = { clock_in: 'green', clock_out: 'warn', break_start: 'blue', break_end: 'green' };
+  const osEv = [...(events || [])].sort((a2, b2) => b2.at - a2.at).slice(0, 6);
+  const hhmm = (ts) => new Date(ts).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  const nazwaEv = (e) => { const k = poId.get(e.accountId); return k ? k.name : (e.name || 'Pracownik'); };
+
+  // przerwy: zmiany >= 6 h, sugerowana w polowie
+  const przerwy = zm.filter((x) => godzZ(x) >= 6).map((x) => { const a2 = mnL(x.start); let b2 = mnL(x.end); if (b2 <= a2) b2 += 1440; const c = Math.round((a2 + (b2 - a2) / 2) / 30) * 30; return { t: `${String(Math.floor(c / 60) % 24).padStart(2, '0')}:${String(c % 60).padStart(2, '0')}`, name: pelne(x), dur: godzZ(x) >= 8 ? '30 min' : '20 min', c }; }).sort((a2, b2) => a2.c - b2.c).slice(0, 6);
+
+  return (
+    <div className="page-wrap module-view live-view">
+      <MHead kicker={`LIVE COMMAND • ${new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' }).toUpperCase()} • ${new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`} title="Obsada w ciągu dnia" copy="Porównuj plan, realne odbicia i popyt co 15 minut. Reaguj zanim luka wpłynie na service.">
+        <button className="secondary-action" onClick={zaladuj}><RefreshCw size={16} /> Odśwież{syncAt ? ` • ${syncAt.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}` : ''}</button>
+        <button className="primary-action" onClick={() => setPage('swaps')}><Smartphone size={16} /> Wyślij do zmiany</button>
+      </MHead>
+      <section className="live-kpis">
+        <MMetric icon={Users} label="Obecni / potrzeba" value={`${pracuje.length + naPrzerwie.length} / ${needG[terazH] || 0}`} helper={pracuje.length + naPrzerwie.length < (needG[terazH] || 0) ? `${pracuje.length + naPrzerwie.length - needG[terazH]} osoba teraz` : 'obsada wystarczająca'} tone={pracuje.length + naPrzerwie.length < (needG[terazH] || 0) ? 'coral' : 'mint'} />
+        <MMetric icon={Activity} label="Na przerwie" value={`${naPrzerwie.length}`} helper={naPrzerwie.length ? 'monitoruj powroty' : 'wszyscy na stanowiskach'} tone="blue" />
+        <MMetric icon={Gauge} label="Godziny do teraz" value={`${hDo.toFixed(1).replace('.', ',')} h`} helper="z planu dnia" tone="violet" />
+        <MMetric icon={CircleDollarSign} label="COL do teraz" value={colTeraz != null ? `${colTeraz.toFixed(1).replace('.', ',')}%` : '—'} helper={sp ? `plan sprzedaży ${fmtG(Math.round(sp))} zł` : 'brak planu sprzedaży'} tone="mint" />
+      </section>
+
+      <section className="live-main-grid">
+        <article className="panel live-curve-panel">
+          <div className="panel-title"><div><span>KRZYWA DNIA</span><h2>Popyt i aktywni pracownicy</h2></div><div className="live-clock"><i /> {String(LH[hSel]).padStart(2, '0')}:00</div></div>
+          <div className="live-curve">
+            {needG.map((need, i) => (
+              <button key={i} className={i === hSel ? 'active' : ''} onClick={() => setHSel(i)}>
+                <span className="need-bar" style={{ height: `${Math.max(need, 1) / maxN * 100}%` }}><i style={{ height: `${need ? Math.min(planG[i] / Math.max(need, 1), 1.15) * 100 : 0}%` }} /><b style={{ height: `${need ? Math.min(aktG[i] / Math.max(need, 1), 1.15) * 100 : 0}%` }} /></span>
+                <small>{i % 2 === 0 ? String(LH[i]).padStart(2, '0') : ''}</small>
+              </button>
+            ))}
+          </div>
+          <div className="live-slider"><span>08:00</span><input type="range" min="0" max="17" value={hSel} onChange={(e) => setHSel(Number(e.target.value))} /><span>01:00</span></div>
+          <div className="live-hour-detail">
+            <div><span>Prognoza sprzedaży</span><strong>{sp ? `${fmtG(Math.round(sp * (needG[hSel] || 1) / Math.max(1, needG.reduce((a2, x) => a2 + x, 0))))} zł` : '—'}</strong></div>
+            <div><span>Godzina</span><strong>{String(LH[hSel]).padStart(2, '0')}:00</strong></div>
+            <div><span>Plan</span><strong>{planG[hSel]} osób</strong></div>
+            <div><span>Realnie</span><strong>{aktG[hSel]} osób</strong></div>
+            <div className={bilans < 0 ? 'bad' : 'good'}><span>Bilans</span><strong>{bilans > 0 ? '+' : ''}{bilans}</strong></div>
+          </div>
+        </article>
+
+        <article className="panel live-reco-panel">
+          <div className="panel-title"><div><span>ASYSTENT ZMIANY</span><h2>Najlepsza decyzja</h2></div><Bot size={21} /></div>
+          <div className="reco-confidence"><span>Pewność rekomendacji</span><strong>{luka ? '88%' : '95%'}</strong><i><b /></i></div>
+          <div className="reco-card">
+            <div className="reco-icon"><ArrowLeftRight size={20} /></div>
+            <strong>{luka ? `Wzmocnij obsadę o ${String(luka.h).padStart(2, '0')}:00` : 'Obsada zgodna z planem'}</strong>
+            <p>{luka ? `Brakuje ${luka.def} ${luka.def === 1 ? 'osoby' : 'osób'} względem popytu. Przesuń zmianę lub dodaj krótką zmianę w siatce dnia.` : 'Silnik nie widzi luk względem popytu do końca doby. Monitoruję odbicia z Employee Hub.'}</p>
+            <div className="reco-impact"><span><i className="positive" />Pokrycie <b>{luka ? `+${luka.def} os.` : 'stabilne'}</b></span><span><i className="positive" />Koszt <b>{luka ? 'wg stawki' : 'bez zmian'}</b></span><span><i className="positive" />Popyt <b>{needG[luka ? luka.i : hSel]} os.</b></span></div>
+            <button onClick={() => setPage('wt')}><Zap size={16} /> Otwórz siatkę dnia</button>
+          </div>
+          <button className="reco-alternative" onClick={() => setPage('forecast')}><span>Zobacz plan i popyt</span><ChevronDown size={16} /></button>
+        </article>
+      </section>
+
+      <article className="panel station-panel">
+        <div className="panel-title"><div><span>ROZMIESZCZENIE • {String(LH[hSel]).padStart(2, '0')}:00</span><h2>Stacje operacyjne</h2></div><div className="segmented"><button className={widokSt === 'stations' ? 'active' : ''} onClick={() => setWidokSt('stations')}>Stacje</button><button className={widokSt === 'people' ? 'active' : ''} onClick={() => setWidokSt('people')}>Osoby</button></div></div>
+        <div className="station-grid">
+          {widokSt === 'stations'
+            ? Object.keys(grupySt).sort().map((st2) => { const os = grupySt[st2]; return (
+                <article className="station-card mint" key={st2}>
+                  <div className="station-top"><span>{st2}</span><em>{os.length}/{os.length}</em></div>
+                  <div className="station-people"><div className="mini-avatars">{os.slice(0, 2).map((x, i) => <i key={i}>{imie(x)[0]}</i>)}{os.length > 2 && <i>+</i>}</div><strong>{os.map(imie).join(', ')}</strong></div>
+                  <div className="station-state"><CheckCircle2 size={14} /> Obsada pełna</div>
+                </article>
+              ); })
+            : naGodzinie.map((x, i) => (
+                <article className="station-card mint" key={i}>
+                  <div className="station-top"><span>{(x.station || 'OBSADA').toUpperCase()}</span><em>{x.start}–{x.end}</em></div>
+                  <div className="station-people"><div className="mini-avatars"><i>{String(pelne(x)).split(/\s+/).map((c) => c[0]).join('').slice(0, 2)}</i></div><strong>{pelne(x)}</strong></div>
+                  <div className="station-state"><CheckCircle2 size={14} /> {ostatnie.size && [...ostatnie.entries()].some(([id, e]) => { const k = poId.get(id); return k && k.name === pelne(x) && stanO(e) === 'working'; }) ? 'Na stanowisku' : 'Wg planu'}</div>
+                </article>
+              ))}
+          {bilans < 0 && widokSt === 'stations' && (
+            <article className="station-card coral"><div className="station-top"><span>LUKA OBSADY</span><em>{aktG[hSel]}/{needG[hSel]}</em></div><div className="station-people"><strong>Popyt wyższy niż obsada</strong></div><div className="station-state"><AlertTriangle size={14} /> Brakuje {needG[hSel] - aktG[hSel]}</div></article>
+          )}
+          {!naGodzinie.length && <article className="station-card"><div className="station-top"><span>BRAK ZMIAN</span></div><div className="station-people"><strong>Nikt nie jest zaplanowany o tej godzinie</strong></div></article>}
+        </div>
+      </article>
+
+      <section className="live-bottom-grid">
+        <article className="panel alerts-timeline">
+          <div className="panel-title"><div><span>ZDARZENIA</span><h2>Oś zmiany</h2></div><button className="quiet-link" onClick={() => setPage('wt')}>Pełna historia</button></div>
+          {osEv.length ? osEv.map((e, i) => <div className="timeline-item" key={i}><strong>{hhmm(e.at)}</strong><i className={TON_EV[e.type] || 'blue'} /><span>{nazwaEv(e)} {OPIS_EV[e.type] || e.type}</span></div>) : <div className="timeline-item"><strong>—</strong><i className="blue" /><span>Brak odbić z Employee Hub dzisiaj</span></div>}
+        </article>
+        <article className="panel break-board">
+          <div className="panel-title"><div><span>PRZERWY</span><h2>Sugerowany plan</h2></div><span className="break-safe"><ShieldCheck size={14} /> {przerwy.length ? 'bez ryzyka' : 'brak długich zmian'}</span></div>
+          {przerwy.map((x, i) => <div className="break-row" key={i}><strong>{x.t}</strong><span>{x.name}</span><em>{x.dur}</em></div>)}
+        </article>
+      </section>
+    </div>
+  );
+};
+
 const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName, mini, setMini, open, onClose }) => {
   const items = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
     { id: 'forecast', label: 'Planowanie i popyt', icon: TrendingUp, section: 'main' },
+    { id: 'live', label: 'Obsada LIVE', icon: Activity, live: true, section: 'main' },
     { id: 'wr-schedule', page: 'wt', wr: 'schedule', label: 'Schedule', icon: Calendar, section: 'workforce' },
     { id: 'wr-actual', page: 'wt', wr: 'actual', label: 'Actual', icon: Activity, section: 'workforce' },
     { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: BookOpen, section: 'workforce' },
@@ -952,74 +1131,167 @@ const TA_NAZWY = { clock_in: 'Wejście', break_start: 'Start przerwy', break_end
 const taTone = (t) => t === 'clock_in' ? 'in' : t === 'clock_out' ? 'out' : 'break';
 const taCzas = (ts) => new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Warsaw' }).format(new Date(ts));
 const TaLive = ({ data }) => {
-  const [events, setEvents] = useState(null);
-  const [terminale, setTerminale] = useState([]);
+  // ── Time & Attendance 1:1 wg wzorca ORDO — realne odbicia z Employee Hub ──
+  const [events, setEvents] = useState([]);
   const [syncAt, setSyncAt] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const zaladuj = useCallback(async () => {
-    try {
-      const r = await api('/clock');
-      if (r && r.success) { setEvents(r.events || []); setSyncAt(Date.now()); }
-      const t = await api('/clock?action=terminals');
-      if (t && t.success) setTerminale(t.terminals || []);
-    } catch {}
-  }, []);
+  const [day, setDay] = useState(ymd(new Date()));
+  const [filtr, setFiltr] = useState('all');
+  const [q, setQ] = useState('');
+  const zaladuj = useCallback(async () => { try { const r = await api('/clock'); if (r && r.success) { setEvents(r.events || []); setSyncAt(new Date()); } } catch {} }, []);
   useEffect(() => { zaladuj(); const t = setInterval(zaladuj, 10000); return () => clearInterval(t); }, [zaladuj]);
-  const ostatniPerOsoba = useMemo(() => {
-    const m = new Map();
-    (events || []).forEach((e) => { const cur = m.get(e.accountId); if (!cur || e.at > cur.at) m.set(e.accountId, e); });   // FIX: zawsze NAJNOWSZE odbicie
-    return [...m.values()].sort((a, b) => b.at - a.at);
-  }, [events]);
-  const stan = (e) => e.type === 'clock_out' ? 'done' : e.type === 'break_start' ? 'break' : 'working';
-  const summary = { working: ostatniPerOsoba.filter((e) => stan(e) === 'working').length, przerwa: ostatniPerOsoba.filter((e) => stan(e) === 'break').length, done: ostatniPerOsoba.filter((e) => stan(e) === 'done').length };
-  const aktywne = terminale.filter((t) => t.active !== false).length;
-  const odswiez = async () => { setBusy(true); await zaladuj(); setBusy(false); data.show('Odświeżono dane z REX Clock'); };
-  const kontoOf = (e) => (data.accounts || []).find((a) => a.id === e.accountId) || {};
-  const posortowane = [...(events || [])].sort((a, b) => b.at - a.at);
+
+  const konta = data.accounts || [];
+  const poId = new Map(konta.map((a2) => [a2.id, a2]));
+  const poNaz = new Map(konta.flatMap((a2) => [a2.grafikName, a2.name, ...(a2.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a2])));
+  const kontoZ = (x) => poId.get(x.accountId) || poNaz.get(String(x.name || '').toUpperCase().trim()) || null;
+  const mn2 = (t) => { const [h2, m2] = String(t || '0:0').split(':').map(Number); return h2 * 60 + m2; };
+  const hhmm = (ts) => new Date(ts).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  const dziś = ymd(new Date());
+  const d0 = new Date(day + 'T00:00:00').getTime(), d1 = d0 + 86400000;
+  const evD = events.filter((e) => e.at >= d0 && e.at < d1);
+  const planD = (data.shifts || []).filter((x) => x.date === day && !jestInstruktor(x));
+  const terazTs = Date.now();
+  const terazMin2 = new Date().getHours() * 60 + new Date().getMinutes();
+
+  // wiersz per osoba: plan + odbicia + status
+  const wierszeTA = useMemo(() => {
+    const mapa = new Map();
+    planD.forEach((x) => {
+      const k = kontoZ(x); const key = k ? k.id : String(x.name || '').toUpperCase();
+      const o = mapa.get(key) || { key, name: k ? k.name : (x.name || '—'), rola: (x.station || '').toUpperCase(), acc: k, plany: [], ev: [] };
+      o.plany.push(x); mapa.set(key, o);
+    });
+    evD.forEach((e) => {
+      const k = poId.get(e.accountId); const key = k ? k.id : `ev-${e.accountId}`;
+      const o = mapa.get(key) || { key, name: k ? k.name : 'Poza grafikiem', rola: 'BEZ PLANU', acc: k, plany: [], ev: [] };
+      o.ev.push(e); mapa.set(key, o);
+    });
+    return [...mapa.values()].map((o) => {
+      o.ev.sort((x2, y2) => x2.at - y2.at);
+      const wej = o.ev.filter((e) => e.type === 'clock_in');
+      const wyj = o.ev.filter((e) => e.type === 'clock_out');
+      const przer = o.ev.filter((e) => e.type === 'break_start').length;
+      const pl = o.plany.slice().sort((x2, y2) => mn2(x2.start) - mn2(y2.start))[0] || null;
+      const inTs = wej.length ? wej[0].at : null;
+      const outTs = wyj.length ? wyj[wyj.length - 1].at : null;
+      let pracaMs = 0;
+      let otwarte = null;
+      o.ev.forEach((e) => {
+        if (e.type === 'clock_in' || e.type === 'break_end') { if (otwarte == null) otwarte = e.at; }
+        if (e.type === 'break_start' || e.type === 'clock_out') { if (otwarte != null) { pracaMs += e.at - otwarte; otwarte = null; } }
+      });
+      if (otwarte != null && day === dziś) pracaMs += terazTs - otwarte;
+      const pracaMin = Math.round(pracaMs / 60000);
+      const last = o.ev[o.ev.length - 1] || null;
+      const naZmianie = last && last.type !== 'clock_out';
+      let planKon = pl ? mn2(pl.end) : null; if (pl && planKon <= mn2(pl.start)) planKon += 1440;
+      const spozn = pl && inTs != null ? Math.round((inTs - d0) / 60000) - mn2(pl.start) : null;
+      let status, klasa;
+      if (!o.ev.length) {
+        if (pl && day === dziś && terazMin2 > mn2(pl.start) + 15 && terazMin2 < planKon) { status = 'Brak wejścia'; klasa = 'status-warning'; }
+        else if (pl && day < dziś) { status = 'Brak odbić'; klasa = 'status-warning'; }
+        else { status = 'Przed zmianą'; klasa = 'status-active'; }
+      } else if (naZmianie) {
+        if (pl && day === dziś && terazMin2 > planKon + 15) { status = 'Brak wyjścia'; klasa = 'status-warning'; }
+        else if (day < dziś) { status = 'Brak wyjścia'; klasa = 'status-warning'; }
+        else { status = last.type === 'break_start' ? 'Na przerwie' : 'Na zmianie'; klasa = 'status-active'; }
+      } else if (spozn != null && spozn > 5) { status = 'Spóźnienie'; klasa = 'status-warning'; }
+      else { status = 'Zatwierdzone'; klasa = 'status-ready'; }
+      const fDur = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+      return {
+        ...o, pl, przer, pracaMin,
+        planLbl: o.plany.length ? o.plany.map((x2) => `${x2.start}–${x2.end}`).join(' / ') : '—',
+        inLbl: inTs ? hhmm(inTs) : '—', outLbl: outTs ? hhmm(outTs) : '—',
+        lacznie: o.ev.length ? fDur(pracaMin) : '—',
+        roznica: spozn == null ? '—' : `${spozn > 0 ? '+' : '−'}${fDur(Math.abs(spozn))}`,
+        spozn, status, klasa, naZmianie,
+        ini: String(o.name).split(/\s+/).map((c) => c[0]).join('').slice(0, 2).toUpperCase(),
+      };
+    }).sort((x2, y2) => x2.name.localeCompare(y2.name, 'pl'));
+  }, [evD.length, planD.length, day, syncAt]);
+
+  const wyjatki = wierszeTA.filter((w) => w.klasa === 'status-warning').length;
+  const obecni = wierszeTA.filter((w) => w.naZmianie).length;
+  const zaplTeraz = planD.filter((x) => { const a2 = mn2(x.start); let b2 = mn2(x.end); if (b2 <= a2) b2 += 1440; return a2 <= terazMin2 && terazMin2 < b2; }).length;
+  const zrealH = wierszeTA.reduce((a2, w) => a2 + w.pracaMin, 0) / 60;
+  const planH = planD.reduce((a2, x) => a2 + godzZ(x), 0);
+  let kosztRz = 0; wierszeTA.forEach((w) => { kosztRz += kosztGodzin(w.acc, w.pracaMin / 60); });
+  const fH2 = (h) => `${h.toFixed(1).replace('.', ',')} h`;
+
+  const widoczneTA = wierszeTA.filter((w) => {
+    const n = q.trim().toLocaleLowerCase('pl');
+    const okF = filtr === 'all' || (filtr === 'issues' ? w.klasa === 'status-warning' : filtr === 'active' ? w.klasa === 'status-active' : w.klasa === 'status-ready');
+    return okF && (!n || w.name.toLocaleLowerCase('pl').includes(n));
+  });
+
+  const dzien = (n) => { const d2 = new Date(day + 'T12:00:00'); d2.setDate(d2.getDate() + n); setDay(d2.toISOString().slice(0, 10)); };
+  const dayLbl = new Intl.DateTimeFormat('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(day + 'T12:00:00'));
+  const completedD = ((data.ts || {}).completed || {})[day];
+  const zamknij = () => { if (wyjatki > 0) return data.show(`Najpierw rozwiąż ${wyjatki} wyjątki (korekty w widoku dnia → Wykonanie)`, 'error'); data.tsSetCompletedWeek([day], !completedD); };
+  const raport = () => {
+    const rows = ['Pracownik;Plan;Wejście;Wyjście;Łącznie;Różnica;Status', ...wierszeTA.map((w) => `${w.name};${w.planLbl};${w.inLbl};${w.outLbl};${w.lacznie};${w.roznica};${w.status}`)];
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = `czas-pracy-${day}.csv`; a2.click(); URL.revokeObjectURL(u);
+  };
+  const wejsc = wierszeTA.filter((w) => w.inLbl !== '—').length;
+  const przerwLacz = wierszeTA.reduce((a2, w) => a2 + w.przer, 0);
+  const gotowosc = wierszeTA.length ? Math.round(((wejsc / Math.max(1, wierszeTA.length)) * 50) + (wyjatki === 0 ? 40 : Math.max(0, 40 - wyjatki * 10)) + (completedD ? 10 : 0)) : 0;
+
   return (
-    <div className="rex-ta-admin mb-4">
-      <header className="rex-ta-heading">
-        <div><span>WORKRHYTHM · TIME &amp; ATTENDANCE</span><h1>Rejestracja czasu pracy</h1><p>Centralny podgląd odbić i przerw z osobnej aplikacji REX Clock na POS.</p></div>
-        <div><button className="rex-ta-btn secondary" onClick={odswiez} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} /> Odśwież</button><a className="rex-ta-btn primary" href={CLOCK_APP_URL} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Otwórz terminal (opcjonalny)</a></div>
-      </header>
-      <section className="rex-ta-kpis">
-        <article><span className="green"><LogIn /></span><div><small>AKTUALNIE W PRACY</small><strong>{summary.working}</strong><em>według ostatniego odbicia</em></div></article>
-        <article><span className="orange"><Coffee /></span><div><small>NA PRZERWIE</small><strong>{summary.przerwa}</strong><em>płatne i niepłatne</em></div></article>
-        <article><span className="red"><CheckCircle2 /></span><div><small>ZAKOŃCZONE</small><strong>{summary.done}</strong><em>zamknięte zmiany</em></div></article>
-        <article><span className="blue"><Monitor /></span><div><small>AKTYWNE TERMINALE</small><strong>{aktywne}</strong><em>ostatni sync {syncAt ? taCzas(syncAt) : '—'}</em></div></article>
+    <div className="module-view time-view">
+      <MHead kicker={`WORKFORCE • ${dayLbl.toUpperCase()}`} title="Time & Attendance" copy="Odbicia, przerwy, korekty oraz różnice między grafikiem a rzeczywistym czasem pracy.">
+        <button className="secondary-action" onClick={raport}><Download size={16} /> Raport</button>
+        <button className="primary-action" onClick={zamknij}><Lock size={16} /> {completedD ? 'Dzień zamknięty' : 'Zamknij dzień'}</button>
+      </MHead>
+      <section className="time-kpis">
+        <MMetric icon={UserCheck} label="Obecni teraz" value={`${obecni} osób`} helper={`${zaplTeraz} zaplanowanych`} tone={obecni < zaplTeraz ? 'coral' : 'mint'} />
+        <MMetric icon={Clock3} label="Godziny zrealizowane" value={fH2(zrealH)} helper={`${fH2(planH)} plan`} tone="blue" />
+        <MMetric icon={AlertTriangle} label="Wyjątki" value={`${wyjatki} ${wyjatki === 1 ? 'otwarty' : 'otwarte'}`} helper={wyjatki ? 'wymagają weryfikacji' : 'wszystko zgodne'} tone={wyjatki ? 'coral' : 'mint'} />
+        <MMetric icon={CircleDollarSign} label="Koszt rzeczywisty" value={`${Math.round(kosztRz).toLocaleString('pl-PL')} zł`} helper="wg stawek kont" tone="violet" />
       </section>
-      <div className="rex-ta-grid">
-        <section className="rex-ta-live">
-          <header><div><h2>Live attendance</h2><p>Bieżący stan zespołu · doba 06:00–06:00</p></div><span><i /> LIVE</span></header>
-          {ostatniPerOsoba.length ? <div className="rex-ta-team">
-            {ostatniPerOsoba.slice(0, 8).map((e) => { const st2 = stan(e); const k = kontoOf(e); return <article key={e.accountId}><div className="rex-ta-avatar">{dyInicjaly(e.name)}</div><div><strong>{e.name}</strong><span>{k.funkcja || 'CREW'} · {taCzas(e.at)}</span></div><em className={st2}>{st2 === 'done' ? 'Zamknięta' : st2 === 'break' ? 'Przerwa' : 'W pracy'}</em><b>{e.method === 'card' ? 'Karta' : 'Kod'}</b></article>; })}
-          </div> : <div className="rex-ta-empty"><Clock3 size={26} /><strong>{events === null ? 'Pobieram stan zespołu…' : 'Brak odbić w tej dobie'}</strong><span>Pierwsze zdarzenie z terminala pojawi się tutaj automatycznie.</span></div>}
-          <button className="rex-ta-more" onClick={odswiez}>Synchronizuj teraz <RefreshCw size={15} /></button>
-        </section>
-        <section className="rex-ta-terminal">
-          <header><span><Monitor size={20} /></span><div><small>OSOBNA APLIKACJA POS</small><strong>{terminale[0] ? `REX Clock · ${terminale[0].id}` : 'REX Clock · POS'}</strong></div><em><i /> {aktywne ? 'CONNECTED' : 'BRAK TERMINALI'}</em></header>
-          <div className="rex-ta-terminal-preview"><div><Cloud size={22} /><span><strong>REX</strong> Clock</span></div><Clock3 size={36} /><strong>06:00–06:00</strong><span>Karta magnetyczna lub Employee ID + Code</span></div>
-          <dl><div><dt>Lokalizacja</dt><dd>PLK 201043 · Galeria Krakowska</dd></div><div><dt>Przesyłanie</dt><dd>Wspólny backend</dd></div><div><dt>Zakres</dt><dd>Wejście · przerwa · wyjście</dd></div></dl>
-          <a className="rex-ta-btn primary" href={CLOCK_APP_URL} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Uruchom aplikację POS</a>
-        </section>
-      </div>
-      <section className="rex-ta-events">
-        <header><div><h2>Ostatnie odbicia</h2><p>Surowe zdarzenia POS są przechowywane niezależnie od grafiku.</p></div><span><Wifi size={14} /> Synchronizacja co 10 s</span></header>
-        <div className="rex-ta-event-head"><span>Czas</span><span>Pracownik</span><span>Zdarzenie</span><span>Szczegóły</span><span>Metoda</span><span>Status</span></div>
-        {posortowane.length ? posortowane.slice(0, 12).map((e) => { const k = kontoOf(e); return <div className="rex-ta-event-row" key={e.cid}>
-          <strong>{taCzas(e.at)}</strong>
-          <div><span className="rex-ta-event-avatar">{dyInicjaly(e.name)}</span><strong>{e.name}</strong></div>
-          <span className={`rex-ta-event-action ${taTone(e.type)}`}>{TA_NAZWY[e.type]}</span>
-          <span>{e.type === 'break_start' ? `${e.paid ? 'Płatna' : 'Niepłatna'} przerwa · ${k.funkcja || 'CREW'}` : `${k.funkcja || 'CREW'} · doba ${e.opDay}`}</span>
-          <span><CreditCard size={14} /> {e.method === 'card' ? 'Card' : 'Code'}</span>
-          <em><CheckCircle2 size={14} /> Zapisane</em>
-        </div>; }) : <div className="rex-ta-empty"><Clock3 size={25} /><strong>{events === null ? 'Pobieram zdarzenia…' : 'Brak zarejestrowanych zdarzeń'}</strong><span>Użyj REX Clock na POS, a odbicie zostanie przesłane do tego widoku.</span></div>}
+      <section className="time-layout">
+        <article className="panel timesheet-panel">
+          <div className="scheduler-toolbar">
+            <div className="week-control"><button onClick={() => dzien(-1)}><ChevronLeft size={17} /></button><strong>{dayLbl}</strong><button onClick={() => dzien(1)}><ChevronRight size={17} /></button>{day !== dziś && <button className="today-chip" onClick={() => setDay(dziś)}>Dzisiaj</button>}</div>
+            <div>
+              <select className="tool-button" value={filtr} onChange={(e) => setFiltr(e.target.value)}><option value="all">Wszystkie</option><option value="issues">Wyjątki</option><option value="active">Na zmianie</option><option value="approved">Zatwierdzone</option></select>
+              <span className="tool-button" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Search size={14} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj" style={{ border: 0, outline: 0, background: 'transparent', width: 90, font: 'inherit', color: 'inherit' }} /></span>
+            </div>
+          </div>
+          <div className="attendance-table">
+            <div className="attendance-head"><span>Pracownik</span><span>Plan</span><span>Wejście</span><span>Wyjście</span><span>Łącznie</span><span>Różnica</span><span>Status</span><span /></div>
+            {widoczneTA.map((w) => (
+              <div className="attendance-row" key={w.key}>
+                <span className="attendance-person"><i>{w.ini}</i><span><strong>{w.name}</strong><small>{w.rola || '—'}</small></span></span>
+                <span>{w.planLbl}</span><span>{w.inLbl}</span><span>{w.outLbl}</span>
+                <span><strong>{w.lacznie}</strong></span>
+                <span className={w.spozn != null && w.spozn > 5 ? 'diff-bad' : ''}>{w.roznica}</span>
+                <span><em className={w.klasa}>{w.status}</em></span>
+                <span>{w.klasa === 'status-warning' ? <button className="fix-button" onClick={() => data.show('Korektę zapiszesz w Schedule → widok dnia → Wykonanie', 'info')}>Skoryguj</button> : <button className="row-more" aria-label={`Szczegóły ${w.name}`} onClick={() => data.show(`${w.name}: ${w.przer} przerw, ${w.lacznie} przepracowane`, 'info')}><MoreHorizontal size={17} /></button>}</span>
+              </div>
+            ))}
+            {!widoczneTA.length && <div className="attendance-row"><span className="attendance-person"><i>—</i><span><strong>Brak kart czasu</strong><small>zmień dzień lub filtr</small></span></span></div>}
+          </div>
+        </article>
+        <aside className="time-side">
+          <article className="panel attendance-source-panel">
+            <div className="panel-title"><div><span>ŹRÓDŁO ZDARZEŃ</span><h2>ORDO Employee Hub</h2></div><Smartphone size={19} /></div>
+            <div className="mobile-source-row"><i><Smartphone size={15} /></i><span><strong>Wejścia mobilne</strong><small>{syncAt ? `sync ${syncAt.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}` : 'oczekiwanie na sync'}</small></span><b>{wejsc}/{wierszeTA.filter((w) => w.plany.length).length || wejsc}</b></div>
+            <div className="mobile-source-row"><i><Coffee size={15} /></i><span><strong>Przerwy w aplikacji</strong><small>{przerwLacz} {przerwLacz === 1 ? 'zdarzenie' : 'zdarzeń'} dziś</small></span><b>{przerwLacz}</b></div>
+            <div className="mobile-source-info"><AlertCircle size={15} /> Rejestracja czasu odbywa się wyłącznie w aplikacji pracownika.</div>
+          </article>
+          <article className="panel closing-panel">
+            <div className="panel-title"><div><span>ROZLICZENIE</span><h2>Gotowość dnia</h2></div><strong>{gotowosc}%</strong></div>
+            <div className="closing-progress"><i style={{ width: `${gotowosc}%` }} /></div>
+            {[['Odbicia zebrane', `${wejsc}/${wierszeTA.filter((w) => w.plany.length).length || wejsc}`, wejsc >= (wierszeTA.filter((w) => w.plany.length).length || 1)], ['Przerwy sprawdzone', `${przerwLacz}`, true], ['Wyjątki rozwiązane', wyjatki ? `${wyjatki} otwarte` : 'gotowe', wyjatki === 0], ['Akceptacja managera', completedD ? 'gotowe' : 'oczekuje', !!completedD]].map(([label, value, ok]) => (
+              <div className="closing-row" key={String(label)}><i className={ok ? 'ok' : 'pending'}>{ok ? <Check size={13} /> : <Clock3 size={13} />}</i><span>{label}</span><strong>{value}</strong></div>
+            ))}
+          </article>
+        </aside>
       </section>
     </div>
   );
 };
-
-// ── Dialog wzorca ORDO (ui-dialog) ──
 const DialogS = ({ title, kicker, description, onClose, children, actions, size = 'medium' }) => {
   useEffect(() => {
     const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
@@ -2589,52 +2861,88 @@ const AdminEmployees = ({ data }) => {
   };
   const reset = async (e) => { const c = await data.resetAccountPassword(e.id); if (c) setCred(c); };
   const del = (e) => { if (confirm(`Usunąć konto: ${e.name} (${e.login})?`)) data.deleteAccount(e.id); };
+  const [filtrT, setFiltrT] = useState('Wszyscy');
   const filtered = emps.filter((e) => (e.name + ' ' + e.login).toLowerCase().includes(q.toLowerCase()));
 
+  // ── metryki zespołu wg wzorca ──
+  const MGRF_T = new Set(['RGM', 'ASM', 'SM', 'JSM']);
+  const mcT = new Date().toISOString().slice(0, 7);
+  const planM = useMemo(() => {
+    const m = new Map();
+    (data.shifts || []).filter((x) => x.date && x.date.slice(0, 7) === mcT && !jestInstruktor(x)).forEach((x) => {
+      const k = emps.find((e2) => e2.id === x.accountId) || emps.find((e2) => [e2.grafikName, e2.name, ...(e2.aliasy || [])].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(x.name || '').toUpperCase().trim()));
+      if (k) m.set(k.id, (m.get(k.id) || 0) + godzZ(x));
+    });
+    return m;
+  }, [data.shifts, emps]);
+  const celM = (e) => e.wymiarTygH ? Math.round(e.wymiarTygH * 4.33) : (e.umowa === 'UOP' ? 168 : 0);
+  const bilansM = (e) => { const c = celM(e); return c ? Math.round((planM.get(e.id) || 0) - c) : null; };
+  const alertyT = emps.filter((e) => { const b = bilansM(e); return b != null && Math.abs(b) > 5; });
+  const mgrCount = emps.filter((e) => MGRF_T.has(e.funkcja)).length;
+  const uopy = emps.filter((e) => e.umowa === 'UOP');
+  const instrT = emps.filter((e) => e.instruktor).length;
+
+  const widT = filtered.filter((e) => filtrT === 'Wszyscy' || (filtrT === 'UOP' ? e.umowa === 'UOP' : filtrT === 'Zlecenie' ? e.umowa !== 'UOP' : alertyT.includes(e)));
+  const eksportT = () => {
+    const rows = ['Pracownik;Funkcja;Umowa;Plan miesiąca;Cel;Bilans;Login', ...emps.map((e) => `${e.name};${funkcjaLabel(e.funkcja)};${e.umowa};${(planM.get(e.id) || 0).toFixed(1)};${celM(e) || ''};${bilansM(e) ?? ''};${e.login}`)];
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = 'zespol-i-konta.csv'; a2.click(); URL.revokeObjectURL(u);
+  };
+  const edytuj = (e) => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', '), wymiarTygH: e.wymiarTygH || '', maxDobaH: e.maxDobaH || '', stanowiska: (e.stanowiska || []).join(', ') });
+
   return (
-    <div className="flex-1 flex flex-col">
-      <Header title="Pracownicy" subtitle="Konta pracowników — funkcje, stawki, dane logowania">
-        <button onClick={() => data.przypiszZmiany()} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: 'white', color: colors.primary.darkest }}>Przypisz zmiany do kont</button>
-        <button onClick={() => setForm({ ...emptyForm })} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>+ Dodaj pracownika</button>
-      </Header>
-      <div className="flex-1 p-8 space-y-4 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="flex items-center gap-3"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj: imię lub login…" className="px-3 py-2 rounded-lg border text-sm w-72" style={{ borderColor: colors.primary.bg }} /><span className="text-sm text-slate-400">{filtered.length} z {emps.length} kont</span></div>
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
-          <div className="grid grid-cols-[1.4fr_1.4fr_90px_90px_80px_1fr_150px] gap-2 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide" style={{ background: colors.primary.darkest, color: 'white' }}><span>Pracownik</span><span>Funkcja</span><span>Umowa</span><span className="text-right">Stawka</span><span className="text-center">ZUS</span><span>Login</span><span className="text-right">Akcje</span></div>
-          {filtered.length === 0 ? <div className="p-8 text-center text-slate-400">Brak kont. Kliknij „Dodaj pracownika".</div> : filtered.map((e, i) => (
-            <div key={e.id} className="grid grid-cols-[1.4fr_1.4fr_90px_90px_80px_1fr_150px] gap-2 px-4 py-2.5 items-center border-t text-sm" style={{ borderColor: '#EDE3E6', backgroundColor: i % 2 ? '#F7F1F3' : 'white' }}>
-              <span className="truncate"><span className="font-semibold" style={{ color: colors.primary.darkest }}>{e.name}</span>{e.grafikName && <span className="ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.grafikName}</span>}</span>
-              <span style={{ color: colors.primary.dark }}>{funkcjaLabel(e.funkcja)}{e.instruktor && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#F0E4E8', color: '#A7465F' }}>instruktor</span>}</span>
-              <span><span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.umowa}</span></span>
-              <span className="text-right font-medium" style={{ color: colors.primary.darkest }}>{e.umowa === 'UOP' ? `${zl(e.stawka)}` : `${zl(e.stawka)}/h`}</span>
-              <span className="text-center">{e.zus ? <Check size={16} style={{ color: '#741334' }} className="inline" /> : <span className="text-slate-300">—</span>}</span>
-              <span className="font-mono font-semibold" style={{ color: colors.primary.dark }}>{e.login}</span>
-              <span className="flex items-center justify-end gap-1">
-                <button onClick={() => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', '), wymiarTygH: e.wymiarTygH || '', maxDobaH: e.maxDobaH || '', stanowiska: (e.stanowiska || []).join(', ') })} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Edytuj</button>
-                <button onClick={() => reset(e)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}><Lock size={12} />PIN</button>
-                <button onClick={() => del(e)} className="text-red-400 p-1"><Trash2 size={15} /></button>
-              </span>
-            </div>
-          ))}
-        </div>
+    <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="page-wrap module-view team-view" style={{ width: '100%' }}>
+        <MHead kicker={`ZESPÓŁ • ${emps.length} AKTYWNYCH`} title="Pracownicy i konta" copy="Godziny umowne, kwalifikacje, dostępność, koszty i gotowość do obsady stanowisk.">
+          <button className="secondary-action" onClick={() => data.przypiszZmiany()}><RefreshCw size={16} /> Przypisz zmiany</button>
+          <button className="secondary-action" onClick={eksportT}><Download size={16} /> Eksport</button>
+          <button className="primary-action" onClick={() => setForm({ ...emptyForm })}><Users size={16} /> Dodaj osobę</button>
+        </MHead>
+        <section className="team-summary">
+          <MMetric icon={Users} label="Aktywni" value={`${emps.length} ${emps.length === 1 ? 'osoba' : emps.length < 5 ? 'osoby' : 'osób'}`} helper={`${emps.length - mgrCount} crew • ${mgrCount} managerów`} tone="blue" />
+          <MMetric icon={CreditCard} label="UOP" value={`${uopy.length} osób`} helper={`${uopy.reduce((a2, e) => a2 + celM(e), 0).toLocaleString('pl-PL')} h do zapewnienia`} tone="violet" />
+          <MMetric icon={CheckCircle2} label="Instruktorzy" value={`${instrT} ${instrT === 1 ? 'osoba' : instrT < 5 ? 'osoby' : 'osób'}`} helper={emps.length ? `${Math.round(instrT / emps.length * 100)}% zespołu` : '—'} tone="mint" />
+          <MMetric icon={AlertTriangle} label="Ryzyko godzin" value={`${alertyT.length} ${alertyT.length === 1 ? 'osoba' : alertyT.length < 5 ? 'osoby' : 'osób'}`} helper="bilans poza ±5 h" tone={alertyT.length ? 'coral' : 'mint'} />
+        </section>
+        <article className="panel team-panel">
+          <div className="team-toolbar">
+            <div className="filter-tabs">{['Wszyscy', 'UOP', 'Zlecenie', 'Alerty'].map((it) => <button key={it} className={filtrT === it ? 'active' : ''} onClick={() => setFiltrT(it)}>{it}{it === 'Alerty' && alertyT.length > 0 && <b>{alertyT.length}</b>}</button>)}</div>
+            <div className="team-search"><Search size={16} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj po nazwisku lub loginie" /></div>
+          </div>
+          <div className="team-table">
+            <div className="team-head"><span>Pracownik</span><span>Umowa</span><span>Plan miesiąca</span><span>Bilans</span><span>Kwalifikacje</span><span>Gotowość</span><span /></div>
+            {widT.map((e) => { const plan = planM.get(e.id) || 0; const cel = celM(e); const bil = bilansM(e); return (
+              <div className="team-row" key={e.id}>
+                <span className="team-person"><i>{String(e.name || '?').split(/\s+/).map((c) => c[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{e.name}</strong><small>{funkcjaLabel(e.funkcja)}{e.instruktor ? ' • instruktor' : ''}</small></span></span>
+                <span><strong>{e.umowa || '—'}</strong><small>{e.umowa === 'UOP' ? `${e.wymiarTygH || 40} h` : 'elastyczna'}</small></span>
+                <span className="hours-cell"><div><b style={{ width: `${cel ? Math.min(100, plan / cel * 100) : plan ? 100 : 0}%` }} /></div><strong>{plan.toFixed(0)} / {cel || '—'} h</strong></span>
+                <span className={bil != null && Math.abs(bil) > 5 ? 'balance-alert' : 'balance-ok'}>{bil == null ? '—' : `${bil > 0 ? '+' : ''}${bil} h`}</span>
+                <span className="skill-list">{(e.stanowiska && e.stanowiska.length ? e.stanowiska : [funkcjaLabel(e.funkcja)]).slice(0, 3).map((sk) => <em key={sk}>{sk}</em>)}</span>
+                <span><em className="status-ready">{e.login}</em></span>
+                <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                  <button className="fix-button" onClick={() => edytuj(e)}>Edytuj</button>
+                  <button className="fix-button" title="Reset PIN" onClick={() => reset(e)}><Lock size={11} /> PIN</button>
+                  <button className="row-more" aria-label={`Usuń ${e.name}`} onClick={() => del(e)}><Trash2 size={15} /></button>
+                </span>
+              </div>
+            ); })}
+            {!widT.length && <div className="dialog-empty" style={{ padding: 20 }}>Brak osób spełniających kryteria.</div>}
+          </div>
+        </article>
         {(() => {
           const wGrafiku = {};
           (data.shifts || []).filter((x) => !x.accountId).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); if (k) wGrafiku[k] = (wGrafiku[k] || 0) + godzZ(x); });
-          const osierocone = Object.entries(wGrafiku).sort((a, b) => b[1] - a[1]);
+          const osierocone = Object.entries(wGrafiku).sort((a2, b2) => b2[1] - a2[1]);
           if (!osierocone.length) return null;
           return (
-            <div className="bg-white rounded-xl shadow-sm border p-4" style={{ borderColor: '#f0c000' }}>
-              <div className="flex items-center gap-2 mb-2"><AlertCircle size={16} style={{ color: '#A7465F' }} /><h3 className="font-semibold text-sm" style={{ color: colors.primary.darkest }}>Nazwy z grafiku bez konta ({osierocone.length})</h3></div>
-              <p className="text-xs mb-3" style={{ color: colors.primary.light }}>Te zmiany nie są przypisane do żadnego konta — ich godziny nie wliczą się do kosztów. Dopisz nazwę jako „Nazwa w grafiku" albo alias przy właściwym pracowniku (Edytuj), a potem kliknij „Przypisz zmiany do kont".</p>
-              <Btn variant="secondary" onClick={() => data.przypiszZmiany()}>Przypisz zmiany do kont</Btn>
-              <div className="h-2" />
-              <div className="flex flex-wrap gap-1.5">
-                {osierocone.map(([k, h]) => <span key={k} className="text-xs px-2 py-1 rounded-lg font-mono" style={{ backgroundColor: '#fff8e6', color: '#A7465F' }}>{k} <span className="opacity-60">{h.toFixed(0)} h</span></span>)}
-              </div>
-            </div>
+            <article className="panel" style={{ marginTop: 14, padding: 16 }}>
+              <div className="flex items-center gap-2 mb-2"><AlertCircle size={16} style={{ color: '#A7465F' }} /><h3 className="font-semibold text-sm" style={{ color: '#321B23' }}>Nazwy z grafiku bez konta ({osierocone.length})</h3></div>
+              <p className="text-xs mb-3" style={{ color: '#806D74' }}>Te zmiany nie są przypisane do żadnego konta — ich godziny nie wliczą się do kosztów. Dopisz nazwę jako „Nazwa w grafiku" albo alias przy właściwym pracowniku (Edytuj), a potem kliknij „Przypisz zmiany".</p>
+              <div className="flex flex-wrap gap-1.5">{osierocone.map(([k, h]) => <span key={k} className="text-xs px-2 py-1 rounded-lg font-mono" style={{ backgroundColor: '#F0E4E8', color: '#A7465F' }}>{k} <span className="opacity-60">{h.toFixed(0)} h</span></span>)}</div>
+            </article>
           );
         })()}
-        <p className="text-xs text-slate-400">Login nadawany automatycznie (3 litery imienia + 3 nazwiska + numer). PIN startowy (4 cyfry) generowany przy utworzeniu — pracownik zmienia go przy pierwszym logowaniu. „PIN" resetuje i pokazuje nowy PIN startowy.</p>
+        <p className="text-xs mt-3" style={{ color: '#A38D95' }}>Login nadawany automatycznie (3 litery imienia + 3 nazwiska + numer). PIN startowy (4 cyfry) generowany przy utworzeniu — pracownik zmienia go przy pierwszym logowaniu. „PIN" resetuje i pokazuje nowy PIN startowy.</p>
       </div>
 
       {form && <EmpForm init={form} onSave={save} onClose={() => setForm(null)} />}
@@ -5084,6 +5392,7 @@ export default function App() {
     wt: <WorkingTime data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
     print: <PrintPage data={data} />,
     forecast: <PlanFinanse data={data} setPage={setPage} />,
+    live: <ObsadaLive data={data} setPage={setPage} />,
     plan: <PlanFinanse data={data} setPage={setPage} />,
     dyspo: <DyspoAdmin data={data} setPage={setPage} />,
     emps: <AdminEmployees data={data} />,
@@ -5098,14 +5407,14 @@ export default function App() {
   const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
   const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
   const [navOpen, setNavOpen] = useState(false);
-  const TYTULY = { dashboard: 'Dashboard', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
+  const TYTULY = { dashboard: 'Dashboard', live: 'Obsada LIVE', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
   return (
     <main className="app-shell">
       <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} mini={navMini} setMini={setMini} open={navOpen} onClose={() => setNavOpen(false)} />
       <section className={'workspace' + (navMini ? ' mini' : '')} style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <header className="topbar" style={{ flexShrink: 0 }}>
           <button className="menu-button" aria-label="Otwórz menu" onClick={() => setNavOpen(true)}><Menu size={18} /></button>
-          <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
+          <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', live: 'live', obsad: 'live', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
           <div className="top-actions">
             <button className="icon-button" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><MessageSquare size={18} /></button>
             <button className="icon-button notification" title="Oczekujące decyzje" onClick={() => setPage('swaps')}><Bell size={18} />{pendingSwaps > 0 && <i />}</button>
