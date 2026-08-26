@@ -1143,3 +1143,9 @@
   .ordo-print-toolbar { display:none!important }
   .ordo-print-page { width:297mm!important;height:210mm!important;margin:0!important;border-right:0!important;border-bottom:0!important;border-left:0!important;box-shadow:none!important;transform:none!important;break-after:avoid!important;break-before:avoid!important;break-inside:avoid!important;page-break-after:avoid!important;page-break-before:avoid!important;page-break-inside:avoid!important }
 }
+
+
+/* ── nadpisania ORDO: pasek POKRYCIE CO 15 MIN w błękicie Dispatchera ── */
+.gantt-quarter-strip button.filled { background:#6e98b8 }
+.gantt-quarter-strip button.partial { background:#c9dcec }
+.gantt-quarter-strip button:hover { outline-color:#6e98b8 }

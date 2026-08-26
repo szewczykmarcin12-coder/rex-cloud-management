@@ -5097,7 +5097,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
     return (
       <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}><div className="page-wrap module-view" style={{ width: '100%' }}>
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}><div className="page-wrap module-view workforce-view" style={{ width: '100%' }}>
           
           
           
@@ -5203,7 +5203,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const st = weekStart ? wsOf(weekStart) : { reviewed: false, closed: false };
   const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#EDE3E6', color: on ? kol.fg : '#A38D95' }}>{txt}</span>;
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 workforce-view">
       <div className="shrink-0" style={{ padding: '16px 26px 0' }}>
         <div className="module-heading" style={{ marginBottom: 10 }}>
           <div>
