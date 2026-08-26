@@ -4426,7 +4426,7 @@ const PlanFinanse = ({ data, setPage }) => {
 };
 
 // ===================== SIATKA TYGODNIA (planowanie jak MAPAL Scheduler) =====================
-const WeekPlanner = ({ data, days, locked, onDzien }) => {
+const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [qOsoba, setQOsoba] = useState('');
@@ -4499,7 +4499,7 @@ const WeekPlanner = ({ data, days, locked, onDzien }) => {
   return (
     <section className="panel weekly-rota-panel">
       <header className="weekly-rota-toolbar">
-        <div className="weekly-rota-title"><span><small>TYDZIEŃ GRAFIKOWY</small><strong>{days[0].slice(8)}.{days[0].slice(5, 7)} – {days[6].slice(8)}.{days[6].slice(5, 7)}.{days[6].slice(0, 4)}</strong><em>{f0(sumaTygH)} h · koszt {f0(sumaKoszt)} zł{sprzedazTyg ? ` · sprzedaż ${f0(sprzedazTyg)} zł` : ''}</em></span></div>
+        <div className="weekly-rota-title">{onBack && <button onClick={onBack} aria-label="Wróć do listy tygodni"><ChevronLeft size={17} /></button>}<span><small>TYDZIEŃ GRAFIKOWY</small><strong>{days[0].slice(8)}.{days[0].slice(5, 7)} – {days[6].slice(8)}.{days[6].slice(5, 7)}.{days[6].slice(0, 4)}</strong><em>{f0(sumaTygH)} h · koszt {f0(sumaKoszt)} zł{sprzedazTyg ? ` · sprzedaż ${f0(sprzedazTyg)} zł` : ''}</em></span></div>
         <div className="weekly-status-flow" aria-label="Status grafiku tygodniowego">
           <button className={doneTyg ? 'done' : ''} onClick={tglCompleted}><i>{doneTyg ? <Check size={13} /> : '1'}</i><span><strong>Completed</strong><small>gotowy do review</small></span></button>
           <b />
@@ -4614,7 +4614,7 @@ const plnMin = (t) => { const [h, m] = String(t).split(':').map(Number); let x =
 const plnPct = (t) => ((plnMin(t) - PLN_H0 * 60) / ((PLN_HN - PLN_H0) * 60)) * 100;
 const plnClock = (min) => `${String(Math.floor((min % 1440) / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
-const DayPlanner = ({ data, day, locked }) => {
+const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '' }) => {
   const [modal, setModal] = useState(null);   // {tryb:'nowa'|'edycja', osoba, accountId, station, start, end, ident}
   const [saving, setSaving] = useState(false);
 
@@ -4740,6 +4740,7 @@ const DayPlanner = ({ data, day, locked }) => {
   const gPos = (t) => { let x = plnMin(t) - 360; return Math.max(0, Math.min(x, G_MIN)); };
   const gBar = (x) => { let a2 = plnMin(x.start), b2 = plnMin(x.end); if (b2 <= a2) b2 += 1440; a2 -= 360; b2 -= 360; a2 = Math.max(0, a2); b2 = Math.min(b2, G_MIN); return { left: `${a2 / G_MIN * 100}%`, width: `${Math.max(b2 - a2, 20) / G_MIN * 100}%` }; };
   const gTone = (st2) => { const S = String(st2 || '').toUpperCase(); if (S.includes('KONTROLER')) return 'outline'; const k = BP_KATEGORIA(st2); return k === 'Manager' ? 'deep' : k === 'Kuchnia' ? 'soft' : 'mid'; };
+  const wierszeG = wiersze.filter((w) => (!szukaj || String(w.label).toLowerCase().includes(szukaj.toLowerCase())) && (!stacjaF || w.moje.some((x) => String(x.station || '').toUpperCase() === String(stacjaF).toUpperCase())));
   const dzisG = day === ymd(new Date());
   const terazMinG = (() => { const n = new Date(); let x = n.getHours() * 60 + n.getMinutes() - 360; if (x < 0) x += 1440; return x; })();
   const slotCls = (i) => { const sl2 = cov96.perSlot[i] || { req: 0, sch: 0 }; if (sl2.req > 0 && sl2.sch >= sl2.req) return 'filled'; if (sl2.sch > 0) return sl2.req > 0 ? 'partial' : 'filled'; return ''; };
@@ -4748,7 +4749,7 @@ const DayPlanner = ({ data, day, locked }) => {
       <article className="panel daily-gantt-panel">
         <div className="daily-gantt-scroll">
           <div className="daily-gantt-board" style={{ minWidth: 1460, gridTemplateColumns: '260px 1200px' }}>
-            <div className="gantt-left gantt-header-left"><span>PRACOWNIK</span><small>{wiersze.filter((w) => w.moje.length).length} osób • widok dzienny</small></div>
+            <div className="gantt-left gantt-header-left"><span>PRACOWNIK</span><small>{wierszeG.filter((w) => w.moje.length).length} osób • widok dzienny</small></div>
             <div className="gantt-hour-header">{G_H.map((h) => <span key={h}>{String(h).padStart(2, '0')}:00</span>)}</div>
 
             <div className="gantt-left gantt-summary-label"><span>Praca pośrednia</span><span>Praca bezpośrednia</span><strong>Personel idealny</strong><strong>Obsada w planie</strong></div>
@@ -4770,7 +4771,7 @@ const DayPlanner = ({ data, day, locked }) => {
               </svg>
             </div>
 
-            {wiersze.map((w) => (
+            {wierszeG.map((w) => (
               <div className="gantt-row-fragment" key={w.key}>
                 <div className="gantt-left gantt-person"><i>{String(w.label).split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{w.label}</strong><small>{w.funkcja || 'bez konta'} • {w.moje.reduce((a2, x) => a2 + godzZ(x), 0).toFixed(1).replace('.', ',')} h</small></span>{w.moje.some((x) => x.szkoli) && <em>szkoli</em>}</div>
                 <div className="gantt-person-track" style={{ cursor: locked ? 'default' : 'crosshair' }}
@@ -4860,6 +4861,11 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const [zakresTyg, setZakresTyg] = useState('siatka');   // 'siatka' (cały tydzień) | 'dzien'
   const [printOpen, setPrintOpen] = useState(false);
   const [rosterData, setRosterData] = useState(null);
+  const [fokus, setFokus] = useState(false);                 // pełny ekran do układania grafiku (bez sidebara)
+  const [szukajOs, setSzukajOs] = useState('');
+  const [stacjaF, setStacjaF] = useState('');
+  useEffect(() => { if (!fokus) return; const h = (e) => { if (e.key === 'Escape') setFokus(false); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [fokus]);
+  const idzDzien = (n) => { const d2 = new Date(day + 'T12:00:00'); d2.setDate(d2.getDate() + n); const iso = ymd(d2); setDay(iso); setWeekStart(wtMonday(iso)); };
   const zbudujRoster = (d) => {
     const MGRF = new Set(['SM', 'JSM', 'ASM', 'RGM']);
     const poIdR = new Map((data.accounts || []).map((a) => [a.id, a]));
@@ -5203,44 +5209,62 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const st = weekStart ? wsOf(weekStart) : { reviewed: false, closed: false };
   const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#EDE3E6', color: on ? kol.fg : '#A38D95' }}>{txt}</span>;
   return (
-    <div className="flex-1 flex flex-col min-h-0 workforce-view">
-      <div className="shrink-0" style={{ padding: '16px 26px 0' }}>
-        <div className="module-heading" style={{ marginBottom: 10 }}>
-          <div>
-            <span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span>
-            <h1>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</h1>
-            <p>{zakresTyg === 'dzien' ? dateLabel(day) : 'Podgląd zmian całego zespołu — przewijaj dni poziomo, kolumna pracowników pozostaje na miejscu.'}{locked ? ' • tydzień zamknięty (tylko podgląd)' : ''}</p>
+    <div className={'flex-1 flex flex-col min-h-0 workforce-view module-view' + (fokus ? ' gantt-fullscreen' : '')}>
+      {fokus ? (
+        <header className="gantt-focus-header">
+          <div className="gantt-focus-brand"><b style={{ color: '#741334', fontSize: 19, letterSpacing: '.2em', fontWeight: 850 }}>ORDO</b><span>WORKFORCE STUDIO</span></div>
+          <div className="gantt-focus-context"><span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span><strong>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</strong><small>{zakresTyg === 'dzien' ? dateLabel(day) : 'Pełny ekran do układania grafiku'} • Kraków, Pawia</small></div>
+          <div className="gantt-focus-tools" aria-label="Narzędzia grafiku">
+            <button onClick={() => otworzWydruk(day)} title="Wydruk dnia"><Printer size={16} /><span>Wydruk</span></button>
+            {zakresTyg === 'dzien' && <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }}><Check size={16} /><span>{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</span></button>}
+            <button disabled={data.loading} onClick={() => data.sync()}><RefreshCw size={16} /><span>{data.loading ? 'Zapisuję…' : 'Zapisz'}</span></button>
+            <button className="focus-exit" onClick={() => setFokus(false)} title="Zamknij pełny ekran (Esc)"><X size={17} /><span>Zamknij</span></button>
           </div>
-          <div className="module-actions">
-            <button className="secondary-action" onClick={() => setView('list')}><ChevronLeft size={16} /> Lista tygodni</button>
-            <button className="secondary-action" title="Pełny ekran (Esc aby wyjść)" onClick={() => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch {} }}><Monitor size={16} /> Pełny ekran</button>
-            <button className="secondary-action" onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))}><Printer size={16} /> {zakresTyg === 'dzien' ? 'Drukuj ten dzień' : 'Wydruk dnia'}</button>
-            {zakresTyg === 'dzien' && <button className={ts.completed[day] ? 'secondary-action' : 'primary-action'} disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }}><Check size={16} /> {ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>}
-            <button className="primary-action" onClick={() => data.sync()} disabled={data.loading}><RefreshCw size={16} /> {data.loading ? 'Zapisuję…' : 'Zapisz / odśwież'}</button>
-          </div>
-        </div>
-        <div className="panel scheduler-toolbar" style={{ marginBottom: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          <div className="week-control">
-            <button onClick={() => zmienTydzien(-7)}><ChevronLeft size={17} /></button>
-            <strong>{weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)} – {weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)}.{weekDays[6].slice(0, 4)}</strong>
-            <button onClick={() => zmienTydzien(7)}><ChevronRight size={17} /></button>
-            <button className="today-chip" onClick={() => setZakresTyg('siatka')} style={zakresTyg === 'siatka' ? { background: '#741334', color: '#fff', borderColor: '#741334' } : undefined}>Cały tydzień</button>
-          </div>
-          <div className="filter-tabs">
-            {weekDays.map((d, i) => { const akt = zakresTyg === 'dzien' && day === d; return (
-              <button key={d} className={akt ? 'active' : ''} onClick={() => { setDay(d); setZakresTyg('dzien'); }}>{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'][i]} {new Date(d).getDate()}{dayShifts(d).length ? <b>{dayShifts(d).length}</b> : null}</button>
-            ); })}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            {chip(weekDone(curWeek()), 'Completed', { bg: '#F1E4E8', fg: '#741334' })}
-            {chip(st.reviewed, 'Reviewed', { bg: '#F1E4E8', fg: '#741334' })}
-            {chip(st.closed, 'Closed', { bg: '#F5E3E8', fg: '#B94352' })}
-            <span style={{ fontSize: 10.5, color: '#71656A' }}>{data.lastSync ? `autozapis ${String(data.lastSync.getHours()).padStart(2, '0')}:${String(data.lastSync.getMinutes()).padStart(2, '0')}` : 'autozapis'}</span>
+        </header>
+      ) : (
+        <div className="shrink-0" style={{ padding: '16px 26px 0' }}>
+          <div className="module-heading" style={{ marginBottom: 10 }}>
+            <div>
+              <span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span>
+              <h1>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</h1>
+              <p>{zakresTyg === 'dzien' ? dateLabel(day) : 'Podgląd zmian całego zespołu — przewijaj dni poziomo, kolumna pracowników pozostaje na miejscu.'}{locked ? ' • tydzień zamknięty (tylko podgląd)' : ''}</p>
+            </div>
+            <div className="module-actions">
+              <button className="secondary-action" onClick={() => setView('list')}><ChevronLeft size={16} /> Lista tygodni</button>
+              <button className="secondary-action" title="Pełny ekran do układania grafiku (Esc aby wyjść)" onClick={() => setFokus(true)}><Monitor size={16} /> Pełny ekran</button>
+              <button className="secondary-action" onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))}><Printer size={16} /> {zakresTyg === 'dzien' ? 'Drukuj ten dzień' : 'Wydruk dnia'}</button>
+              {zakresTyg === 'dzien' && <button className={ts.completed[day] ? 'secondary-action' : 'primary-action'} disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }}><Check size={16} /> {ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>}
+              <button className="primary-action" onClick={() => data.sync()} disabled={data.loading}><RefreshCw size={16} /> {data.loading ? 'Zapisuję…' : 'Zapisz / odśwież'}</button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+      {(zakresTyg === 'dzien' || fokus) && (
+        <div className="shrink-0" style={fokus ? { padding: '9px 12px 0' } : { padding: '0 26px' }}>
+          <article className="panel daily-gantt-toolbar" style={{ marginBottom: fokus ? 0 : 12 }}>
+            <div className="week-control">
+              {zakresTyg === 'dzien' ? (<>
+                <button onClick={() => idzDzien(-1)} aria-label="Poprzedni dzień"><ChevronLeft size={17} /></button>
+                <strong>{dateLabel(day)}</strong>
+                <button onClick={() => idzDzien(1)} aria-label="Następny dzień"><ChevronRight size={17} /></button>
+                <button className="today-chip" onClick={() => setDay(weekDays[0])}>Początek tygodnia</button>
+              </>) : (<>
+                <button onClick={() => zmienTydzien(-7)} aria-label="Poprzedni tydzień"><ChevronLeft size={17} /></button>
+                <strong>{weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)} – {weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)}.{weekDays[6].slice(0, 4)}</strong>
+                <button onClick={() => zmienTydzien(7)} aria-label="Następny tydzień"><ChevronRight size={17} /></button>
+              </>)}
+            </div>
+            <div className="gantt-filters">
+              {zakresTyg === 'dzien' && <label><Search size={14} /><input value={szukajOs} onChange={(e) => setSzukajOs(e.target.value)} placeholder="Szukaj osoby" /></label>}
+              {zakresTyg === 'dzien' && <label><Filter size={14} /><select value={stacjaF} onChange={(e) => setStacjaF(e.target.value)}><option value="">Wszystkie stanowiska</option>{wszystkieStacje.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>}
+              {locked && <span style={{ color: '#B94352', fontSize: 11, fontWeight: 700 }}>🔒 tylko podgląd</span>}
+              {fokus && <span className="gantt-focus-hint"><kbd>ESC</kbd> wyjście z widoku</span>}
+            </div>
+          </article>
+        </div>
+      )}
 
-      {printOpen && (
+      {printOpen && !fokus && (
         <div className="shrink-0 px-5 py-2 flex items-center gap-2 flex-wrap border-b" style={{ backgroundColor: 'white', borderColor: colors.primary.bg }}>
           <span className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>Grafik obsady (PDF) — wybierz dzień:</span>
           {weekDays.map((d, i) => (
@@ -5252,7 +5276,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       {rosterData && <DailyRosterPrint open data={rosterData} onClose={() => setRosterData(null)} />}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ backgroundColor: colors.primary.bgLight }}>
-        {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} />}
+        {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} onBack={() => setView('list')} />}
 
         {zakresTyg === 'dzien' && (<>
         <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
@@ -5261,7 +5285,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           ))}
         </div>
 
-        {trybDnia === 'plan' && <DayPlanner data={data} day={day} locked={locked} />}
+        {trybDnia === 'plan' && <DayPlanner data={data} day={day} locked={locked} szukaj={szukajOs} stacjaF={stacjaF} />}
 
 
         {trybDnia === 'wykonanie' && canEdit && !locked && (
