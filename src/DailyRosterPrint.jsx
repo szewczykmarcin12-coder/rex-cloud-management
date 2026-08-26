@@ -63,7 +63,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
                   <span>{p.przerwa}</span>
                   <span className="ordo-print-timeline">
                     <i className="ordo-print-grid">{Array.from({ length: 10 }, (_, i) => <b key={i} />)}</i>
-                    {p.segments.map((s, i) => <em key={i} style={{ left: `${Math.max(0, (s.start - 6) / 20) * 100}%`, width: `${Math.min((s.end - s.start) / 20, 1 - Math.max(0, (s.start - 6) / 20)) * 100}%` }}><small>{i ? s.role : p.initials}</small></em>)}
+                    {p.segments.map((s, i) => <em key={i} className={`print-shift-${s.tone || 'mid'}`} style={{ left: `${Math.max(0, (s.start - 6) / 20) * 100}%`, width: `${Math.min((s.end - s.start) / 20, 1 - Math.max(0, (s.start - 6) / 20)) * 100}%` }}><small>{i ? s.role : p.initials}</small></em>)}
                   </span>
                 </div>
               ))}

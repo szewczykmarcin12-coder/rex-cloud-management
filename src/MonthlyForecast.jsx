@@ -10,8 +10,8 @@ const MMt = ({ label, value, helper, tone = 'blue', icon: Icon }) => (
 const SCEN_F = { BASE: [1, 1], GROWTH: [1.08, 1.06], EVENT: [1.045, 1.05] };
 
 const C = {
-  ink: '#321B23', dark: '#5A3542', mid: '#741334', mute: '#806D74', line: '#E3D8DB', pale: '#F3EFF0',
-  ok: '#741334', warn: '#A7465F', bad: '#8E1B3C', blue: '#3A6EA5', violet: '#7A5FB0', teal: '#26A69A', slate: '#5A3542',
+  ink: '#2B171E', dark: '#5A3542', mid: '#741334', mute: '#71656A', line: '#E3DCDD', pale: '#F7F5F5',
+  ok: '#741334', warn: '#A7465F', bad: '#B94352', blue: '#5A3542', violet: '#A7465F', teal: '#B86D82', slate: '#3A3438',
 };
 const CATEGORIES = [
   ['crew', 'Crew', C.blue],
@@ -43,7 +43,7 @@ function Field({ label, value, onChange, suffix, min = 0, step = 1, disabled = f
   return <label className="block"><span className="block text-[11px] font-semibold mb-1" style={{ color: C.mute }}>{label}</span><div className="relative"><input type="number" value={value} min={min} step={step} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border px-3 py-2 pr-12 text-sm disabled:bg-slate-50" style={{ borderColor: C.line, color: C.ink }} />{suffix && <span className="absolute right-3 top-2 text-xs" style={{ color: C.mute }}>{suffix}</span>}</div></label>;
 }
 function Notice({ type = 'warn', children }) {
-  const style = type === 'bad' ? { bg: '#F5E3E8', fg: C.bad, Icon: AlertTriangle } : type === 'ok' ? { bg: '#F0E4E8', fg: C.ok, Icon: CheckCircle2 } : { bg: '#fff8e6', fg: C.warn, Icon: AlertTriangle };
+  const style = type === 'bad' ? { bg: '#F5E3E8', fg: C.bad, Icon: AlertTriangle } : type === 'ok' ? { bg: '#F1E4E8', fg: C.ok, Icon: CheckCircle2 } : { bg: '#F5E9ED', fg: C.warn, Icon: AlertTriangle };
   const Icon = style.Icon;
   return <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: style.bg, color: style.fg }}><Icon size={15} className="mt-0.5 shrink-0" /><span>{children}</span></div>;
 }
@@ -169,7 +169,7 @@ export default function MonthlyForecast({ api, data }) {
     const u = URL.createObjectURL(blob); const el = document.createElement('a'); el.href = u; el.download = `prognoza-${month}.csv`; el.click(); URL.revokeObjectURL(u);
   };
   const uopSuma = t ? CATEGORIES.reduce((n, [c]) => n + (t.contractHoursByCategory[c] || 0), 0) : 0;
-  const MIX_KOLOR = { crew: '#741334', manager: '#5A3542', functionalManager: '#A7465F', training: '#B86D82', managerTraining: '#8E1B3C' };
+  const MIX_KOLOR = { crew: '#741334', manager: '#5A3542', functionalManager: '#A7465F', training: '#B86D82', managerTraining: '#B94352' };
 
   return <div className="flex-1 min-h-0 overflow-y-auto">
     <div className="page-wrap module-view forecast-view" style={{ width: '100%' }}>
@@ -291,7 +291,7 @@ export default function MonthlyForecast({ api, data }) {
 
         <article className="panel" style={{ marginTop: 14, overflow: 'hidden' }}>
           <div className="px-4 py-3 border-b flex flex-wrap items-center gap-2" style={{ borderColor: C.line }}><Users size={17} style={{ color: C.dark }} /><h3 className="font-bold text-sm" style={{ color: C.ink }}>Gwarancja godzin UOP</h3><span className="text-[11px]" style={{ color: C.mute }}>MGR: etat ± {form.settings.managerToleranceHours} h; crew: dokładny nominał. Nominał można nadpisać i przeliczyć plan.</span></div>
-          {!contractRows.length ? <div className="p-5 text-sm" style={{ color: C.mute }}>Brak pracowników UOP w module Pracownicy.</div> : <div className="overflow-x-auto"><div className="min-w-[760px]"><div className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] px-4 py-2 text-[10px] font-bold uppercase" style={{ backgroundColor: C.pale, color: C.mute }}><span>Pracownik</span><span>Kategoria</span><span className="text-right">Minimum</span><span className="text-right">Plan</span><span className="text-right">Maksimum</span><span className="text-right">Nominał do silnika</span></div>{contractRows.map((r) => <div key={r.accountId} className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] items-center px-4 py-2 border-t text-sm" style={{ borderColor: '#F3EFF0' }}><span className="font-semibold" style={{ color: C.ink }}>{r.name}</span><span style={{ color: C.mute }}>{CATEGORIES.find(([c]) => c === r.category)?.[1] || r.category}</span><span className="text-right">{number(r.minHours)} h</span><span className="text-right font-bold" style={{ color: r.plannedHours < r.minHours || r.plannedHours > r.maxHours ? C.bad : C.ok }}>{number(r.plannedHours)} h</span><span className="text-right">{number(r.maxHours)} h</span><span className="text-right"><input type="number" step="0.25" disabled={locked} value={form.employeeHours[r.accountId] ?? r.targetHours} onChange={(e) => setForm((f) => ({ ...f, employeeHours: { ...f.employeeHours, [r.accountId]: Number(e.target.value) || 0 } }))} className="w-24 rounded border px-2 py-1 text-right disabled:bg-slate-50" style={{ borderColor: C.line }} /></span></div>)}</div></div>}
+          {!contractRows.length ? <div className="p-5 text-sm" style={{ color: C.mute }}>Brak pracowników UOP w module Pracownicy.</div> : <div className="overflow-x-auto"><div className="min-w-[760px]"><div className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] px-4 py-2 text-[10px] font-bold uppercase" style={{ backgroundColor: C.pale, color: C.mute }}><span>Pracownik</span><span>Kategoria</span><span className="text-right">Minimum</span><span className="text-right">Plan</span><span className="text-right">Maksimum</span><span className="text-right">Nominał do silnika</span></div>{contractRows.map((r) => <div key={r.accountId} className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] items-center px-4 py-2 border-t text-sm" style={{ borderColor: '#F7F5F5' }}><span className="font-semibold" style={{ color: C.ink }}>{r.name}</span><span style={{ color: C.mute }}>{CATEGORIES.find(([c]) => c === r.category)?.[1] || r.category}</span><span className="text-right">{number(r.minHours)} h</span><span className="text-right font-bold" style={{ color: r.plannedHours < r.minHours || r.plannedHours > r.maxHours ? C.bad : C.ok }}>{number(r.plannedHours)} h</span><span className="text-right">{number(r.maxHours)} h</span><span className="text-right"><input type="number" step="0.25" disabled={locked} value={form.employeeHours[r.accountId] ?? r.targetHours} onChange={(e) => setForm((f) => ({ ...f, employeeHours: { ...f.employeeHours, [r.accountId]: Number(e.target.value) || 0 } }))} className="w-24 rounded border px-2 py-1 text-right disabled:bg-slate-50" style={{ borderColor: C.line }} /></span></div>)}</div></div>}
         </article>
 
         {selected && <div style={{ marginTop: 14 }}><HourlyProfile day={selected} /></div>}
