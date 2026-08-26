@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Clock3, Lock, RefreshCw, Save, ShieldCheck, SlidersHorizontal, TrendingUp, Unlock, Users } from 'lucide-react';
+import { AlertTriangle, BarChart3, CheckCircle2, Check, ChevronDown, ChevronUp, ChevronRight, Clock3, Lock, RefreshCw, Save, ShieldCheck, SlidersHorizontal, TrendingUp, Unlock, Users, Download, Target, Calendar, Sparkles, Gauge, CircleDollarSign, Wallet } from 'lucide-react';
+
+const MHd = ({ kicker, title, copy, children }) => (
+  <div className="module-heading"><div><span>{kicker}</span><h1>{title}</h1><p>{copy}</p></div>{children && <div className="module-actions">{children}</div>}</div>
+);
+const MMt = ({ label, value, helper, tone = 'blue', icon: Icon }) => (
+  <article className="mini-metric"><div className={`mini-metric-icon ${tone}`}><Icon size={18} /></div><span>{label}</span><strong>{value}</strong><small>{helper}</small></article>
+);
+const SCEN_F = { BASE: [1, 1], GROWTH: [1.08, 1.06], EVENT: [1.045, 1.05] };
 
 const C = {
   ink: '#321B23', dark: '#5A3542', mid: '#741334', mute: '#806D74', line: '#E3D8DB', pale: '#F3EFF0',
@@ -114,7 +122,8 @@ export default function MonthlyForecast({ api, data }) {
   const generate = async () => {
     setBusy(true); setError('');
     try {
-      const r = await api('/monthly-forecast?action=generate', 'POST', { month, monthlySales: Number(form.monthlySales), monthlyTransactions: Number(form.monthlyTransactions), scenario: form.scenario, settings: form.settings, employeeHours: form.employeeHours || {}, expectedVersion: plan ? plan.version : 0, keepOverrides: true });
+      const [fS, fT] = SCEN_F[form.scenario] || SCEN_F.BASE;
+      const r = await api('/monthly-forecast?action=generate', 'POST', { month, monthlySales: Math.round(Number(form.monthlySales) * fS), monthlyTransactions: Math.round(Number(form.monthlyTransactions) * fT), scenario: form.scenario, settings: form.settings, employeeHours: form.employeeHours || {}, expectedVersion: plan ? plan.version : 0, keepOverrides: true });
       if (!r.success) throw new Error((r.errors || [r.error]).join(' ')); hydrate(r.plan); data.show('Forecast miesiąca przeliczony i zapisany.');
     } catch (e) { setError(e.message); data.show(e.message, 'error'); } finally { setBusy(false); }
   };
@@ -148,80 +157,144 @@ export default function MonthlyForecast({ api, data }) {
   const selected = plan && plan.days.find((d) => d.date === selectedDay);
   const contractRows = plan ? plan.contracts : accounts.filter((a) => a.umowa === 'UOP').map((a) => ({ accountId: a.id, name: a.name, category: roleCategory(a), targetHours: targetFor(a, month), minHours: targetFor(a, month) - (roleCategory(a) === 'crew' ? 0 : 10), maxHours: targetFor(a, month) + (roleCategory(a) === 'crew' ? 0 : 10), plannedHours: targetFor(a, month) }));
 
-  return <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: C.pale }}>
-    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b px-6 py-3 bg-white/95 backdrop-blur" style={{ borderColor: C.line }}>
-      <div className="mr-auto"><div className="flex items-center gap-2"><TrendingUp size={20} style={{ color: C.dark }} /><h1 className="font-bold" style={{ color: C.ink }}>Forecast miesiąca i Cost of Labour</h1>{plan && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: plan.status === 'LOCKED' ? '#F0E4E8' : '#fff8e6', color: plan.status === 'LOCKED' ? C.ok : C.warn }}>{plan.status === 'LOCKED' ? 'ZABLOKOWANY' : 'ROBOCZY'} · v{plan.version}</span>}</div><p className="text-[11px] mt-0.5" style={{ color: C.mute }}>Sprzedaż i transakcje → rozkład historyczny → godziny → COL → limit grafiku</p></div>
-      <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: C.line, color: C.ink }} />
-      <button onClick={() => load()} disabled={busy} className="rounded-lg px-3 py-2 text-sm flex items-center gap-2" style={{ backgroundColor: C.pale, color: C.dark }}><RefreshCw size={15} className={busy ? 'animate-spin' : ''} />Odśwież</button>
-      {plan && (plan.status === 'LOCKED' ? <button onClick={unlock} disabled={busy} className="rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-2" style={{ backgroundColor: '#fff8e6', color: C.warn }}><Unlock size={15} />Odblokuj</button> : <button onClick={lock} disabled={busy || !plan.valid} className="rounded-lg px-3 py-2 text-sm font-semibold text-white flex items-center gap-2 disabled:opacity-40" style={{ backgroundColor: C.ok }}><Lock size={15} />Zatwierdź i zablokuj</button>)}
-    </div>
+  const mcLabel = new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date(month + '-01T12:00:00'));
+  const locked = plan && plan.status === 'LOCKED';
+  const t = plan && plan.totals;
+  const maxSales = plan ? Math.max(1, ...plan.days.map((d) => d.sales)) : 1;
+  const maxH = plan ? Math.max(1, ...plan.days.map((d) => d.hours.total)) : 1;
+  const eksport = () => {
+    if (!plan) return;
+    const rows = ['Dzień;Sprzedaż;Transakcje;Godziny;Koszt;COL %', ...plan.days.map((d) => `${d.date};${d.sales};${d.transactions};${d.hours.total.toFixed(2)};${d.cost.toFixed(2)};${d.colPct.toFixed(2)}`)];
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const u = URL.createObjectURL(blob); const el = document.createElement('a'); el.href = u; el.download = `prognoza-${month}.csv`; el.click(); URL.revokeObjectURL(u);
+  };
+  const uopSuma = t ? CATEGORIES.reduce((n, [c]) => n + (t.contractHoursByCategory[c] || 0), 0) : 0;
+  const MIX_KOLOR = { crew: '#741334', manager: '#5A3542', functionalManager: '#A7465F', training: '#B86D82', managerTraining: '#8E1B3C' };
 
-    <div className="p-6 space-y-5">
+  return <div className="flex-1 min-h-0 overflow-y-auto">
+    <div className="page-wrap module-view forecast-view" style={{ width: '100%' }}>
+      <MHd kicker={`PLAN MIESIĘCZNY • ${mcLabel.toUpperCase()}${plan ? ` • ${locked ? 'ZABLOKOWANY' : 'ROBOCZY'} v${plan.version}` : ''}`} title="Planowanie i popyt" copy="Rozłóż plan sprzedaży i transakcji na dni oraz przełóż popyt na godziny, role i limit COL.">
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="secondary-action" style={{ font: 'inherit' }} />
+        <button className="secondary-action" onClick={eksport} disabled={!plan}><Download size={16} /> Eksport</button>
+        {plan && (locked
+          ? <button className="secondary-action" onClick={unlock} disabled={busy}><Unlock size={16} /> Odblokuj</button>
+          : <button className="primary-action" onClick={lock} disabled={busy || !plan.valid}><Lock size={16} /> Zapisz wersję i zablokuj</button>)}
+      </MHd>
+
       {error && <Notice type="bad">{error}</Notice>}
-      <div className="rounded-xl bg-white border p-4 shadow-sm" style={{ borderColor: C.line }}>
-        <div className="flex items-center gap-2 mb-4"><SlidersHorizontal size={17} style={{ color: C.dark }} /><h2 className="font-bold text-sm" style={{ color: C.ink }}>Założenia miesiąca</h2><span className="text-[11px]" style={{ color: C.mute }}>Rozkład dni pochodzi z historii; sumy wpisane poniżej nie zmienią się.</span></div>
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
-          <Field label="Planowana sprzedaż" value={form.monthlySales} onChange={(v) => setForm((f) => ({ ...f, monthlySales: v }))} suffix="zł" disabled={plan?.status === 'LOCKED'} />
-          <Field label="Transakcje" value={form.monthlyTransactions} onChange={(v) => setForm((f) => ({ ...f, monthlyTransactions: v }))} suffix="szt." disabled={plan?.status === 'LOCKED'} />
-          <Field label="Docelowy COL" value={form.settings.colTargetPct} onChange={(v) => setSetting('colTargetPct', Number(v) || 0)} suffix="%" step="0.1" disabled={plan?.status === 'LOCKED'} />
-          <Field label="Docelowy SPLH" value={form.settings.targetSplh} onChange={(v) => setSetting('targetSplh', Number(v) || 0)} suffix="zł/h" disabled={plan?.status === 'LOCKED'} />
-          <Field label="Docelowy MPT" value={form.settings.targetMpt} onChange={(v) => setSetting('targetMpt', Number(v) || 0)} suffix="min" step="0.1" disabled={plan?.status === 'LOCKED'} />
-          <Field label="Godziny MGR" value={form.settings.fixedHours.manager} onChange={(v) => setFixed('manager', v)} suffix="h" step="0.25" disabled={plan?.status === 'LOCKED'} />
-          <Field label="MGR funkcyjne" value={form.settings.fixedHours.functionalManager} onChange={(v) => setFixed('functionalManager', v)} suffix="h" step="0.25" disabled={plan?.status === 'LOCKED'} />
-          <div className="flex items-end"><button onClick={generate} disabled={busy || plan?.status === 'LOCKED' || Number(form.monthlySales) <= 0} className="w-full rounded-lg px-3 py-2 text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-40" style={{ backgroundColor: C.dark }}><BarChart3 size={16} />{plan ? 'Przelicz plan' : 'Generuj plan'}</button></div>
-        </div>
-        <button onClick={() => setAdvanced((x) => !x)} className="mt-3 text-xs font-semibold flex items-center gap-1" style={{ color: C.dark }}>{advanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}Parametry zaawansowane</button>
-        {advanced && <div className="mt-3 pt-3 border-t space-y-4" style={{ borderColor: C.line }}>
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
-            <Field label="Okno historii" value={form.settings.historyWeeks} onChange={(v) => setSetting('historyWeeks', Number(v) || 0)} suffix="tyg." disabled={plan?.status === 'LOCKED'} />
-            <Field label="Indirect work" value={Number(form.settings.indirectPct || 0) * 100} onChange={(v) => setSetting('indirectPct', (Number(v) || 0) / 100)} suffix="%" step="1" disabled={plan?.status === 'LOCKED'} />
-            <Field label="Tolerancja MGR" value={form.settings.managerToleranceHours} onChange={(v) => setSetting('managerToleranceHours', Number(v) || 0)} suffix="± h" step="1" disabled={plan?.status === 'LOCKED'} />
-            <Field label="Godziny szkoleniowe" value={form.settings.fixedHours.training} onChange={(v) => setFixed('training', v)} suffix="h" step="0.25" disabled={plan?.status === 'LOCKED'} />
-            <Field label="MGR szkoleniowe" value={form.settings.fixedHours.managerTraining} onChange={(v) => setFixed('managerTraining', v)} suffix="h" step="0.25" disabled={plan?.status === 'LOCKED'} />
-            <label className="block md:col-span-3"><span className="block text-[11px] font-semibold mb-1" style={{ color: C.mute }}>Święta / dni obniżające nominał</span><input value={(form.settings.holidays || []).join(', ')} disabled={plan?.status === 'LOCKED'} onChange={(e) => setSetting('holidays', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} placeholder={`${month}-01, ${month}-15`} className="w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: C.line }} /></label>
+
+      <section className="forecast-layout">
+        <aside className="forecast-controls panel">
+          <div className="panel-title"><div><span>ZAŁOŻENIA</span><h2>Budżet wejściowy</h2></div><SlidersHorizontal size={19} /></div>
+          <label className="input-label">Planowana sprzedaż netto<div className="number-input"><input type="number" value={form.monthlySales} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, monthlySales: e.target.value }))} /><span>PLN</span></div></label>
+          <label className="input-label">Planowane transakcje<div className="number-input"><input type="number" value={form.monthlyTransactions} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, monthlyTransactions: e.target.value }))} /><span>trx</span></div></label>
+          <label className="input-label">Docelowy Cost of Labour<div className="number-input"><input type="number" step="0.1" value={form.settings.colTargetPct} disabled={locked} onChange={(e) => setSetting('colTargetPct', Number(e.target.value) || 0)} /><span>%</span></div></label>
+          <div className="control-divider" />
+          <label className="input-label">Scenariusz popytu</label>
+          <div className="scenario-list">
+            <button className={form.scenario === 'BASE' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'BASE' }))}><i><Target size={16} /></i><div><strong>Bazowy</strong><span>trend i sezonowość</span></div><Check size={15} /></button>
+            <button className={form.scenario === 'GROWTH' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'GROWTH' }))}><i><TrendingUp size={16} /></i><div><strong>Wzrost +8%</strong><span>kampania produktowa</span></div><Check size={15} /></button>
+            <button className={form.scenario === 'EVENT' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'EVENT' }))}><i><Calendar size={16} /></i><div><strong>Eventy lokalne</strong><span>+4,5% wieczory szczytowe</span></div><Check size={15} /></button>
           </div>
-          <div><div className="text-[11px] font-bold uppercase mb-2" style={{ color: C.mute }}>Pełny koszt godziny według kategorii</div><div className="grid grid-cols-2 md:grid-cols-5 gap-3">{CATEGORIES.map(([c, label]) => <Field key={c} label={label} value={form.settings.rates[c]} onChange={(v) => setRate(c, v)} suffix="zł/h" step="0.01" disabled={plan?.status === 'LOCKED'} />)}</div></div>
-        </div>}
-      </div>
+          <div className="model-note"><Sparkles size={16} /><div><strong>Model hybrydowy</strong><span>historia POS {form.settings.historyWeeks} tyg., kalendarz, święta i korekty managera</span></div></div>
+          <button className="generate-button" disabled={busy || locked || Number(form.monthlySales) <= 0} onClick={generate}><BarChart3 size={17} /> {busy ? 'Przeliczam…' : plan ? 'Przelicz i wygeneruj plan' : 'Generuj plan'}</button>
+        </aside>
+
+        <div className="forecast-main">
+          <section className="forecast-kpis">
+            <MMt icon={CircleDollarSign} label="Sprzedaż" value={t ? `${Math.round(t.sales).toLocaleString('pl-PL')} zł` : '—'} helper={t ? `${Math.round(t.sales / plan.days.length).toLocaleString('pl-PL')} zł / dzień` : 'wygeneruj plan'} tone="blue" />
+            <MMt icon={Wallet} label="Budżet COL" value={t ? `${Math.round(t.targetCost).toLocaleString('pl-PL')} zł` : '—'} helper={t ? `${number(form.settings.colTargetPct)}% sprzedaży • bufor ${Math.round(t.headroom).toLocaleString('pl-PL')} zł` : '—'} tone={t && t.headroom < 0 ? 'coral' : 'mint'} />
+            <MMt icon={Clock3} label="Godziny total" value={t ? `${number(t.hours.total)} h` : '—'} helper={t ? `${number(t.hours.total / plan.days.length)} h / dzień` : '—'} tone="violet" />
+            <MMt icon={Gauge} label="SPLH" value={t ? `${number(t.splh)} zł` : '—'} helper={t ? `cel ${form.settings.targetSplh} zł/h • MPT ${number(t.mpt, 2)} min` : 'sprzedaż / roboczogodz.'} tone="mint" />
+          </section>
+
+          <article className="panel month-curve-panel">
+            <div className="panel-title"><div><span>ROZKŁAD {plan ? plan.days.length : 30} DNI</span><h2>Prognoza sprzedaży i godzin</h2></div><div className="forecast-legend"><span><i className="sales-key" />Sprzedaż</span><span><i className="hours-key" />Godziny idealne</span></div></div>
+            {plan ? (
+              <div className="month-bars">
+                {plan.days.map((d) => (
+                  <div key={d.date} className={d.source === 'MANAGER_OVERRIDE' ? 'event-day' : ''} title={`${d.date}: ${money(d.sales)} zł • ${number(d.hours.total)} h • COL ${number(d.colPct, 1)}%`} onClick={() => setSelectedDay(d.date)} style={{ cursor: 'pointer' }}>
+                    <i style={{ height: `${Math.max(16, d.sales / maxSales * 100)}%` }}><b style={{ height: `${d.hours.total / maxH * 72}%` }} /></i>
+                    {Number(d.date.slice(8)) % 3 === 1 && <span>{d.date.slice(8)}.{d.date.slice(5, 7)}</span>}
+                    {d.source === 'MANAGER_OVERRIDE' && <em>korekta</em>}
+                  </div>
+                ))}
+              </div>
+            ) : <div className="dialog-empty" style={{ padding: 30 }}>Ustaw założenia po lewej i kliknij „Generuj plan" — rozkład dni powstanie z historii POS.</div>}
+            {plan && <div className="forecast-explain"><Sparkles size={17} /><span>Rozkład historyczny ({plan.historyQuality.confidence === 'LOW' ? 'niska pewność' : 'dobra pewność'}: {plan.historyQuality.salesDays} dni sprzedaży, {plan.historyQuality.transactionDays} dni ruchu). Minima UOP {plan.valid ? 'zapewnione' : 'niezapewnione'}.</span><button onClick={() => setAdvanced((x) => !x)}>Parametry</button></div>}
+          </article>
+
+          <div className="forecast-bottom-grid">
+            <article className="panel hours-mix-panel">
+              <div className="panel-title"><div><span>STRUKTURA PLANU</span><h2>Godziny według grup</h2></div><strong>{t ? `${number(t.hours.total, 0)} h` : '—'}</strong></div>
+              {CATEGORIES.map(([c, label]) => (
+                <div className="mix-row" key={c}><span><i style={{ background: MIX_KOLOR[c] }} />{label === 'MGR' ? 'Manager' : label}</span><div><b style={{ width: t ? `${(t.hours[c] || 0) / Math.max(1, t.hours.total) * 100}%` : 0, background: MIX_KOLOR[c] }} /></div><strong>{t ? `${number(t.hours[c], 0)} h` : '—'}</strong></div>
+              ))}
+              <div className="contract-guard"><ShieldCheck size={17} /><div><strong>UOP: {t ? `${number(uopSuma, 0)} h minimum` : '—'}</strong><span>Managerowie: etat ± {form.settings.managerToleranceHours} h • crew: nominał</span></div><b>{plan ? (plan.valid ? 'ZGODNE' : 'UWAGI') : '—'}</b></div>
+            </article>
+
+            <article className="panel plan-checks-panel">
+              <div className="panel-title"><div><span>KONTROLA PLANU</span><h2>Warunki brzegowe</h2></div><CheckCircle2 size={20} /></div>
+              {[
+                ['Godziny kontraktowe UOP', plan ? (plan.valid ? '100%' : 'sprawdź') : '—', plan ? plan.valid : true],
+                ['Stała obsada managerów', `${number(Number(form.settings.fixedHours.manager) + Number(form.settings.fixedHours.functionalManager), 0)} h`, true],
+                ['Limit COL', t ? `${number(t.colPct, 2)}% / ${number(form.settings.colTargetPct)}%` : `${number(form.settings.colTargetPct)}%`, t ? t.headroom >= 0 : true],
+                ['SPLH vs cel', t ? `${number(t.splh)} / ${form.settings.targetSplh} zł` : '—', t ? t.splh >= form.settings.targetSplh : true],
+                ['Kontrola grafiku', plan && plan.compliance ? (plan.compliance.ok ? 'ZGODNY' : 'PRZEKROCZENIE') : 'brak grafiku', plan && plan.compliance ? plan.compliance.ok : true],
+              ].map(([label, value, ok]) => (
+                <div className="check-row" key={String(label)}><i className={ok ? 'ok' : 'warn'}>{ok ? <Check size={14} /> : <AlertTriangle size={14} />}</i><span>{label}</span><strong>{value}</strong></div>
+              ))}
+              <button className="full-secondary" onClick={() => setAdvanced((x) => !x)}>Otwórz reguły optymalizacji <ChevronRight size={16} /></button>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {advanced && <article className="panel" style={{ marginTop: 14, padding: 18 }}>
+        <div className="panel-title"><div><span>REGUŁY OPTYMALIZACJI</span><h2>Parametry zaawansowane</h2></div><SlidersHorizontal size={18} /></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3" style={{ marginTop: 10 }}>
+          <Field label="Docelowy SPLH" value={form.settings.targetSplh} onChange={(v) => setSetting('targetSplh', Number(v) || 0)} suffix="zł/h" disabled={locked} />
+          <Field label="Docelowy MPT" value={form.settings.targetMpt} onChange={(v) => setSetting('targetMpt', Number(v) || 0)} suffix="min" step="0.1" disabled={locked} />
+          <Field label="Godziny MGR" value={form.settings.fixedHours.manager} onChange={(v) => setFixed('manager', v)} suffix="h" step="0.25" disabled={locked} />
+          <Field label="MGR funkcyjne" value={form.settings.fixedHours.functionalManager} onChange={(v) => setFixed('functionalManager', v)} suffix="h" step="0.25" disabled={locked} />
+          <Field label="Godziny szkoleniowe" value={form.settings.fixedHours.training} onChange={(v) => setFixed('training', v)} suffix="h" step="0.25" disabled={locked} />
+          <Field label="MGR szkoleniowe" value={form.settings.fixedHours.managerTraining} onChange={(v) => setFixed('managerTraining', v)} suffix="h" step="0.25" disabled={locked} />
+          <Field label="Okno historii" value={form.settings.historyWeeks} onChange={(v) => setSetting('historyWeeks', Number(v) || 0)} suffix="tyg." disabled={locked} />
+          <Field label="Tolerancja MGR" value={form.settings.managerToleranceHours} onChange={(v) => setSetting('managerToleranceHours', Number(v) || 0)} suffix="± h" step="1" disabled={locked} />
+        </div>
+        <div style={{ marginTop: 12 }}><div className="text-[11px] font-bold uppercase mb-2" style={{ color: C.mute }}>Pełny koszt godziny według kategorii</div><div className="grid grid-cols-2 md:grid-cols-5 gap-3">{CATEGORIES.map(([c, label]) => <Field key={c} label={label} value={form.settings.rates[c]} onChange={(v) => setRate(c, v)} suffix="zł/h" step="0.01" disabled={locked} />)}</div></div>
+        <label className="block mt-3"><span className="block text-[11px] font-semibold mb-1" style={{ color: C.mute }}>Święta / dni obniżające nominał</span><input value={(form.settings.holidays || []).join(', ')} disabled={locked} onChange={(e) => setSetting('holidays', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} placeholder={`${month}-01, ${month}-15`} className="w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: C.line }} /></label>
+      </article>}
 
       {plan && <>
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
-          <Card label="Sprzedaż" value={`${money(plan.totals.sales)} zł`} sub="dokładnie jak plan miesiąca" icon={TrendingUp} />
-          <Card label="Transakcje" value={Math.round(plan.totals.transactions).toLocaleString('pl-PL')} sub={`AGC ${money(plan.totals.sales / Math.max(1, plan.totals.transactions))} zł`} icon={BarChart3} />
-          <Card label="Godziny total" value={`${number(plan.totals.hours.total)} h`} sub={`popyt ${number(plan.totals.demandHours)} h`} icon={Clock3} />
-          <Card label="COL" value={`${money(plan.totals.cost)} zł`} sub={`${number(plan.totals.colPct, 2)}% sprzedaży`} tone={plan.totals.headroom < 0 ? C.bad : C.ok} icon={ShieldCheck} />
-          <Card label="Limit kosztu" value={`${money(plan.totals.targetCost)} zł`} sub={`bufor ${money(plan.totals.headroom)} zł`} tone={plan.totals.headroom < 0 ? C.bad : C.dark} icon={Lock} />
-          <Card label="SPLH planu" value={`${number(plan.totals.splh)} zł/h`} sub={`cel ${form.settings.targetSplh} zł/h`} tone={plan.totals.splh < form.settings.targetSplh ? C.warn : C.ok} />
-          <Card label="MPT planu" value={`${number(plan.totals.mpt, 2)} min`} sub={`cel ${form.settings.targetMpt} min`} tone={plan.totals.mpt > form.settings.targetMpt ? C.warn : C.ok} />
-          <Card label="Historia" value={plan.historyQuality.confidence} sub={`${plan.historyQuality.salesDays} dni sales · ${plan.historyQuality.transactionDays} dni traffic`} tone={plan.historyQuality.confidence === 'LOW' ? C.warn : C.ok} />
-        </div>
+        {(plan.errors || []).map((x, i) => <div key={`e${i}`} style={{ marginTop: 10 }}><Notice type="bad">{x}</Notice></div>)}
+        {(plan.warnings || []).map((x, i) => <div key={`w${i}`} style={{ marginTop: 10 }}><Notice>{x}</Notice></div>)}
 
-        {(plan.errors || []).map((x, i) => <Notice key={`e${i}`} type="bad">{x}</Notice>)}
-        {(plan.warnings || []).map((x, i) => <Notice key={`w${i}`}>{x}</Notice>)}
-        {plan.valid && <Notice type="ok">Plan bilansuje sprzedaż i transakcje, zapewnia minima UOP oraz mieści się w ustawionym limicie COL. Po zablokowaniu limity będą egzekwowane również podczas edycji grafiku.</Notice>}
-
-        <div className="grid xl:grid-cols-[1.2fr_1fr] gap-4">
-          <div className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: C.line }}>
-            <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: C.line }}><Users size={17} style={{ color: C.dark }} /><h3 className="font-bold text-sm" style={{ color: C.ink }}>Podział godzin i kosztów</h3></div>
-            <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] px-4 py-2 text-[10px] font-bold uppercase" style={{ backgroundColor: C.pale, color: C.mute }}><span>Kategoria</span><span className="text-right">Godziny</span><span className="text-right">Minimum UOP</span><span className="text-right">Koszt</span></div>
-            {CATEGORIES.map(([c, label, color]) => <div key={c} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] px-4 py-2.5 text-sm border-t" style={{ borderColor: '#F3EFF0' }}><span className="font-semibold flex items-center gap-2" style={{ color: C.ink }}><i className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />{label}</span><span className="text-right font-bold" style={{ color }}>{number(plan.totals.hours[c])} h</span><span className="text-right" style={{ color: C.mute }}>{number(plan.totals.contractHoursByCategory[c])} h</span><span className="text-right" style={{ color: C.ink }}>{money(plan.totals.costByCategory[c])} zł</span></div>)}
+        <article className="panel day-plan-panel" style={{ marginTop: 14 }}>
+          <div className="panel-title"><div><span>PLAN DZIEŃ PO DNIU</span><h2>{mcLabel.charAt(0).toUpperCase() + mcLabel.slice(1)}</h2></div><span className="table-filter" style={{ cursor: 'default' }}>klik = profil 96 slotów • Koryguj = przypięcie dnia</span></div>
+          <div className="data-table forecast-table">
+            <div className="table-header"><span>Dzień</span><span>Sprzedaż</span><span>Transakcje</span><span>Godz. total</span><span>Koszt</span><span>Pokrycie</span><span>COL</span><span>Status</span></div>
+            {plan.days.map((d) => (
+              <div className="table-row" key={d.date} onClick={() => setSelectedDay(d.date)} style={{ cursor: 'pointer', background: selectedDay === d.date ? '#F7F1F3' : undefined }}>
+                <span><b>{DOW[d.dow]}, {d.date.slice(8)}.{d.date.slice(5, 7)}</b>{d.source === 'MANAGER_OVERRIDE' && <small style={{ color: C.warn }}>korekta managera</small>}</span>
+                <span><strong>{Math.round(d.sales).toLocaleString('pl-PL')} zł</strong></span>
+                <span>{d.transactions}</span>
+                <span>{number(d.hours.total)} h</span>
+                <span>{Math.round(d.cost).toLocaleString('pl-PL')} zł</span>
+                <span><i className="coverage-bar"><b style={{ width: `${Math.min(100, d.colPct / Math.max(0.1, form.settings.colTargetPct) * 100)}%` }} /></i>{number(d.colPct, 1)}%</span>
+                <span className={d.colPct > form.settings.colTargetPct ? 'table-danger' : 'table-good'}>{number(d.colPct, 1)}%</span>
+                <span><em className={d.colPct > form.settings.colTargetPct ? 'status-warning' : 'status-ready'} onClick={(e) => { e.stopPropagation(); setEdit({ date: d.date, sales: d.sales, transactions: d.transactions, hours: { ...d.hours }, reason: d.overrideReason || '' }); }} style={{ cursor: 'pointer' }}>{locked ? 'Podgląd' : 'Koryguj'}</em></span>
+              </div>
+            ))}
           </div>
-          <div className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: C.line }}>
-            <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: C.line }}><ShieldCheck size={17} style={{ color: C.dark }} /><h3 className="font-bold text-sm" style={{ color: C.ink }}>Kontrola grafiku względem planu</h3></div>
-            {plan.compliance ? <><div className="grid grid-cols-3 gap-3 p-4"><Card label="Zaplanowano w grafiku" value={`${number(plan.compliance.hours.total)} h`} sub={`zostało ${number(plan.compliance.hoursHeadroom)} h`} /><Card label="Koszt grafiku" value={`${money(plan.compliance.cost)} zł`} sub={`bufor ${money(plan.compliance.costHeadroom)} zł`} tone={plan.compliance.ok ? C.ok : C.bad} /><Card label="Status" value={plan.compliance.ok ? 'ZGODNY' : 'PRZEKROCZENIE'} sub={plan.status === 'LOCKED' ? 'blokada aktywna' : 'kontrola informacyjna'} tone={plan.compliance.ok ? C.ok : C.bad} /></div>{(plan.compliance.violations || []).map((v, i) => <div key={i} className="mx-4 mb-2"><Notice type="bad">{v}</Notice></div>)}</> : <div className="p-6 text-sm" style={{ color: C.mute }}>Brak grafiku dla tego miesiąca. Limit zacznie działać przy dodawaniu zmian.</div>}
-          </div>
-        </div>
+        </article>
 
-        <div className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: C.line }}>
+        <article className="panel" style={{ marginTop: 14, overflow: 'hidden' }}>
           <div className="px-4 py-3 border-b flex flex-wrap items-center gap-2" style={{ borderColor: C.line }}><Users size={17} style={{ color: C.dark }} /><h3 className="font-bold text-sm" style={{ color: C.ink }}>Gwarancja godzin UOP</h3><span className="text-[11px]" style={{ color: C.mute }}>MGR: etat ± {form.settings.managerToleranceHours} h; crew: dokładny nominał. Nominał można nadpisać i przeliczyć plan.</span></div>
-          {!contractRows.length ? <div className="p-5 text-sm" style={{ color: C.mute }}>Brak pracowników UOP w module Pracownicy.</div> : <div className="overflow-x-auto"><div className="min-w-[760px]"><div className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] px-4 py-2 text-[10px] font-bold uppercase" style={{ backgroundColor: C.pale, color: C.mute }}><span>Pracownik</span><span>Kategoria</span><span className="text-right">Minimum</span><span className="text-right">Plan</span><span className="text-right">Maksimum</span><span className="text-right">Nominał do silnika</span></div>{contractRows.map((r) => <div key={r.accountId} className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] items-center px-4 py-2 border-t text-sm" style={{ borderColor: '#F3EFF0' }}><span className="font-semibold" style={{ color: C.ink }}>{r.name}</span><span style={{ color: C.mute }}>{CATEGORIES.find(([c]) => c === r.category)?.[1] || r.category}</span><span className="text-right">{number(r.minHours)} h</span><span className="text-right font-bold" style={{ color: r.plannedHours < r.minHours || r.plannedHours > r.maxHours ? C.bad : C.ok }}>{number(r.plannedHours)} h</span><span className="text-right">{number(r.maxHours)} h</span><span className="text-right"><input type="number" step="0.25" disabled={plan.status === 'LOCKED'} value={form.employeeHours[r.accountId] ?? r.targetHours} onChange={(e) => setForm((f) => ({ ...f, employeeHours: { ...f.employeeHours, [r.accountId]: Number(e.target.value) || 0 } }))} className="w-24 rounded border px-2 py-1 text-right disabled:bg-slate-50" style={{ borderColor: C.line }} /></span></div>)}</div></div>}
-        </div>
+          {!contractRows.length ? <div className="p-5 text-sm" style={{ color: C.mute }}>Brak pracowników UOP w module Pracownicy.</div> : <div className="overflow-x-auto"><div className="min-w-[760px]"><div className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] px-4 py-2 text-[10px] font-bold uppercase" style={{ backgroundColor: C.pale, color: C.mute }}><span>Pracownik</span><span>Kategoria</span><span className="text-right">Minimum</span><span className="text-right">Plan</span><span className="text-right">Maksimum</span><span className="text-right">Nominał do silnika</span></div>{contractRows.map((r) => <div key={r.accountId} className="grid grid-cols-[1.5fr_1fr_100px_100px_100px_150px] items-center px-4 py-2 border-t text-sm" style={{ borderColor: '#F3EFF0' }}><span className="font-semibold" style={{ color: C.ink }}>{r.name}</span><span style={{ color: C.mute }}>{CATEGORIES.find(([c]) => c === r.category)?.[1] || r.category}</span><span className="text-right">{number(r.minHours)} h</span><span className="text-right font-bold" style={{ color: r.plannedHours < r.minHours || r.plannedHours > r.maxHours ? C.bad : C.ok }}>{number(r.plannedHours)} h</span><span className="text-right">{number(r.maxHours)} h</span><span className="text-right"><input type="number" step="0.25" disabled={locked} value={form.employeeHours[r.accountId] ?? r.targetHours} onChange={(e) => setForm((f) => ({ ...f, employeeHours: { ...f.employeeHours, [r.accountId]: Number(e.target.value) || 0 } }))} className="w-24 rounded border px-2 py-1 text-right disabled:bg-slate-50" style={{ borderColor: C.line }} /></span></div>)}</div></div>}
+        </article>
 
-        <div className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: C.line }}>
-          <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: C.line }}><BarChart3 size={17} style={{ color: C.dark }} /><h3 className="font-bold text-sm" style={{ color: C.ink }}>Plan dzień po dniu</h3><span className="text-[11px]" style={{ color: C.mute }}>Kliknij dzień, aby podejrzeć 96 slotów. Edycja dnia automatycznie przelicza pozostałą część miesiąca.</span></div>
-          <div className="overflow-x-auto"><div className="min-w-[1280px]"><div className="grid grid-cols-[105px_115px_90px_repeat(5,100px)_100px_100px_86px] px-3 py-2 text-[9px] font-bold uppercase" style={{ backgroundColor: C.pale, color: C.mute }}><span>Dzień</span><span className="text-right">Sprzedaż</span><span className="text-right">Trans.</span>{CATEGORIES.map(([, label]) => <span key={label} className="text-right">{label}</span>)}<span className="text-right">Total</span><span className="text-right">COL</span><span /></div>{plan.days.map((d) => <button key={d.date} onClick={() => setSelectedDay(d.date)} className="w-full grid grid-cols-[105px_115px_90px_repeat(5,100px)_100px_100px_86px] items-center px-3 py-2 border-t text-xs text-left hover:bg-slate-50" style={{ borderColor: '#F3EFF0', backgroundColor: selectedDay === d.date ? '#eef7f5' : undefined }}><span className="font-semibold" style={{ color: C.ink }}>{DOW[d.dow]} {d.date.slice(8)}.{d.date.slice(5, 7)}{d.source === 'MANAGER_OVERRIDE' && <i className="ml-1 not-italic text-[9px]" style={{ color: C.warn }}>●</i>}</span><span className="text-right">{money(d.sales)}</span><span className="text-right">{d.transactions}</span>{CATEGORIES.map(([c]) => <span key={c} className="text-right">{number(d.hours[c])}</span>)}<span className="text-right font-bold">{number(d.hours.total)} h</span><span className="text-right" style={{ color: d.colPct > form.settings.colTargetPct ? C.bad : C.ok }}>{money(d.cost)} zł</span><span className="text-right"><span onClick={(e) => { e.stopPropagation(); setEdit({ date: d.date, sales: d.sales, transactions: d.transactions, hours: { ...d.hours }, reason: d.overrideReason || '' }); }} className="inline-block rounded px-2 py-1 font-semibold" style={{ backgroundColor: C.pale, color: C.dark }}>{plan.status === 'LOCKED' ? 'Podgląd' : 'Koryguj'}</span></span></button>)}</div></div>
-        </div>
-        {selected && <HourlyProfile day={selected} />}
+        {selected && <div style={{ marginTop: 14 }}><HourlyProfile day={selected} /></div>}
       </>}
     </div>
 

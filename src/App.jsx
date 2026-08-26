@@ -410,6 +410,251 @@ const ObsadaLive = ({ data, setPage }) => {
   );
 };
 
+// ═════════ DYSPOZYCYJNOŚĆ — kolejka decyzji wg wzorca ORDO (realne endpointy) ═════════
+const KolejkaWn = ({ title, kicker, icon: Icon, items, onSelect }) => (
+  <article className="panel request-queue">
+    <div className="panel-title"><div><span>{kicker}</span><h2>{title}</h2></div><Icon size={19} /></div>
+    <div className="request-list">
+      {items.map((it) => (
+        <button key={it.id} onClick={() => onSelect(it)}>
+          <i>{String(it.name).split(/\s|→/).filter(Boolean).slice(0, 2).map((c) => c[0]).join('')}</i>
+          <span><strong>{it.name}</strong><small>{it.meta}</small><em>{it.detail}</em></span>
+          <b className={`request-status ${it.status}`}>{it.conflict && it.status === 'pending' ? 'Konflikt' : it.status === 'pending' ? 'Do decyzji' : it.status === 'approved' ? 'Zatwierdzone' : 'Odrzucone'}</b>
+          <ChevronRight size={16} />
+        </button>
+      ))}
+      {!items.length && <div className="dialog-empty" style={{ padding: 14 }}>Brak zgłoszeń.</div>}
+    </div>
+  </article>
+);
+
+const RequestsAdmin = ({ data, setPage }) => {
+  const [reqs, setReqs] = useState([]);
+  const [absencje, setAbsencje] = useState([]);
+  const [okno, setOkno] = useState(null);
+  const [pub, setPub] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const mc = new Date().toISOString().slice(0, 7);
+  const zaladuj = useCallback(() => {
+    api('/availability?reqs=1').then((r) => { if (r && r.success) setReqs(r.requests || []); }).catch(() => {});
+    api('/absences').then((r) => { if (r && r.success) setAbsencje(r.absences || []); }).catch(() => {});
+    api('/availability?window=1').then((r) => { if (r && r.success) setOkno(r.okno); }).catch(() => {});
+    api(`/schedule?action=pubinfo&pubmonth=${mc}`).then((r) => { if (r && r.success) setPub(r); }).catch(() => {});
+  }, []);
+  useEffect(zaladuj, [zaladuj]);
+
+  const dPL = (d) => d ? new Intl.DateTimeFormat('pl-PL', { weekday: 'short', day: 'numeric', month: 'long' }).format(new Date(d + 'T12:00:00')) : '';
+  const DY_OP = { available: 'Dostępny cały dzień', unavailable: 'Niedostępny cały dzień', from_time: 'Dostępny od', until_time: 'Dostępny do', specific_shift: 'Preferowana zmiana' };
+  const avItems = reqs.map((r) => ({ id: `av-${r.id}`, rid: r.id, kind: 'availability', name: r.name, meta: dPL(r.date), detail: `${DY_OP[r.type] || r.type}${r.type === 'from_time' ? ` ${r.startTime}` : r.type === 'until_time' ? ` ${r.endTime}` : r.type === 'specific_shift' ? ` ${r.startTime}–${r.endTime}` : ''}`, status: r.status, conflict: !!r.conflict })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 6);
+  const AB_OP = { urlop: 'Urlop wypoczynkowy', uz: 'Urlop na żądanie', l4: 'Zwolnienie (L4)', inne: 'Inna absencja' };
+  const abItems = absencje.map((a2) => ({ id: `ab-${a2.id}`, rid: a2.id, kind: 'absence', name: a2.name, meta: `${a2.from} – ${a2.to}`, detail: `${AB_OP[a2.type] || a2.type}${a2.reason ? ` • „${a2.reason}"` : ''}`, status: a2.status === 'open' ? 'pending' : a2.status })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 6);
+  const swItems = (data.swaps || []).map((x) => ({ id: `sw-${x.id}`, rid: x.id, kind: 'swap', name: x.volunteers && x.volunteers.length ? `${x.requester} → ${x.volunteers[0]}` : x.requester, meta: `${dPL(x.date)} • ${x.start}–${x.end}`, detail: `${x.station || 'Zmiana'}${x.volunteers && x.volunteers.length ? ' • jest ochotnik — decyzja w Zamianach' : ' • czeka na ochotnika'}`, status: x.status === 'open' ? 'pending' : 'approved' })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 5);
+
+  const pending = avItems.concat(abItems, swItems).filter((x) => x.status === 'pending').length;
+  const konflikty = avItems.filter((x) => x.conflict && x.status === 'pending').length;
+  const zaakcept = avItems.concat(abItems).filter((x) => x.status === 'approved').length;
+
+  const decyzja = async (status) => {
+    if (!sel) return; setBusy(true);
+    let r;
+    if (sel.kind === 'availability') r = await api('/availability?action=decide', 'POST', { id: sel.rid, status, managerNote: '' });
+    else if (sel.kind === 'absence') r = await api('/absences', 'PUT', { id: sel.rid, action: status === 'approved' ? 'approve' : 'reject' });
+    setBusy(false);
+    if (r && r.success) { data.show(status === 'approved' ? 'Decyzja zatwierdzona i przekazana do grafiku' : 'Wniosek odrzucony z zapisem w historii'); setSel(null); zaladuj(); }
+    else data.show((r && r.error) || 'Błąd zapisu decyzji', 'error');
+  };
+  const przelaczOkno = async () => {
+    if (!okno) return;
+    const r = await api('/availability?action=window', 'POST', { open: !okno.otwarte });
+    if (r.success) { setOkno(r.okno); data.show(r.okno.otwarte ? 'Okno dyspozycji otwarte' : 'Okno dyspozycji zamknięte'); }
+    else data.show(r.error || 'Błąd', 'error');
+  };
+  const publikuj = async () => {
+    setBusy(true);
+    const r = await api('/schedule?action=publish', 'POST', { month: mc });
+    setBusy(false);
+    if (r.success) { data.show(`Opublikowano ${mc} — wersja ${r.wersjaPub}. Pracownicy widzą grafik w Employee Hub.`); zaladuj(); }
+    else data.show(r.error || 'Błąd publikacji', 'error');
+  };
+  const opublikowany = !!(pub && pub.opublikowany);
+  const krokIdx = opublikowany ? 2 : 0;
+  const KROKI = [['Wersja robocza', 'Edycja przez managerów'], ['Wstępny', 'Widoczny do potwierdzenia'], ['Opublikowany', 'Obowiązujący dla zespołu'], ['Zakończony', 'Zamknięty do rozliczenia']];
+
+  // pokrycie dostępnością: następny tydzień (pon–nd)
+  const pon = (() => { const d = new Date(); d.setDate(d.getDate() + (8 - ((d.getDay() + 6) % 7 + 1))); return d; })();
+  const kontaN = Math.max(1, (data.accounts || []).length);
+  const pokrycie = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(pon); d.setDate(pon.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const niedost = reqs.filter((r) => r.date === iso && r.type === 'unavailable' && r.status !== 'rejected').length;
+    return { d: ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nd'][i], v: Math.max(0, Math.round((kontaN - niedost) / kontaN * 100)) };
+  });
+  const mcNazwa = new Intl.DateTimeFormat('pl-PL', { month: 'long' }).format(new Date());
+
+  return (
+    <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view requests-view" style={{ width: '100%' }}>
+      <MHead kicker="WORKFORCE • DYSPOZYCYJNOŚĆ" title="Dyspozycyjność" copy="Jedna kolejka decyzji dla dostępności, absencji i zamian — powiązana bezpośrednio z grafikiem dziennym.">
+        <button className="secondary-action" onClick={przelaczOkno}><CalendarCheck2 size={16} /> {okno && okno.otwarte ? 'Zamknij okno' : 'Otwórz okno'}</button>
+        <button className="primary-action" disabled={busy} onClick={publikuj}><CheckCircle2 size={16} /> {opublikowany ? 'Opublikuj nową wersję' : 'Opublikuj grafik'}</button>
+      </MHead>
+      <section className="request-kpis">
+        <MMetric icon={Clock3} label="Do decyzji" value={`${pending} zgłoszeń`} helper="w jednej kolejce" tone={pending ? 'coral' : 'mint'} />
+        <MMetric icon={AlertTriangle} label="Konflikty z grafikiem" value={`${konflikty} ${konflikty === 1 ? 'pozycja' : 'pozycje'}`} helper={konflikty ? 'wymagają korekty' : 'brak kolizji'} tone={konflikty ? 'violet' : 'mint'} />
+        <MMetric icon={UserCheck} label="Zaakceptowane" value={`${zaakcept} ${zaakcept === 1 ? 'pozycja' : 'pozycje'}`} helper="w widocznej kolejce" tone="blue" />
+        <MMetric icon={Calendar} label="Okno dyspozycji" value={okno ? (okno.otwarte ? 'Otwarte' : 'Zamknięte') : '—'} helper={okno ? `${okno.targetMonth || ''} • termin: 20.` : 'ładowanie'} tone="mint" />
+      </section>
+      <section className="requests-layout">
+        <div className="request-columns">
+          <KolejkaWn title="Dyspozycyjność" kicker="PREFERENCJE PRACOWNIKÓW" icon={CalendarCheck2} items={avItems} onSelect={setSel} />
+          <KolejkaWn title="Absencje i urlopy" kicker="SALDA I KOLIZJE" icon={Coffee} items={abItems} onSelect={setSel} />
+          <KolejkaWn title="Giełda zamian" kicker="KWALIFIKACJE I ODPOCZYNEK" icon={ArrowLeftRight} items={swItems} onSelect={(it) => setPage('swaps')} />
+        </div>
+        <aside className="request-side">
+          <article className="panel publication-panel">
+            <div className="panel-title"><div><span>OBIEG GRAFIKU</span><h2>Publikacja {mcNazwa}</h2></div><CheckCircle2 size={19} /></div>
+            <div className="publication-steps">
+              {KROKI.map(([nazwa, ops], i) => (
+                <div key={nazwa} className={i < krokIdx ? 'done' : i === krokIdx ? 'current' : ''}><i>{i < krokIdx ? <Check size={13} /> : i + 1}</i><span><strong>{nazwa}{i === 2 && opublikowany && pub.wersjaPub ? ` (v${pub.wersjaPub})` : ''}</strong><small>{ops}</small></span></div>
+              ))}
+            </div>
+            <button className="full-secondary" disabled={busy} onClick={publikuj}>Przejdź do kolejnego etapu <ChevronRight size={16} /></button>
+          </article>
+          <article className="panel availability-map">
+            <div className="panel-title"><div><span>NASTĘPNY TYDZIEŃ</span><h2>Pokrycie dostępnością</h2></div><Gauge size={19} /></div>
+            {pokrycie.map((x) => <div className="availability-coverage" key={x.d}><span>{x.d}</span><i><b style={{ width: `${x.v}%` }} /></i><strong>{x.v}%</strong></div>)}
+            <div className="request-note"><ShieldCheck size={16} /><span>Publikacja blokuje zmiany niezgodne z zatwierdzoną dyspozycyjnością i absencjami.</span></div>
+          </article>
+        </aside>
+      </section>
+      {sel && (
+        <DialogS title={sel.name} kicker={sel.kind === 'availability' ? 'DYSPOZYCYJNOŚĆ' : 'WNIOSEK O NIEOBECNOŚĆ'} description={`${sel.meta} • ${sel.detail}`} onClose={() => setSel(null)}
+          actions={sel.status === 'pending' ? <><button onClick={() => decyzja('rejected')} disabled={busy}><X size={15} /> Odrzuć</button><button className="dialog-primary" disabled={busy} onClick={() => decyzja('approved')}><Check size={15} /> Zatwierdź</button></> : <button className="dialog-primary" onClick={() => setSel(null)}>Gotowe</button>}>
+          <div className="dialog-stat-grid"><div className="dialog-stat"><span>Status</span><strong>{sel.status === 'pending' ? 'Do decyzji' : sel.status === 'approved' ? 'Zatwierdzone' : 'Odrzucone'}</strong></div><div className="dialog-stat"><span>Konflikt</span><strong>{sel.conflict ? 'Tak' : 'Nie'}</strong></div><div className="dialog-stat"><span>Typ</span><strong>{sel.kind === 'availability' ? 'Dyspozycja' : 'Absencja'}</strong></div></div>
+          <div className="dialog-notice"><ShieldCheck size={16} /><span>System sprawdził kolizje z opublikowanym grafikiem. Decyzja trafi do dziennika audytu.</span></div>
+        </DialogS>
+      )}
+    </div></div>
+  );
+};
+
+// ═════════ ANALITYKA PRACY — wzorzec ORDO na realnych agregatach ═════════
+const AnalyticsPage = ({ data, setPage }) => {
+  const konta = data.accounts || [];
+  const poIdA = new Map(konta.map((a2) => [a2.id, a2]));
+  const poNazA = new Map(konta.flatMap((a2) => [a2.grafikName, a2.name, ...(a2.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a2])));
+  const kontoZA = (x) => poIdA.get(x.accountId) || poNazA.get(String(x.name || '').toUpperCase().trim()) || null;
+  const MGRA = new Set(['RGM', 'ASM']);
+  const FUNKA = new Set(['SM', 'JSM']);
+
+  const agreg = useMemo(() => {
+    const m = new Map();
+    (data.shifts || []).filter((x) => x.date && !jestInstruktor(x)).forEach((x) => {
+      const k = x.date.slice(0, 7);
+      const o = m.get(k) || { h: 0, koszt: 0, crew: 0, mgr: 0, funk: 0, szkol: 0 };
+      const g = godzZ(x); const kt = kontoZA(x);
+      o.h += g; o.koszt += kosztGodzin(kt, g);
+      if (x.rola === 'training') o.szkol += g;
+      else if (kt && MGRA.has(kt.funkcja)) o.mgr += g;
+      else if (kt && FUNKA.has(kt.funkcja)) o.funk += g;
+      else o.crew += g;
+      m.set(k, o);
+    });
+    Object.entries(((data.salesData || {}).sales) || {}).forEach(([d, v]) => {
+      const k = String(d).slice(0, 7);
+      const o = m.get(k) || { h: 0, koszt: 0, crew: 0, mgr: 0, funk: 0, szkol: 0 };
+      o.sprzedaz = (o.sprzedaz || 0) + (Number(v) || 0);
+      m.set(k, o);
+    });
+    return [...m.entries()].sort((a2, b2) => a2[0].localeCompare(b2[0])).slice(-12);
+  }, [data.shifts, data.salesData, konta]);
+
+  const sumS = agreg.reduce((a2, [, o]) => a2 + (o.sprzedaz || 0), 0);
+  const sumK = agreg.reduce((a2, [, o]) => a2 + o.koszt, 0);
+  const sumH = agreg.reduce((a2, [, o]) => a2 + o.h, 0);
+  const colR = sumS ? (sumK / sumS * 100) : null;
+  const splh = sumH ? sumS / sumH : null;
+  const maxS = Math.max(1, ...agreg.map(([, o]) => o.sprzedaz || 0));
+  const colD = agreg.map(([, o]) => o.sprzedaz ? o.koszt / o.sprzedaz * 100 : null);
+  const colMin = Math.min(...colD.filter((v) => v != null), 15), colMax = Math.max(...colD.filter((v) => v != null), 30);
+  const mcL = (k) => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][Number(k.slice(5, 7)) - 1];
+  const fmtA = (n) => Math.round(n).toLocaleString('pl-PL');
+
+  const dniComp = Object.entries(((data.ts || {}).completed) || {}).filter(([, v]) => v).length;
+  const dniZmian = new Set((data.shifts || []).map((x) => x.date)).size;
+  const zgodnosc = dniZmian ? Math.min(100, Math.round(dniComp / dniZmian * 100)) : 0;
+
+  const crewS = agreg.reduce((a2, [, o]) => a2 + o.crew, 0), mgrS = agreg.reduce((a2, [, o]) => a2 + o.mgr, 0), funkS = agreg.reduce((a2, [, o]) => a2 + o.funk, 0), szkS = agreg.reduce((a2, [, o]) => a2 + o.szkol, 0);
+  const tot = Math.max(1, crewS + mgrS + funkS + szkS);
+  const pc = (v) => `${Math.round(v / tot * 100)}%`;
+  const donut = `conic-gradient(#741334 0 ${crewS / tot * 360}deg, #5A3542 ${crewS / tot * 360}deg ${(crewS + mgrS) / tot * 360}deg, #A7465F ${(crewS + mgrS) / tot * 360}deg ${(crewS + mgrS + funkS) / tot * 360}deg, #B86D82 ${(crewS + mgrS + funkS) / tot * 360}deg 360deg)`;
+
+  // wnioski heurystyczne z danych
+  const dow = Array.from({ length: 7 }, () => ({ h: 0, s: 0 }));
+  (data.shifts || []).filter((x) => x.date && !jestInstruktor(x)).forEach((x) => { const d = new Date(x.date + 'T12:00:00').getDay(); dow[(d + 6) % 7].h += godzZ(x); });
+  Object.entries(((data.salesData || {}).sales) || {}).forEach(([d, v]) => { const i = (new Date(d + 'T12:00:00').getDay() + 6) % 7; dow[i].s += Number(v) || 0; });
+  const dniN = ['poniedziałki', 'wtorki', 'środy', 'czwartki', 'piątki', 'soboty', 'niedziele'];
+  const najdrozszy = dow.map((o, i) => ({ i, r: o.s ? o.h / o.s * 1000 : 0 })).filter((x) => x.r).sort((a2, b2) => b2.r - a2.r)[0];
+  const wnioski = [
+    najdrozszy ? [`Przejrzyj obsadę w ${dniN[najdrozszy.i]}`, `najwyższy stosunek godzin do sprzedaży`, `Potencjał: obniżenie COL`, 'save'] : ['Uzupełnij dane sprzedaży', 'import w Planowaniu i popycie', 'Odblokuje analizę COL', 'save'],
+    [`Szkolenia: ${szkS.toFixed(0)} h w okresie`, szkS ? 'sprawdź rozliczenie par instruktor–uczeń' : 'brak godzin szkoleniowych', `${pc(szkS)} wszystkich godzin`, 'skill'],
+    [zgodnosc < 100 ? 'Domknij karty czasu' : 'Karty czasu domknięte', `${dniComp}/${dniZmian} dni oznaczonych Completed`, `Zgodność: ${zgodnosc}%`, 'forecast'],
+  ];
+
+  const eksport = () => {
+    const rows = ['Miesiąc;Sprzedaż;Koszt;Godziny;COL %', ...agreg.map(([k, o]) => `${k};${Math.round(o.sprzedaz || 0)};${Math.round(o.koszt)};${o.h.toFixed(1)};${o.sprzedaz ? (o.koszt / o.sprzedaz * 100).toFixed(1) : ''}`)];
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = 'analityka-pracy-r12.csv'; a2.click(); URL.revokeObjectURL(u);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view analytics-view" style={{ width: '100%' }}>
+      <MHead kicker="OPERATIONAL INSIGHTS • R12" title="Analityka pracy" copy="Jeden obraz kosztu, produktywności, zgodności, jakości prognozy i doświadczenia pracowników.">
+        <button className="secondary-action" onClick={() => setPage('forecast')}><Calendar size={16} /> Planowanie i popyt</button>
+        <button className="primary-action" onClick={eksport}><Download size={16} /> Eksport raportu</button>
+      </MHead>
+      <section className="analytics-kpis">
+        <MMetric icon={CircleDollarSign} label="COL R12" value={colR != null ? `${colR.toFixed(1).replace('.', ',')}%` : '—'} helper={colR != null ? 'koszt / sprzedaż' : 'brak danych sprzedaży'} tone="mint" />
+        <MMetric icon={Gauge} label="SPLH" value={splh != null ? `${Math.round(splh)} zł` : '—'} helper="sprzedaż / roboczogodzina" tone="blue" />
+        <MMetric icon={Clock3} label="Godziny (okres)" value={`${fmtA(sumH)} h`} helper={`${agreg.length} mies. z danymi`} tone="violet" />
+        <MMetric icon={ShieldCheck} label="Zgodność grafików" value={`${zgodnosc}%`} helper={`${dniComp}/${dniZmian} dni Completed`} tone="mint" />
+      </section>
+      <section className="analytics-grid">
+        <article className="panel performance-chart">
+          <div className="panel-title"><div><span>SPRZEDAŻ VS COST OF LABOUR</span><h2>Wzrost przy malejącym udziale kosztu</h2></div><div className="forecast-legend"><span><i className="sales-key" />Sprzedaż tys.</span><span><i className="hours-key" />COL %</span></div></div>
+          <div className="dual-chart">
+            {agreg.map(([k, o], i) => (
+              <div key={k} title={`${k}: ${fmtA(o.sprzedaz || 0)} zł • COL ${colD[i] != null ? colD[i].toFixed(1) : '—'}%`}>
+                <i style={{ height: `${(o.sprzedaz || 0) / maxS * 100}%` }} />
+                {colD[i] != null && <b style={{ bottom: `${((colD[i] - colMin) / Math.max(1, colMax - colMin)) * 80 + 8}%` }} />}
+                {i % 2 === 0 && <span>{mcL(k)}</span>}
+              </div>
+            ))}
+          </div>
+          <div className="chart-callout"><TrendingUp size={17} /><span>{sumS ? `Sprzedaż ${fmtA(sumS)} zł w okresie, COL ${colR.toFixed(1).replace('.', ',')}%.` : 'Zaimportuj sprzedaż, aby zobaczyć pełny obraz COL.'}</span></div>
+        </article>
+        <article className="panel insights-panel">
+          <div className="panel-title"><div><span>WNIOSKI</span><h2>Co warto zrobić</h2></div><Sparkles size={20} /></div>
+          {wnioski.map(([title, detail, impact, tone]) => <button className="insight-item" key={title} onClick={() => setPage(tone === 'save' ? 'forecast' : tone === 'skill' ? 'wt' : 'wt')}><i className={tone}><Sparkles size={16} /></i><div><strong>{title}</strong><span>{detail}</span><em>{impact}</em></div><ChevronRight size={17} /></button>)}
+        </article>
+        <article className="panel category-cost-panel">
+          <div className="panel-title"><div><span>KOSZT WEDŁUG GRUP</span><h2>Struktura roboczogodzin</h2></div><strong>{fmtA(sumK)} zł</strong></div>
+          <div className="donut-layout">
+            <div className="cost-donut" style={{ background: donut }}><div><strong>{fmtA(sumH)} h</strong><span>total</span></div></div>
+            <div>{[['Crew', pc(crewS), '#741334'], ['Manager', pc(mgrS), '#5A3542'], ['Mgr funkcyjny', pc(funkS), '#A7465F'], ['Szkolenia', pc(szkS), '#B86D82']].map(([label, value, color]) => <div className="donut-key" key={label}><span><i style={{ background: color }} />{label}</span><strong>{value}</strong></div>)}</div>
+          </div>
+        </article>
+        <article className="panel forecast-quality-panel">
+          <div className="panel-title"><div><span>JAKOŚĆ DANYCH</span><h2>Kompletność okresu</h2></div><em>{zgodnosc}%</em></div>
+          {[['Dni z grafikiem', `${dniZmian}`, 100], ['Dni ze sprzedażą', `${Object.keys(((data.salesData || {}).sales) || {}).length}`, dniZmian ? Math.min(100, Object.keys(((data.salesData || {}).sales) || {}).length / dniZmian * 100) : 0], ['Dni Completed', `${dniComp}`, zgodnosc], ['Zmiany z kontem', `${Math.round((data.shifts || []).filter((x) => x.accountId).length / Math.max(1, (data.shifts || []).length) * 100)}%`, (data.shifts || []).filter((x) => x.accountId).length / Math.max(1, (data.shifts || []).length) * 100]].map(([label, value, score]) => (
+            <div className="quality-row" key={String(label)}><span>{label}</span><div><i style={{ width: `${score}%` }} /></div><strong>{value}</strong></div>
+          ))}
+        </article>
+      </section>
+    </div></div>
+  );
+};
+
 const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName, mini, setMini, open, onClose }) => {
   const items = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
@@ -422,6 +667,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
     { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Clock3, live: true, section: 'workforce' },
     { id: 'dyspo', label: 'Dyspozycyjność', icon: CalendarCheck2, section: 'workforce' },
     { id: 'emps', label: 'Pracownicy i konta', icon: Users, section: 'team' },
+    { id: 'analytics', label: 'Analityka', icon: TrendingUp, section: 'tools' },
     { id: 'swaps', label: 'Zamiany i wnioski', icon: RefreshCw, badge: pendingSwaps || null, section: 'team' },
     { id: 'import', label: 'Import / eksport godzin', icon: Upload, section: 'tools' },
   ];
@@ -658,7 +904,7 @@ function parseProstaTabela(buffer) {
 
 const STACJE_IMPORT = [...Object.keys(stationColors)];
 
-const ImportPage = ({ data }) => {
+const ImportPage = ({ data, setPage }) => {
   const [preview, setPreview] = useState(null);
   const [expM, setExpM] = useState(() => { const m = (data.months || []); return m.length ? m[m.length - 1].key : ''; });
   const [parsing, setParsing] = useState(false);
@@ -668,6 +914,27 @@ const ImportPage = ({ data }) => {
   const fileRef = useRef();
   const stacjaWiersza = (sx, i) => stOverride[i] || sx.station || 'MANAGER';
   const zEfektywnymiStacjami = () => preview.shifts.map((sx, i) => ({ ...sx, station: stacjaWiersza(sx, i) }));
+
+  const [sladAud, setSladAud] = useState([]);
+  useEffect(() => { api('/audit?limit=8').then((r) => { if (r && r.success) setSladAud(r.entries || []); }).catch(() => {}); }, []);
+  const AUD_OP = { 'auth.login': 'Logowanie do panelu', 'schedule.add': 'Dodanie zmiany', 'schedule.update': 'Edycja zmiany', 'schedule.remove': 'Usunięcie zmiany', 'schedule.publish': 'Publikacja grafiku', 'schedule.import': 'Import grafiku', 'timesheet.write': 'Zapis wykonania', 'swap.approve': 'Zamiana zatwierdzona', 'absence.approve': 'Absencja zatwierdzona', 'account.create': 'Nowe konto', 'account.update': 'Edycja konta', 'account.reset-password': 'Reset PIN' };
+  const mcNow = new Date().toISOString().slice(0, 7);
+  const dniZGraf = new Set((data.shifts || []).filter((x) => x.date && x.date.slice(0, 7) === mcNow).map((x) => x.date));
+  const complMc = Object.entries(((data.ts || {}).completed) || {}).filter(([d, v]) => v && d.slice(0, 7) === mcNow).length;
+  const szkolMc = (data.shifts || []).filter((x) => x.date && x.date.slice(0, 7) === mcNow && (x.rola === 'training' || x.szkoli)).length;
+  const gotowoscR = dniZGraf.size ? Math.round((Math.min(1, complMc / dniZGraf.size) * 70 + 30)) : 0;
+  const pobierzCSV = (nazwa, rows) => { const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' }); const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = nazwa; a2.click(); URL.revokeObjectURL(u); };
+  const obsadaDzienna = () => {
+    const dzis2 = new Date().toISOString().slice(0, 10);
+    const zm2 = (data.shifts || []).filter((x) => x.date === dzis2 && !jestInstruktor(x)).sort((a2, b2) => String(a2.start).localeCompare(b2.start));
+    pobierzCSV(`ordo-obsada-${dzis2}.csv`, ['Godziny;Pracownik;Stanowisko', ...zm2.map((x) => `${x.start}–${x.end};${x.name};${x.station || ''}`)]);
+    data.show('Pobrano zestawienie dziennej obsady');
+  };
+  const planSzkolen = () => {
+    const zm2 = (data.shifts || []).filter((x) => x.date && x.date.slice(0, 7) === mcNow && (x.rola === 'training' || x.szkoli));
+    pobierzCSV(`ordo-szkolenia-${mcNow}.csv`, ['Data;Pracownik;Rola;Partner;Stanowisko;Godziny', ...zm2.map((x) => `${x.date};${x.name};${x.szkoli ? 'instruktor' : 'uczeń'};${x.partnerSzk || x.partner || ''};${x.station || ''};${x.start}–${x.end}`)]);
+    data.show('Pobrano plan szkoleń');
+  };
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -703,8 +970,31 @@ const ImportPage = ({ data }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Import / eksport godzin" subtitle="Format poziomy: A1 = rok, pary kolumn DD/MM (start / koniec), wiersze = pracownicy" />
-      <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+      <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view reports-view" style={{ width: '100%' }}>
+      <MHead kicker="ORDO WORKFORCE STUDIO • NARZĘDZIA" title="Import / eksport godzin" copy="Raporty godzin, dzienna obsada, szkolenia oraz pełna historia zmian operacyjnych.">
+        <button className="secondary-action" onClick={() => fileRef.current && fileRef.current.click()}><Upload size={16} /> Import danych</button>
+        <button className="primary-action" onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami)`, 'success'); }}><Download size={16} /> Eksport payroll</button>
+      </MHead>
+      <section className="report-cards">
+        <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
+        <button className="panel report-card" onClick={planSzkolen}><i><CalendarCheck2 size={21} /></i><span><small>ROZWÓJ</small><strong>Plan szkoleń</strong><em>Instruktor, uczestnik, stanowisko i godziny szkoleniowe.</em></span><Download size={18} /></button>
+        <button className="panel report-card" onClick={() => setPage && setPage('settings')}><i><Clock size={21} /></i><span><small>ZGODNOŚĆ</small><strong>Dziennik audytu</strong><em>Publikacje, korekty, decyzje i operacje wrażliwe.</em></span><ChevronRight size={18} /></button>
+      </section>
+      <section className="reports-grid">
+        <article className="panel report-summary">
+          <div className="panel-title"><div><span>GOTOWOŚĆ ROZLICZENIA</span><h2>{new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date())}</h2></div><strong>{gotowoscR}%</strong></div>
+          {[['Dni z grafikiem', `${dniZGraf.size}`, dniZGraf.size ? 100 : 0], ['Karty czasu zatwierdzone', `${complMc} / ${dniZGraf.size}`, dniZGraf.size ? complMc / dniZGraf.size * 100 : 0], ['Wpisy szkoleniowe', `${szkolMc}`, szkolMc ? 100 : 0], ['Eksport payroll', 'z zamkniętych tygodni', 100]].map(([label, value, progress]) => (
+            <div className="report-progress" key={String(label)}><span><strong>{label}</strong><small>{value}</small></span><i><b style={{ width: `${progress}%` }} /></i></div>
+          ))}
+          <div className="request-note"><ShieldCheck size={16} /><span>Eksport payroll zostanie oznaczony wersją i znacznikiem osoby generującej.</span></div>
+        </article>
+        <article className="panel audit-preview">
+          <div className="panel-title"><div><span>OSTATNIE OPERACJE</span><h2>Ślad zmian</h2></div><button className="quiet-link" onClick={() => setPage && setPage('settings')}>Pełny dziennik</button></div>
+          {sladAud.slice(0, 4).map((w, i) => <div className="audit-row" key={i}><i>{new Date(w.at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</i><span><strong>{AUD_OP[w.action] || w.action}</strong><small>{w.actor || 'System'} • {w.action}{w.target ? ` • ${w.target}` : ''}</small></span><CheckCircle2 size={16} /></div>)}
+          {!sladAud.length && <div className="audit-row"><i>—</i><span><strong>Brak wpisów</strong><small>dziennik audytu jest pusty</small></span></div>}
+        </article>
+      </section>
+      <div className="space-y-6" style={{ marginTop: 16 }}>
         <div className="bg-white rounded-2xl p-8 shadow-sm">
           <div className="border-2 border-dashed rounded-2xl p-10 text-center transition-colors" style={{ borderColor: colors.primary.bg }}
             onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
@@ -767,6 +1057,7 @@ const ImportPage = ({ data }) => {
           </div>
         )}
       </div>
+      </div></div>
     </div>
   );
 };
@@ -5388,14 +5679,15 @@ export default function App() {
 
   const pages = {
     dashboard: <Dashboard data={data} setPage={setPage} userName={userName} />,
-    import: <ImportPage data={data} />,
+    import: <ImportPage data={data} setPage={setPage} />,
     wt: <WorkingTime data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
     print: <PrintPage data={data} />,
     forecast: <PlanFinanse data={data} setPage={setPage} />,
     live: <ObsadaLive data={data} setPage={setPage} />,
     plan: <PlanFinanse data={data} setPage={setPage} />,
-    dyspo: <DyspoAdmin data={data} setPage={setPage} />,
+    dyspo: <RequestsAdmin data={data} setPage={setPage} />,
     emps: <AdminEmployees data={data} />,
+    analytics: <AnalyticsPage data={data} setPage={setPage} />,
     swaps: <AdminSwaps data={data} />,
     settings: <SettingsPage data={data} />
   };
@@ -5407,14 +5699,14 @@ export default function App() {
   const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
   const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
   const [navOpen, setNavOpen] = useState(false);
-  const TYTULY = { dashboard: 'Dashboard', live: 'Obsada LIVE', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
+  const TYTULY = { dashboard: 'Dashboard', live: 'Obsada LIVE', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', analytics: 'Analityka', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
   return (
     <main className="app-shell">
       <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} mini={navMini} setMini={setMini} open={navOpen} onClose={() => setNavOpen(false)} />
       <section className={'workspace' + (navMini ? ' mini' : '')} style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <header className="topbar" style={{ flexShrink: 0 }}>
           <button className="menu-button" aria-label="Otwórz menu" onClick={() => setNavOpen(true)}><Menu size={18} /></button>
-          <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', live: 'live', obsad: 'live', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
+          <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', live: 'live', obsad: 'live', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', analit: 'analytics', raport: 'analytics', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
           <div className="top-actions">
             <button className="icon-button" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><MessageSquare size={18} /></button>
             <button className="icon-button notification" title="Oczekujące decyzje" onClick={() => setPage('swaps')}><Bell size={18} />{pendingSwaps > 0 && <i />}</button>
