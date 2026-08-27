@@ -1197,3 +1197,50 @@
 .actual-run.exception { border-color:var(--actual-exception-border);background:var(--actual-exception-bg);color:#743647 }
 .actual-status { position:absolute;top:3px;right:6px;font-size:8px;font-weight:850;font-style:normal;letter-spacing:.02em;color:#30434C }
 .actual-status.exception { color:#B94352 }
+
+
+/* ═══ v16.1 — pasek KPI w nowej palecie + kanarkowy akcent + nasycone rodziny zmian ═══ */
+:root, .workforce-view {
+  --ordo-canary:#F0D264;
+  --ordo-canary-soft:#FAF4DD;
+  --shift-lead-bg:#E9E4F4; --shift-lead-border:#9C92BC; --shift-lead-copy:#3E3760;
+  --shift-operations-bg:#DCEBF5; --shift-operations-border:#79A2C0; --shift-operations-copy:#2B4A5F;
+  --shift-production-bg:#F6E2EA; --shift-production-border:#C287A0; --shift-production-copy:#5E3548;
+  --shift-control-bg:#E4E8F2; --shift-control-border:#8C9AC0; --shift-control-copy:#37415E;
+}
+
+/* pasek KPI dziennego Gantta: neutralny, kropki w kolorach rodzin + kanarek */
+.gantt-kpi-bar { border-top:1px solid var(--workforce-grid,#E4E7EA); background:#FBFBFC }
+.gantt-kpi-bar span { color:#5C666E }
+.gantt-kpi-bar strong { color:#292D32 }
+.gantt-kpi-bar span:nth-of-type(1) i { background:#9C92BC }
+.gantt-kpi-bar span:nth-of-type(2) i { background:#79A2C0 }
+.gantt-kpi-bar span:nth-of-type(3) i { background:#F0D264 }
+.gantt-kpi-bar span:nth-of-type(4) i { background:#C287A0 }
+.gantt-kpi-bar span:nth-of-type(5) i { background:#B94352 }
+.gantt-kpi-bar span:nth-of-type(6) i { background:#9DA4AA }
+
+/* kanarkowy akcent w grafikach: etykiety stanowisk */
+.weekly-shift-pill span { padding:0 4px; border-radius:4px; background:rgba(247,229,146,.5) }
+.gantt-shift strong { align-self:flex-start; max-width:100%; padding:0 4px; border-radius:4px; background:rgba(247,229,146,.5) }
+.weekly-shift-pill.weekly-deep span,.weekly-shift-pill.weekly-mid span,.weekly-shift-pill.weekly-soft span,.weekly-shift-pill.weekly-outline span { background:rgba(247,229,146,.5) }
+
+/* kanarkowe podsumowania tygodnia */
+.weekly-total-label,.weekly-day-total { background:var(--ordo-canary-soft) }
+.weekly-day-total:hover { background:#F3EAC4 }
+.weekly-total-label { border-right-color:#E4D9AE; border-top-color:#E4D9AE }
+.weekly-day-total { border-right-color:#EDE3BC; border-top-color:#E4D9AE }
+.weekly-total-label strong,.weekly-day-total strong { color:#6E6130 }
+.weekly-total-label small,.weekly-day-total small { color:#94864F }
+.weekly-grand-total { border-top-color:#34383E; background:#34383E; color:#F0D264 }
+.weekly-grand-total small { color:#C8CDD2 }
+
+/* delikatny kanarek na osi godzin dnia */
+.gantt-hour-header { background:#FCF8E9 }
+
+
+/* wydruk: nasycone rodziny v16.1 */
+.ordo-print-timeline em.print-shift-deep { color:#3E3760;border-color:#9C92BC;background:#E9E4F4 }
+.ordo-print-timeline em.print-shift-mid { color:#2B4A5F;border-color:#79A2C0;background:#DCEBF5 }
+.ordo-print-timeline em.print-shift-soft { color:#5E3548;border-color:#C287A0;background:#F6E2EA }
+.ordo-print-timeline em.print-shift-outline { color:#37415E;border-color:#8C9AC0;border-left-color:#741334;background:#E4E8F2 }

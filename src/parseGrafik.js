@@ -242,9 +242,11 @@ export function parseGrafik(arrayBuffer) {
 }
 function timeMin(t) { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); }
 
-// Eksport grafiku miesiaca do tego samego formatu poziomego.
-// wiersze = osoby (pelne imie i nazwisko konta, inaczej nazwa z grafiku); jedna para start/koniec na dzien
-// (przy kilku zmianach dnia brana jest pierwsza wg startu, wpisy instruktorskie pomijane).
+// Eksport grafiku miesiaca — matryca 1:1 z szablonem "Układ poziomy - plan":
+// A1 = rok; naglowki DD/MM co 2 kolumny; pary start/koniec jako tekst HH:MM;
+// kolumna SUMA [h] + ukryte formuly pomocnicze jak w szablonie.
+// Kilka zmian jednej osoby w dniu jest SCALANE do jednego zakresu (min start – max koniec),
+// bo import docelowego systemu czyta tylko jedna pare na dzien.
 export function exportPoziomy(shifts, accounts, monthKey) {
   const [Y, M] = monthKey.split('-').map(Number);
   const nDni = new Date(Y, M, 0).getDate();
@@ -253,20 +255,51 @@ export function exportPoziomy(shifts, accounts, monthKey) {
   const poNaz = new Map((accounts || []).flatMap((a) => [a.grafikName, a.name, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
   const mies = shifts.filter((s2) => (s2.date || '').startsWith(monthKey) && s2.rola !== 'instruktor');
   const etykieta = (s2) => { const k = poId.get(s2.accountId) || poNaz.get(String(s2.name || '').toUpperCase().trim()); return (k && k.name ? k.name : s2.name || '').toUpperCase().trim(); };
-  const osoby = [...new Set(mies.map(etykieta).filter(Boolean))].sort();
-  const mapa = {};   // osoba -> data -> {start,end}
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const hhmm = (min) => `${pad2(Math.floor(((min % 1440) + 1440) % 1440 / 60))}:${pad2(min % 60)}`;
+
+  // scalanie: osoba -> data -> zakres min start .. max koniec (z obsluga zmian przez polnoc)
+  const mapa = {};
+  let scalone = 0;
   mies.forEach((s2) => {
     const os = etykieta(s2); if (!os) return;
     (mapa[os] = mapa[os] || {});
+    const sMin = timeMin(s2.start);
+    let eMin = timeMin(s2.end); if (eMin <= sMin) eMin += 1440;
     const stary = mapa[os][s2.date];
-    if (!stary || timeMin(s2.start) < timeMin(stary.start)) mapa[os][s2.date] = { start: s2.start, end: s2.end };
+    if (!stary) mapa[os][s2.date] = { s: sMin, e: eMin };
+    else { scalone++; stary.s = Math.min(stary.s, sMin); stary.e = Math.max(stary.e, eMin); }
   });
-  const aoa = [[String(Y), ...daty.flatMap((d) => [`${d.slice(8)}/${d.slice(5, 7)}`, null])]];
-  osoby.forEach((os) => { aoa.push([os, ...daty.flatMap((d) => { const z = mapa[os][d]; return z ? [z.start, z.end] : [null, null]; })]); });
+
+  // pelny sklad: wszystkie konta + nazwy z grafiku bez konta (rowniez puste wiersze — jak w szablonie)
+  const osoby = [...new Set([
+    ...(accounts || []).map((a) => String(a.name || '').toUpperCase().trim()),
+    ...Object.keys(mapa),
+  ])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pl'));
+
+  const aoa = [[String(Y), ...daty.flatMap((d) => [`${d.slice(8)}/${d.slice(5, 7)}`, null]), 'SUMA [h]']];
+  osoby.forEach((os) => {
+    aoa.push([os, ...daty.flatMap((d) => { const z = (mapa[os] || {})[d]; return z ? [hhmm(z.s), hhmm(z.e)] : [null, null]; }), null]);
+  });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{ wch: 24 }, ...daty.flatMap(() => [{ wch: 6 }, { wch: 6 }])];
+
+  // formuly jak w szablonie: SUMA [h] + pomocnicze przeliczenia par (BM.. co 2 kolumny)
+  const sumaCol = 1 + nDni * 2;                        // 0-based: kolumna SUMA [h]
+  for (let r = 1; r <= osoby.length; r++) {
+    const row = r + 1;                                 // 1-based wiersz arkusza
+    ws[XLSX.utils.encode_cell({ r, c: sumaCol })] = { t: 'n', f: `IFERROR(IF(COUNT(BM${row}:CM${row})>0,SUM(BM${row}:EA${row}),""),"")`, z: '0.00' };
+    for (let d = 0; d < nDni; d++) {
+      const cS = XLSX.utils.encode_col(1 + d * 2), cE = XLSX.utils.encode_col(2 + d * 2);
+      const hc = 64 + d * 2;                           // 0-based BM=64
+      ws[XLSX.utils.encode_cell({ r, c: hc })] = { t: 'n', f: `IFERROR(IF(${cE}${row}-${cS}${row}>0,(${cE}${row}-${cS}${row})*24,IF(${cS}${row} >0,((24-${cS}${row}*24)+${cE}${row}*24),"")),"")` };
+    }
+  }
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: osoby.length, c: 64 + (nDni - 1) * 2 } });
+  ws['!cols'] = [{ wch: 24 }, ...daty.flatMap(() => [{ wch: 6 }, { wch: 6 }]), { wch: 9 }, ...Array.from({ length: nDni * 2 }, () => ({ hidden: true }))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  XLSX.writeFile(wb, `grafik_planowany_import_poziomy_${Y}_${M}.xlsx`);
-  return { osoby: osoby.length, zmian: Object.values(mapa).reduce((a, v) => a + Object.keys(v).length, 0) };
+  XLSX.writeFile(wb, `Układ poziomy - plan_${monthKey}-01_${monthKey}-${pad2(nDni)}.xlsx`);
+  const zmian = Object.values(mapa).reduce((a, v) => a + Object.keys(v).length, 0);
+  return { osoby: osoby.length, zmian, scalone };
 }
+
