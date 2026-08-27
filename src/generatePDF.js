@@ -274,7 +274,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
 
   // ── STOPKA ──
   doc.setTextColor(...GREY); doc.setFont('Lib','normal'); doc.setFontSize(6.8);
-  doc.text(`REX Cloud · wygenerowano ${new Date().toLocaleString('pl-PL')}`, M, H - 3);
+  doc.text(`ORDO Workforce Studio · wygenerowano ${new Date().toLocaleString('pl-PL')}`, M, H - 3);
   doc.text('A4 · orientacja pozioma', W - M, H - 3, { align:'right' });
 }
 
@@ -354,8 +354,8 @@ export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = '
   F(1, 17, [255, 255, 255]); pion(tytul, 17, H - 78);
   F(0, 7, [183, 212, 208]); pion(`Doba operacyjna 06:00–06:00 · ${wersja}`, 23.5, H - 78);
   doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.5); doc.circle(16, 14, 5.2, 'S');
-  F(1, 8.5, [255, 255, 255]); pion('REX Cloud', 14.5, 24);
-  F(0, 5.4, [145, 173, 169]); pion('WORKRHYTHM · DAILY ROSTER', 19.5, 24, { charSpace: 0.5 });
+  F(1, 8.5, [255, 255, 255]); pion('ORDO', 14.5, 24);
+  F(0, 5.4, [145, 173, 169]); pion('WORKFORCE · DAILY ROSTER', 19.5, 24, { charSpace: 0.5 });
 
   // ── pasek KPI ──
   const X0 = 38, KY = 8, KW = W - X0 - 8;
@@ -507,7 +507,7 @@ export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = '
   // stopka
   doc.setDrawColor(...LINIA); doc.setLineWidth(0.3); doc.line(X0, H - 9, W - 8, H - 9);
   F(0, 5.6, GREY);
-  doc.text('REX Cloud · WorkRhythm', X0, H - 5);
+  doc.text('ORDO Workforce Studio', X0, H - 5);
   const teraz = new Date();
   doc.text(`Wygenerowano ${String(teraz.getDate()).padStart(2, '0')}.${String(teraz.getMonth() + 1).padStart(2, '0')}.${teraz.getFullYear()} · ${String(teraz.getHours()).padStart(2, '0')}:${String(teraz.getMinutes()).padStart(2, '0')}`, X0 + KW / 2, H - 5, { align: 'center' });
   doc.text('Dokument operacyjny · K003 · strona 1/1', W - 8, H - 5, { align: 'right' });

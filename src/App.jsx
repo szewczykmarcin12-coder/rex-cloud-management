@@ -17,11 +17,11 @@ const colors = {
 };
 
 const stationColors = {
-  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#B94352', 'KANAPKI / WRAPY': '#00A3E0',
-  'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
-  'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#71656A',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#2B171E', 'MGR FUNKCYJNE': '#5A3542',
-  'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#5A3542'
+  'PANIEROWANIE': '#8E7C83', 'SMAŻENIE': '#927A83', 'KANAPKI / WRAPY': '#718997',
+  'KONTROLER': '#626A72', 'WSPARCIE WIECZORNE / FLEX': '#77727E', 'DISPATCHER': '#667F8C',
+  'PHU': '#6D8591', 'DESERY / NAPOJE': '#987E88', 'FRYTKI': '#907B82', 'ZMYWAK': '#737A80',
+  'PREP': '#88787E', 'DOSTAWA': '#6B818E', 'MANAGER': '#4E4C54', 'MGR FUNKCYJNE': '#65616C',
+  'SZKOLENIA': '#7B6F7D', 'TRAINING': '#7B6F7D', 'INSTRUKTOR': '#65616C'
 };
 const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
 const godzZ = (s) => (s.hours != null ? s.hours : 0);
@@ -110,23 +110,12 @@ const statusZamiany = (s) => {
 };
 const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
 
-const store = {
-  get: (k, d = null) => { try { const v = localStorage.getItem('rex_admin_' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set: (k, v) => { try { localStorage.setItem('rex_admin_' + k, JSON.stringify(v)); } catch {} },
-  del: (k) => { try { localStorage.removeItem('rex_admin_' + k); } catch {} }
-};
-
 const api = async (path, method = 'GET', body = null) => {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  const tok = store.get('admin_token');
-  if (tok) opts.headers.Authorization = `Bearer ${tok}`;               // SEC-01: sesja przy każdym wywołaniu
+  const opts = { method, credentials: 'include', headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(`${API_BASE}${path}`, opts);
   const j = await r.json().catch(() => ({ success: false, error: 'Nieprawidłowa odpowiedź serwera' }));
-  if (r.status === 401 && tok) {                                       // sesja wygasła → pełne wylogowanie
-    store.del('admin_token'); store.del('admin_session');
-    try { location.reload(); } catch {}
-  }
+  if (r.status === 401 && !path.includes('action=session') && !(path === '/admin-auth' && method === 'POST')) window.dispatchEvent(new Event('ordo:session-expired'));
   return j;
 };
 
@@ -184,13 +173,11 @@ const Login = ({ onLogin }) => {
         if (r.success) { setInfo(r.message || 'Zgłoszenie wysłane do ASM.'); setReset(false); }
         else setErr(r.error || 'Błąd zgłoszenia');
       } else {
-        const r = await api('/admin-auth', 'POST', { login, password: haslo });
+        const r = await api('/admin-auth', 'POST', { login, password: haslo, remember: zapamietaj });
         if (r.success) {
           const un = r.userName || login.trim() || 'ASM';
           try { if (window.PasswordCredential && navigator.credentials) { navigator.credentials.store(new window.PasswordCredential({ id: login.trim(), password: haslo, name: un })); } } catch {}
-          if (r.token) store.set('admin_token', r.token);
-          store.set('admin_session', { at: Date.now(), role: r.role, userName: un });
-          try { location.reload(); } catch { onLogin(r.role, un); }
+          onLogin(r.role, un);
         }
         else setErr(r.error || 'Błąd logowania');
       }
@@ -1016,7 +1003,7 @@ const ImportPage = ({ data, setPage }) => {
             </select>
             <Btn icon={Download} onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami)`, 'success'); }}>Pobierz XLSX</Btn>
           </div>
-          {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w WorkRhythm albo zaimportuj plik.</p>}
+          {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w Workforce albo zaimportuj plik.</p>}
         </div>
 
         {preview && (
@@ -1025,7 +1012,7 @@ const ImportPage = ({ data, setPage }) => {
             <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="p-4 rounded-xl" style={{ backgroundColor: colors.primary.bg }}><p className="text-2xl font-bold" style={{ color: colors.primary.dark }}>{preview.meta.shiftCount}</p><p className="text-sm" style={{ color: colors.primary.light }}>Zmian</p></div>
               <div className="p-4 rounded-xl" style={{ backgroundColor: colors.accent.bg }}><p className="text-2xl font-bold" style={{ color: colors.accent.dark }}>{preview.meta.employeeCount}</p><p className="text-sm" style={{ color: colors.accent.dark }}>Pracowników</p></div>
-              <div className="p-4 rounded-xl" style={{ backgroundColor: '#F1E4E8' }}><p className="text-lg font-bold" style={{ color: '#741334' }}>{preview.meta.monthName} {preview.meta.year}</p><p className="text-sm" style={{ color: '#7CB342' }}>Miesiąc</p></div>
+              <div className="p-4 rounded-xl" style={{ backgroundColor: '#F1E4E8' }}><p className="text-lg font-bold" style={{ color: '#741334' }}>{preview.meta.monthName} {preview.meta.year}</p><p className="text-sm" style={{ color: '#59636B' }}>Miesiąc</p></div>
               <div className="p-4 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}><p className="text-sm font-bold" style={{ color: colors.primary.dark }}>{preview.meta.firstDate} → {preview.meta.lastDate}</p><p className="text-sm" style={{ color: colors.primary.light }}>Zakres</p></div>
             </div>
             <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.accent.bg }}><div className="flex items-start gap-2"><AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: colors.accent.dark }} /><span className="text-sm" style={{ color: colors.accent.dark }}><strong>„Dodaj godziny do grafiku"</strong> dopisze zmiany do już istniejących (duplikaty osoba+data+godziny są pomijane). <strong>„Zastąp miesiąc"</strong> nadpisze cały miesiąc z pliku.</span></div></div>
@@ -1284,8 +1271,7 @@ const AbsencesAdmin = ({ data }) => {
   );
 };
 
-// ═════════ REX WorkRhythm Modules v1.0.0 — Dyspozycyjność (panel) ═════════
-const CLOCK_APP_URL = 'https://rex-clock.vercel.app';
+// ═════════ ORDO Workforce — Dyspozycyjność (panel) ═════════
 const DY_TYPY = {
   available: { short: 'Dostępny', label: 'Mogę pracować' },
   unavailable: { short: 'Niedost.', label: 'Nie mogę pracować' },
@@ -1348,7 +1334,7 @@ const DyspoAdmin = ({ data, setPage }) => {
     <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: '#F7F5F5' }}>
       <div className="rex-av-admin">
         <header className="rex-av-heading">
-          <div><span>WORKRHYTHM · DYSPOZYCYJNOŚĆ</span><h1>Dyspozycyjność zespołu</h1><p>Preferencje pracowników, decyzje managera i konflikty z grafikiem.</p></div>
+          <div><span>WORKFORCE · DYSPOZYCYJNOŚĆ</span><h1>Dyspozycyjność zespołu</h1><p>Preferencje pracowników, decyzje managera i konflikty z grafikiem.</p></div>
           <div><button className="rex-av-btn secondary" onClick={zaladuj}><RefreshCw size={16} /> Odśwież</button><button className="rex-av-btn primary" onClick={() => setPage('wt')}><CalendarCheck2 size={16} /> Otwórz w Schedule</button></div>
         </header>
         {okno && (
@@ -1417,7 +1403,7 @@ const DyspoAdmin = ({ data, setPage }) => {
 };
 const Repeat2Icon = () => <RefreshCw size={10} />;
 
-// ═════════ REX WorkRhythm Modules v1.0.0 — Time & Attendance (live) ═════════
+// ═════════ ORDO Workforce — Time & Attendance (live) ═════════
 const TA_NAZWY = { clock_in: 'Wejście', break_start: 'Start przerwy', break_end: 'Koniec przerwy', clock_out: 'Wyjście' };
 const taTone = (t) => t === 'clock_in' ? 'in' : t === 'clock_out' ? 'out' : 'break';
 const taCzas = (ts) => new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Warsaw' }).format(new Date(ts));
@@ -1677,43 +1663,15 @@ const AuditCard = () => {
   );
 };
 
-// ── Rejestr terminali REX Clock (SEC-04): odbicia tylko z urządzeń dodanych przez ASM ──
-const TerminalsCard = ({ data }) => {
-  const [terms, setTerms] = useState(null);
-  const [tid, setTid] = useState('');
-  const [tname, setTname] = useState('');
-  useEffect(() => { api('/clock?action=terminals').then((r) => { if (r && r.success) setTerms(r.terminals || []); }).catch(() => {}); }, []);
-  const dodaj = async () => {
-    if (!tid.trim()) return data.show('Podaj identyfikator terminala', 'error');
-    const r = await api('/clock?action=terminal-add', 'POST', { id: tid.trim(), name: tname.trim() });
-    if (r.success) { setTerms(r.terminals); setTid(''); setTname(''); data.show('Terminal zarejestrowany', 'success'); } else data.show(r.error || 'Błąd', 'error');
-  };
-  const przelacz = async (t) => { const r = await api('/clock?action=terminal-toggle', 'POST', { id: t.id }); if (r.success) setTerms(r.terminals); else data.show(r.error || 'Błąd', 'error'); };
-  const usun = async (t) => { if (!confirm(`Usunąć terminal ${t.id}? Urządzenie straci możliwość odbijania.`)) return; const r = await api('/clock?action=terminal-del', 'POST', { id: t.id }); if (r.success) setTerms(r.terminals); else data.show(r.error || 'Błąd', 'error'); };
-  return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl">
-      <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Terminale REX Clock</h3>
-      <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Odbicia przyjmowane są wyłącznie z zarejestrowanych, aktywnych terminali (identyfikator z adresu urządzenia: ?terminal=…).</p>
-      {terms === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : terms.length === 0 ? <p className="text-sm mb-3" style={{ color: '#A7465F' }}>Brak terminali — REX Clock nie przyjmie żadnych odbić, dopóki nie dodasz urządzenia.</p> : (
-        <div className="space-y-2 mb-4">
-          {terms.map((t) => (
-            <div key={t.id} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}>
-              <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate" style={{ color: colors.primary.darkest }}>{t.id}</p><p className="text-[11px] truncate" style={{ color: colors.primary.light }}>{t.name}{t.lastSeen ? ` · ostatnio: ${new Date(t.lastSeen).toLocaleString('pl-PL')}` : ' · jeszcze nie użyty'}</p></div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: t.active === false ? '#F5E3E8' : '#F1E4E8', color: t.active === false ? '#B94352' : '#741334' }}>{t.active === false ? 'wycofany' : 'aktywny'}</span>
-              <button onClick={() => przelacz(t)} className="text-xs font-medium" style={{ color: colors.primary.medium }}>{t.active === false ? 'przywróć' : 'wycofaj'}</button>
-              <button onClick={() => usun(t)} className="text-red-300 hover:text-red-500"><Trash2 size={14} /></button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-2">
-        <input value={tid} onChange={(e) => setTid(e.target.value)} placeholder="ID (np. K003-POS-01)" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
-        <input value={tname} onChange={(e) => setTname(e.target.value)} placeholder="Opis (np. POS przy kuchni)" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
-        <button onClick={dodaj} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Dodaj</button>
-      </div>
-    </div>
-  );
-};
+// Rejestracja czasu jest dostępna wyłącznie w Employee Hub. Karta zastępuje
+// dawny rejestr terminali i nie udostępnia ponownie wycofanego kanału odbić.
+const TimeRegistrationCard = () => (
+  <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: '4px solid #59636B' }}>
+    <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Rejestracja czasu w Employee Hub</h3>
+    <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Wejścia, przerwy i wyjścia pracownicy rejestrują wyłącznie po zalogowaniu w ORDO Employee Hub. Osobny terminal został wycofany.</p>
+    <a href={HUB_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#34383E' }}><Smartphone size={15} /> Otwórz Employee Hub <ExternalLink size={14} /></a>
+  </div>
+);
 
 const SettingsPage = ({ data }) => {
   const [linked, setLinked] = useState([]);
@@ -1761,7 +1719,7 @@ const SettingsPage = ({ data }) => {
       <Header title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
 
-        <TerminalsCard data={data} />
+        <TimeRegistrationCard />
 
         <AuditCard />
 
@@ -1807,7 +1765,7 @@ const SettingsPage = ({ data }) => {
           <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Usuń cały grafik z bazy danych.</p>
           <Btn variant="danger" icon={Trash2} onClick={clearSchedule} loading={data.loading}>Wyczyść grafik</Btn>
         </div>
-        <p className="text-center text-sm" style={{ color: colors.primary.light }}>REX Cloud Admin v3.0 — Vercel KV</p>
+        <p className="text-center text-sm" style={{ color: colors.primary.light }}>ORDO Workforce Studio v16 — Vercel + Upstash</p>
       </div>
     </div>
   );
@@ -3434,16 +3392,16 @@ const AdminSwaps = ({ data }) => {
 
 // ===================== GRAFIK / CZAS PRACY (Working Time) =====================
 
-const WTBar = ({ start, end, color, breaks }) => {
+const WTBar = ({ start, end, color, breaks, className = '' }) => {
   const left = (wtRel(start) / 1440) * 100;
   const width = (wtDur(start, end) / 1440) * 100;
   return (
-    <div className="absolute top-0 h-full rounded" style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%`, backgroundColor: color }}>
-      {(breaks || []).map((b, i) => { const bl = ((wtRel(b.start) - wtRel(start) + 1440) % 1440) / wtDur(start, end) * 100; const bw = wtDur(b.start, b.end) / wtDur(start, end) * 100; return <div key={i} className="absolute top-0 h-full" style={{ left: `${bl}%`, width: `${Math.max(bw, 1)}%`, backgroundColor: b.platna === false ? '#B94352' : '#B86D82' }} title={`${b.type} ${b.start}-${b.end}`} />; })}
+    <div className={`absolute top-0 h-full rounded ${className}`} style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%`, backgroundColor: color }}>
+      {(breaks || []).map((b, i) => { const bl = ((wtRel(b.start) - wtRel(start) + 1440) % 1440) / wtDur(start, end) * 100; const bw = wtDur(b.start, b.end) / wtDur(start, end) * 100; return <div key={i} className="absolute top-0 h-full" style={{ left: `${bl}%`, width: `${Math.max(bw, 1)}%`, backgroundColor: b.platna === false ? '#B9AFC4' : '#D2CDD7' }} title={`${b.type} ${b.start}-${b.end}`} />; })}
     </div>
   );
 };
-const WTGrid = () => (<>{WT_TICKS.map((h) => <div key={h} className="absolute top-0 bottom-0 border-l" style={{ left: `${((h - 6) * 60 / 1440) * 100}%`, borderColor: '#EDE3E6' }} />)}</>);
+const WTGrid = () => (<>{WT_TICKS.map((h) => <div key={h} className="absolute top-0 bottom-0 border-l" style={{ left: `${((h - 6) * 60 / 1440) * 100}%`, borderColor: '#E4E7EA' }} />)}</>);
 
 const WTBreaks = ({ actual, onSave, locked, onClose }) => {
   const breaks = actual.breaks || [];
@@ -3477,7 +3435,7 @@ const WTBreaks = ({ actual, onSave, locked, onClose }) => {
 
 
 // ===================== SHIFTCYCLES — cykle rotacyjne (rota) na bazie Blueprints =====================
-// ═════════ WORKRHYTHM · SHIFTCYCLES — rotacje cykliczne wg wzorca ═════════
+// ═════════ WORKFORCE · SHIFTCYCLES — rotacje cykliczne wg wzorca ═════════
 const ROT_ZESPOLY = [
   { id: 'A', nazwa: 'Zespół A', kat: 'Kuchnia', kol: '#F1E4E8', ram: '#DFC9D1', tekst: '#741334' },
   { id: 'B', nazwa: 'Zespół B', kat: 'Front', kol: '#EFEDEE', ram: '#D6D1D3', tekst: '#3A3438' },
@@ -3739,7 +3697,7 @@ function bpPeakCoverage(sloty) {
 }
 const bpEtykietaPory = (start) => { const h = parseInt(start); return h < 10 ? 'Opening' : h < 14 ? 'Lunch' : h < 17 ? 'Mid' : 'Closing'; };
 
-// ═════════ WORKRHYTHM · BLUEPRINTS — szablony tygodniowe wg wzorca ═════════
+// ═════════ WORKFORCE · BLUEPRINTS — szablony tygodniowe wg wzorca ═════════
 const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
   const [selId, setSelId] = useState('');
   const [det, setDet] = useState(null);
@@ -4179,7 +4137,7 @@ const PlanObsada = ({ data, setPage }) => {
       {/* nagłówek */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
-          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#741334' }}>WORKRHYTHM PLANNING · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
+          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#741334' }}>WORKFORCE PLANNING · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
           <h1 className="text-[30px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Planowanie obsady</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Układaj grafik w oparciu o popyt, kompetencje i koszt pracy.</p>
         </div>
@@ -5020,12 +4978,11 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     return { h, koszt, sprzedaz, exceso, defecto };
   }, [data.shifts, data.accounts, data.salesData, weekDays]);
 
-  useEffect(() => { if (wrNonce) setView('list'); }, [wrNonce]);   // klik w menu WorkRhythm wraca do listy zakładki
+  useEffect(() => { if (wrNonce) setView('list'); }, [wrNonce]);   // klik w menu Workforce wraca do listy zakładki
   // WFM-10: eksport payroll — wyłącznie zamknięte tygodnie (audytowany na backendzie)
   const pobierzPayroll = async (weekStart) => {
     try {
-      const tok = store.get('admin_token');
-      const rf = await fetch(`${API_BASE}/timesheets?action=payroll&week=${weekStart}&format=csv`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {} });
+      const rf = await fetch(`${API_BASE}/timesheets?action=payroll&week=${weekStart}&format=csv`, { credentials: 'include' });
       if (!rf.ok) { const j = await rf.json().catch(() => ({})); return data.show(j.error || 'Eksport nieudany', 'error'); }
       const blob = await rf.blob();
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `payroll_${weekStart}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -5054,7 +5011,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const plannedActMin = rowsAct.reduce((x, s) => x + wtDur(s.start, s.end), 0);
   const eff = plannedActMin ? Math.round((actualMin / plannedActMin) * 100) : 0;
 
-  // R-03/TNA-01: wykonanie budowane AUTOMATYCZNIE z odbić REX Clock (projekcja event store).
+  // R-03/TNA-01: wykonanie budowane automatycznie z rejestracji Employee Hub (projekcja event store).
   // Zasady: wpisy source:'clock' są odświeżane, ręczne korekty (source:'manual' lub starsze) NIGDY nie są nadpisywane.
   const [projDnia, setProjDnia] = useState([]);
   // hub Schedule wg wzorca ORDO
@@ -5084,8 +5041,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     });
     if (n) data.tsPutActualsBulk(map);
     if (!cichy) {
-      if (n) data.show(`Odbicia z REX Clock: ${n}${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} z ręczną korektą (bez zmian)` : ''}`);
-      else data.show(niepelne || chronione ? `Bez zmian${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} ręcznych` : ''}` : 'Brak odbić z REX Clock dla tego dnia', 'error');
+      if (n) data.show(`Rejestracje z Employee Hub: ${n}${niepelne ? ` · ${niepelne} bez wyjścia` : ''}${chronione ? ` · ${chronione} z ręczną korektą (bez zmian)` : ''}`);
+      else data.show(niepelne || chronione ? `Bez zmian${niepelne ? ` · ${niepelne} bez wyjścia` : ''}${chronione ? ` · ${chronione} ręcznych` : ''}` : 'Brak rejestracji z Employee Hub dla tego dnia', 'error');
     }
   }, [day, locked, ts, data]);
   // auto-sync: przy wejściu w Wykonanie i co 60 s, dopóki widok otwarty
@@ -5143,7 +5100,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               <div>
                 <span>WORKFORCE • {wrTab === 'schedule' ? 'SCHEDULING • WEEKLY ROTAS' : wrTab === 'actual' ? 'WORKING TIME • ACTUAL' : 'TIME & ATTENDANCE'}</span>
                 <h1>{wrTab === 'schedule' ? 'Schedule' : wrTab === 'actual' ? 'Actual' : 'Time & Attendance'}</h1>
-                <p>{wrTab === 'schedule' ? 'Wybierz tydzień, sprawdź etap akceptacji i przejdź do grafiku tygodniowego lub dziennej siatki.' : wrTab === 'actual' ? 'Wykonanie zmian: odbicia z Employee Hub i terminala, przerwy oraz korekty kierownika.' : 'Karty czasu, wyjątki i zamknięcie tygodnia (Closed blokowane na serwerze).'}</p>
+                <p>{wrTab === 'schedule' ? 'Wybierz tydzień, sprawdź etap akceptacji i przejdź do grafiku tygodniowego lub dziennej siatki.' : wrTab === 'actual' ? 'Wykonanie zmian: odbicia z Employee Hub, przerwy oraz korekty kierownika.' : 'Karty czasu, wyjątki i zamknięcie tygodnia (Closed blokowane na serwerze).'}</p>
               </div>
               <div className="module-actions">
                 <button className="secondary-action" onClick={() => { data.sync(); data.show('Lista tygodni została odświeżona.'); }}><RefreshCw size={16} /> Odśwież</button>
@@ -5209,7 +5166,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const st = weekStart ? wsOf(weekStart) : { reviewed: false, closed: false };
   const chip = (on, txt, kol) => <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: on ? kol.bg : '#EDE3E6', color: on ? kol.fg : '#A38D95' }}>{txt}</span>;
   return (
-    <div className={'flex-1 flex flex-col min-h-0 workforce-view module-view' + (fokus ? ' gantt-fullscreen' : '')}>
+    <div className={'flex-1 flex flex-col min-h-0 workforce-view module-view' + (fokus ? ' gantt-fullscreen' : '') + (trybDnia === 'wykonanie' ? ' actual-view' : '')}>
       {fokus ? (
         <header className="gantt-focus-header">
           <div className="gantt-focus-brand"><b style={{ color: '#741334', fontSize: 19, letterSpacing: '.2em', fontWeight: 850 }}>ORDO</b><span>WORKFORCE STUDIO</span></div>
@@ -5275,13 +5232,13 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
       {rosterData && <DailyRosterPrint open data={rosterData} onClose={() => setRosterData(null)} />}
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ backgroundColor: colors.primary.bgLight }}>
+      <div className="workforce-canvas flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ backgroundColor: colors.primary.bgLight }}>
         {zakresTyg === 'siatka' && <WeekPlanner data={data} days={weekDays} locked={locked || !canEdit} onDzien={(d) => { setDay(d); setZakresTyg('dzien'); }} onBack={() => setView('list')} />}
 
         {zakresTyg === 'dzien' && (<>
-        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
+        <div className="workforce-mode-switch flex gap-1 bg-white rounded-xl p-1 shadow-sm border w-fit" style={{ borderColor: colors.primary.bg }}>
           {[['plan', 'Planowanie'], ['wykonanie', 'Wykonanie (Working Time)']].map(([k, l]) => (
-            <button key={k} onClick={() => setTrybDnia(k)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: trybDnia === k ? colors.primary.medium : 'transparent', color: trybDnia === k ? 'white' : colors.primary.dark }}>{l}</button>
+            <button key={k} onClick={() => setTrybDnia(k)} className={`px-4 py-2 rounded-lg text-sm font-medium ${trybDnia === k ? 'active' : ''}`} style={{ backgroundColor: trybDnia === k ? colors.primary.medium : 'transparent', color: trybDnia === k ? 'white' : colors.primary.dark }}>{l}</button>
           ))}
         </div>
 
@@ -5289,7 +5246,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
 
         {trybDnia === 'wykonanie' && canEdit && !locked && (
-          <div className="bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
+          <div className="actual-add-panel bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
             <button onClick={() => setAddOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style={{ color: colors.primary.darkest }}>
               <span className="flex items-center gap-2"><Plus size={16} style={{ color: colors.primary.medium }} />Dodaj zmianę — {dateLabel(day)}</span>
               {addOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -5324,46 +5281,46 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                     setAddSaving(false);
                     if (ok) setAddOsoba('');
                   }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{addSaving ? 'Dodaję…' : 'Dodaj do grafiku'}</button>
-                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku. Wykonanie powstanie z odbić REX Clock lub ręcznej korekty. {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
+                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku. Wykonanie powstanie z rejestracji w Employee Hub lub ręcznej korekty. {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
                 </div>
               </div>
             )}
           </div>
         )}
         {trybDnia === 'wykonanie' && (<>
-        <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl p-3 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
+        <div className="actual-sync-toolbar flex flex-wrap items-center gap-3 bg-white rounded-xl p-3 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
           <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
           <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
           <select value={order} onChange={(e) => setOrder(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="entry">Kolejność wpisu</option><option value="az">Alfabetycznie</option><option value="diff">Wg różnicy</option></select>
-          <span className="ml-auto flex items-center gap-2"><span className="text-[10.5px] font-medium" style={{ color: '#741334' }}>● auto-sync z REX Clock co 60 s</span><button disabled={locked} onClick={() => synchronizujOdbicia(false)} className="text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Synchronizuj teraz</button></span>
+          <span className="ml-auto flex items-center gap-2"><span className="actual-sync-state text-[10.5px] font-medium" style={{ color: '#741334' }}>● auto-sync z Employee Hub co 60 s</span><button disabled={locked} onClick={() => synchronizujOdbicia(false)} className="actual-sync-button text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Synchronizuj teraz</button></span>
         </div>
-        <div className="bg-white rounded-xl shadow-sm overflow-x-auto border" style={{ borderColor: colors.primary.bg }}>
+        <div className="actual-table-panel bg-white rounded-xl shadow-sm overflow-x-auto border" style={{ borderColor: colors.primary.bg }}>
           <div className="min-w-[820px]">
-            <div className="flex items-stretch" style={{ backgroundColor: '#EDE3E6', borderBottom: `1px solid ${colors.primary.bg}` }}>
+            <div className="actual-table-head flex items-stretch" style={{ backgroundColor: '#EDE3E6', borderBottom: `1px solid ${colors.primary.bg}` }}>
               <div className="w-64 shrink-0 px-3 py-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: colors.primary.dark }}>Pracownik</div>
-              <div className="relative flex-1 h-8"><WTGrid />{WT_TICKS.map((h) => <span key={h} className="absolute top-1 text-[10px] font-medium text-slate-400" style={{ left: `calc(${((h - 6) * 60 / 1440) * 100}% + 2px)` }}>{String(h % 24).padStart(2, '0')}</span>)}{rows.length > 0 && <div className="absolute bottom-1 h-2 rounded" style={{ left: `${openStartRel / 1440 * 100}%`, width: `${(openEndRel - openStartRel) / 1440 * 100}%`, backgroundColor: '#741334' }} title="Public Opening Hours" />}</div>
+              <div className="relative flex-1 h-8"><WTGrid />{WT_TICKS.map((h) => <span key={h} className="absolute top-1 text-[10px] font-medium text-slate-400" style={{ left: `calc(${((h - 6) * 60 / 1440) * 100}% + 2px)` }}>{String(h % 24).padStart(2, '0')}</span>)}{rows.length > 0 && <div className="actual-opening-hours absolute bottom-1 h-2 rounded" style={{ left: `${openStartRel / 1440 * 100}%`, width: `${(openEndRel - openStartRel) / 1440 * 100}%`, backgroundColor: '#741334' }} title="Public Opening Hours" />}</div>
               <div className="w-24 shrink-0 px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-center" style={{ color: colors.primary.dark }}>Wykonanie</div>
             </div>
-            <div className="flex items-center gap-4 px-3 py-1.5 text-[10px]" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#741334' }} />Public Opening Hours</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: colors.primary.bg }} />Plan (Shift)</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: colors.primary.medium }} />Wykonanie (Actual)</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded" style={{ backgroundColor: '#B94352' }} />Przerwa niepłatna</span>
+            <div className="actual-legend flex items-center gap-4 px-3 py-1.5 text-[10px]" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}>
+              <span><i className="opening" />Public Opening Hours</span>
+              <span><i className="plan" />Plan (Shift)</span>
+              <span><i className="performed" />Wykonanie (Actual)</span>
+              <span><i className="break" />Przerwa niepłatna</span>
             </div>
             {rows.length === 0 ? <p className="text-center text-slate-400 py-8">Brak zmian w tym dniu.</p> : rows.map((s, i) => {
               const a = act(s); const ma = hasAct(s); const dMin = ma ? actualNet(s) - wtDur(s.start, s.end) : 0; const tol = Math.abs(dMin) <= 5;
               return (
-                <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#EDE3E6' }}>
-                  <div className="w-64 shrink-0 px-3 py-2">
+                <div key={i} className="actual-row flex items-stretch border-b last:border-0" style={{ borderColor: '#EDE3E6' }}>
+                  <div className="actual-person w-64 shrink-0 px-3 py-2">
                     <p title={`W grafiku: ${s.name}`} className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{pelnaNazwa(s)}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F1E4E8', color: '#A7465F' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ sid: s.sid, date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
-                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className="text-[11px] font-medium" style={{ color: tol ? '#741334' : '#B94352' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="text-[11px] font-medium" style={{ color: '#A7465F' }}>brak odbić</span>}</div>
-                    <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
+                    <div className="flex items-center justify-between mt-0.5"><span className="actual-station text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className={`actual-delta ${tol ? 'ok' : 'issue'} text-[11px] font-medium`} style={{ color: tol ? '#741334' : '#B94352' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="actual-missing text-[11px] font-medium" style={{ color: '#A7465F' }}>brak odbić</span>}</div>
+                    <div className="actual-hours flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
                   </div>
-                  <div className="relative flex-1 py-2"><WTGrid />
-                    <div className="relative h-3.5 mb-1 rounded" style={{ backgroundColor: '#F7F1F3' }}><WTBar start={s.start} end={s.end} color={colors.primary.bg} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: colors.primary.dark }}>Shift {s.start}–{s.end}</div></div>
-                    <div className="relative h-3.5 rounded" style={{ backgroundColor: '#F7F1F3' }}>{ma ? <><WTBar start={a.start} end={a.end} color={colors.primary.medium} breaks={a.breaks} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium text-white/90">Actual {a.start}–{a.end}</div></> : <div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: '#A7465F' }}>Brak odbić — wykonanie nie zostało utworzone</div>}</div>
+                  <div className="actual-timeline relative flex-1 py-2"><WTGrid />
+                    <div className="actual-plan-track relative h-3.5 mb-1 rounded" style={{ backgroundColor: '#F7F1F3' }}><WTBar className="actual-plan-bar" start={s.start} end={s.end} color="#E9ECEF" /><div className="actual-plan-label absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: colors.primary.dark }}>Shift {s.start}–{s.end}</div></div>
+                    <div className="actual-performed-track relative h-3.5 rounded" style={{ backgroundColor: '#F7F1F3' }}>{ma ? <><WTBar className="actual-performed-bar" start={a.start} end={a.end} color="#DFE9EE" breaks={a.breaks} /><div className="actual-performed-label absolute inset-0 flex items-center pl-1 text-[9px] font-medium">Actual {a.start}–{a.end}</div></> : <div className="actual-missing absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: '#A7465F' }}>Brak odbić — wykonanie nie zostało utworzone</div>}</div>
                   </div>
-                  <div className="w-24 shrink-0 px-2 py-2 flex flex-col items-center justify-center gap-1">
+                  <div className="actual-edit w-24 shrink-0 px-2 py-2 flex flex-col items-center justify-center gap-1">
                     <div className="flex items-center gap-0.5"><input value={a.start} disabled={locked} onChange={(e) => setAct(s, { start: e.target.value })} className="w-11 px-1 py-0.5 rounded border text-[11px] text-center disabled:bg-slate-50" style={{ borderColor: colors.primary.bg }} /><input value={a.end} disabled={locked} onChange={(e) => setAct(s, { end: e.target.value })} className="w-11 px-1 py-0.5 rounded border text-[11px] text-center disabled:bg-slate-50" style={{ borderColor: colors.primary.bg }} /></div>
                     <button disabled={locked} onClick={() => setBrkFor(s)} className="text-[11px] px-2 py-0.5 rounded-lg disabled:opacity-40" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Przerwy{a.breaks.length ? ` (${a.breaks.length})` : ''}</button>
                   </div>
@@ -5379,10 +5336,10 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           const bezPlanu = (projDnia || []).filter((pr) => pr.in && !(pr.accountId && planId.has(pr.accountId)) && !planNazwy.has(String(pr.name || '').toUpperCase().trim()));
           if (!bezPlanu.length) return null;
           return (
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: '#E3DCDD', borderLeftWidth: 4, borderLeftColor: '#A7465F' }}>
+            <div className="actual-exception bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: '#E3DCDD', borderLeftWidth: 4, borderLeftColor: '#A7465F' }}>
               <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b" style={{ borderColor: '#E3DCDD', backgroundColor: '#F7F1F3' }}>
                 <p className="text-sm font-bold" style={{ color: '#A7465F' }}>Praca bez planu ({bezPlanu.length})</p>
-                <p className="text-[11px]" style={{ color: colors.primary.light }}>Odbicia z REX Clock bez zaplanowanej zmiany — dodaj do grafiku, aby weszły do rozliczenia.</p>
+                <p className="text-[11px]" style={{ color: colors.primary.light }}>Rejestracje z Employee Hub bez zaplanowanej zmiany — dodaj do grafiku, aby weszły do rozliczenia.</p>
               </div>
               {bezPlanu.map((pr) => { const konto = (data.accounts || []).find((a) => a.id === pr.accountId); return (
                 <div key={pr.accountId || pr.name} className="px-4 py-2.5 flex flex-wrap items-center gap-3 border-b last:border-0" style={{ borderColor: '#faf3ea' }}>
@@ -5409,7 +5366,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         </>)}
       </div>
 
-      <div className="px-5 py-1.5 flex flex-wrap items-center gap-x-6 gap-y-1 border-t bg-white shrink-0" style={{ borderColor: colors.primary.bg }}>
+      <div className="workforce-kpi-footer px-5 py-1.5 flex flex-wrap items-center gap-x-6 gap-y-1 border-t bg-white shrink-0" style={{ borderColor: colors.primary.bg }}>
           {[
             { l: 'Koszt (szac.)', v: `${f0(kpiTyg.koszt)} zł`, k: '#5A3542' },
             { l: 'Koszt / sprzedaż', v: kpiTyg.sprzedaz ? `${(kpiTyg.koszt / kpiTyg.sprzedaz * 100).toFixed(2).replace('.', ',')}%` : '—', k: kpiTyg.sprzedaz && kpiTyg.koszt / kpiTyg.sprzedaz > 0.2 ? '#B94352' : '#5A3542' },
@@ -5433,7 +5390,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
 // ===================== DATA HOOK =====================
 
-const useData = () => {
+const useData = (enabled = true) => {
   const [shifts, setShifts] = useState([]);
   const [roster, setRoster] = useState([]);
   const [meta, setMeta] = useState({});
@@ -5521,7 +5478,7 @@ const useData = () => {
     setLoading(false);
   }, []);
 
-  useEffect(() => { sync(); }, [sync]);
+  useEffect(() => { if (enabled) sync(); }, [enabled, sync]);
 
   // ── Akcje planowania (zapisują cały obiekt planu do backendu) ──
   const persistPlan = useCallback(async (next) => {
@@ -5696,17 +5653,32 @@ const useData = () => {
 // ===================== MAIN =====================
 
 export default function App() {
-  const sesja = store.get('admin_session');
-  const [authed, setAuthed] = useState(() => !!sesja);
-  const [role, setRole] = useState(() => (sesja && sesja.role) || 'kierownik');
-  const [userName, setUserName] = useState(() => (sesja && sesja.userName) || '');
+  const [sessionReady, setSessionReady] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState('kierownik');
+  const [userName, setUserName] = useState('');
   const [page, setPage] = useState('dashboard');
   const [wrTab, setWrTab] = useState('schedule');
   const [wrNonce, setWrNonce] = useState(0);
-  const data = useData();
-  const logout = () => { store.del('admin_session'); store.del('admin_token'); setAuthed(false); setRole('kierownik'); setUserName(''); setPage('dashboard'); };
+  const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
+  const [navOpen, setNavOpen] = useState(false);
+  const data = useData(authed);
+  const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
+  const clearSession = useCallback(() => { setAuthed(false); setRole('kierownik'); setUserName(''); setPage('dashboard'); }, []);
+  useEffect(() => {
+    let live = true;
+    api('/admin-auth?action=session').then((r) => {
+      if (!live) return;
+      if (r.success) { setAuthed(true); setRole(r.role); setUserName(r.userName || 'Manager'); }
+    }).finally(() => { if (live) setSessionReady(true); });
+    const expired = () => clearSession();
+    window.addEventListener('ordo:session-expired', expired);
+    return () => { live = false; window.removeEventListener('ordo:session-expired', expired); };
+  }, [clearSession]);
+  const logout = async () => { try { await api('/admin-auth', 'POST', { action: 'logout' }); } finally { clearSession(); } };
   const onLogin = (r, un) => { setRole(r); setUserName(un || ''); setAuthed(true); setPage('dashboard'); };
 
+  if (!sessionReady) return <div className="ordo-session-loading"><span>ORDO</span><p>Bezpieczne otwieranie sesji…</p></div>;
   if (!authed) return <Login onLogin={onLogin} />;
 
   const pages = {
@@ -5728,10 +5700,7 @@ export default function App() {
   const widok = dozwolone.includes(page) ? page : 'dashboard';
   const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length + (data.absences || []).filter(a => a.status === 'open').length + (data.availPending || 0);
 
-  const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
-  const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
-  const [navOpen, setNavOpen] = useState(false);
-  const TYTULY = { dashboard: 'Dashboard', live: 'Obsada LIVE', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', analytics: 'Analityka', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
+  const TYTULY = { dashboard: 'Dashboard', live: 'Obsada LIVE', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'Workforce', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', analytics: 'Analityka', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
   return (
     <main className="app-shell">
       <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} mini={navMini} setMini={setMini} open={navOpen} onClose={() => setNavOpen(false)} />
