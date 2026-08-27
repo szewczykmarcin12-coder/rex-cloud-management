@@ -1168,10 +1168,10 @@
 
 /* odcienie pomocnicze pod pigułami (nadpisanie kolorów v15) */
 .weekly-shift-pill.weekly-deep span { color:#5B5964 }
-.weekly-shift-pill.weekly-soft span { color:#6B5A60 }
+.weekly-shift-pill.weekly-soft span { color:#7A6E3A }
 .weekly-shift-pill.weekly-outline span { color:#565B61 }
 .gantt-shift.gantt-deep span,.gantt-shift.gantt-deep em { color:#5B5964 }
-.gantt-shift.gantt-soft span,.gantt-shift.gantt-soft em { color:#6B5A60 }
+.gantt-shift.gantt-soft span,.gantt-shift.gantt-soft em { color:#7A6E3A }
 .gantt-shift.gantt-outline span,.gantt-shift.gantt-outline em { color:#565B61 }
 .weekly-day-off { color:#6A7178 }
 .weekly-key.off { border-color:#C0C5CA;background:#D5D9DD }
@@ -1205,7 +1205,7 @@
   --ordo-canary-soft:#FAF4DD;
   --shift-lead-bg:#E9E4F4; --shift-lead-border:#9C92BC; --shift-lead-copy:#3E3760;
   --shift-operations-bg:#DCEBF5; --shift-operations-border:#79A2C0; --shift-operations-copy:#2B4A5F;
-  --shift-production-bg:#F6E2EA; --shift-production-border:#C287A0; --shift-production-copy:#5E3548;
+  --shift-production-bg:#F8F1D2; --shift-production-border:#C9B45E; --shift-production-copy:#5C5124;
   --shift-control-bg:#E4E8F2; --shift-control-border:#8C9AC0; --shift-control-copy:#37415E;
 }
 
@@ -1220,10 +1220,6 @@
 .gantt-kpi-bar span:nth-of-type(5) i { background:#B94352 }
 .gantt-kpi-bar span:nth-of-type(6) i { background:#9DA4AA }
 
-/* kanarkowy akcent w grafikach: etykiety stanowisk */
-.weekly-shift-pill span { padding:0 4px; border-radius:4px; background:rgba(247,229,146,.5) }
-.gantt-shift strong { align-self:flex-start; max-width:100%; padding:0 4px; border-radius:4px; background:rgba(247,229,146,.5) }
-.weekly-shift-pill.weekly-deep span,.weekly-shift-pill.weekly-mid span,.weekly-shift-pill.weekly-soft span,.weekly-shift-pill.weekly-outline span { background:rgba(247,229,146,.5) }
 
 /* kanarkowe podsumowania tygodnia */
 .weekly-total-label,.weekly-day-total { background:var(--ordo-canary-soft) }
@@ -1242,5 +1238,5 @@
 /* wydruk: nasycone rodziny v16.1 */
 .ordo-print-timeline em.print-shift-deep { color:#3E3760;border-color:#9C92BC;background:#E9E4F4 }
 .ordo-print-timeline em.print-shift-mid { color:#2B4A5F;border-color:#79A2C0;background:#DCEBF5 }
-.ordo-print-timeline em.print-shift-soft { color:#5E3548;border-color:#C287A0;background:#F6E2EA }
+.ordo-print-timeline em.print-shift-soft { color:#5C5124;border-color:#C9B45E;background:#F8F1D2 }
 .ordo-print-timeline em.print-shift-outline { color:#37415E;border-color:#8C9AC0;border-left-color:#741334;background:#E4E8F2 }
