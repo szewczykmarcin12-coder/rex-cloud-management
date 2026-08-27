@@ -26,9 +26,9 @@
   --shift-operations-bg: #e3ebef;
   --shift-operations-border: #96aab5;
   --shift-operations-copy: #33464f;
-  --shift-production-bg: #eee9ea;
-  --shift-production-border: #b5a6ab;
-  --shift-production-copy: #4d4246;
+  --shift-production-bg: #f6f2c8;
+  --shift-production-border: #d2c98b;
+  --shift-production-copy: #4b493a;
   --shift-control-bg: #e7e9eb;
   --shift-control-border: #9da4aa;
   --shift-control-copy: #3e4348;
@@ -49,9 +49,9 @@
   --shift-operations-bg: #e3ebef;
   --shift-operations-border: #96aab5;
   --shift-operations-copy: #33464f;
-  --shift-production-bg: #eee9ea;
-  --shift-production-border: #b5a6ab;
-  --shift-production-copy: #4d4246;
+  --shift-production-bg: #f6f2c8;
+  --shift-production-border: #d2c98b;
+  --shift-production-copy: #4b493a;
   --shift-control-bg: #e7e9eb;
   --shift-control-border: #9da4aa;
   --shift-control-copy: #3e4348;
@@ -77,7 +77,7 @@
 .role-key.manager { background: #8e8a96; }
 .role-key.board,
 .role-key.front { background: #96aab5; }
-.role-key.kitchen { background: #aaa0a4; }
+.role-key.kitchen { background: #c4ba72; }
 
 .daily-gantt-toolbar,
 .rota-list-toolbar,
@@ -178,13 +178,13 @@
 .ordo-print-overlay {
   --print-shift-lead: #e8e7ed;
   --print-shift-operations: #e3ebef;
-  --print-shift-production: #eee9ea;
+  --print-shift-production: #f6f2c8;
   --print-shift-control: #e7e9eb;
 }
 .ordo-print-timeline em { color: #33464f; border-color: #96aab5; background: var(--print-shift-operations); }
 .ordo-print-timeline em.print-shift-deep { color: #403f47; border-color: #aaa6b2; background: var(--print-shift-lead); }
 .ordo-print-timeline em.print-shift-mid { color: #33464f; border-color: #96aab5; background: var(--print-shift-operations); }
-.ordo-print-timeline em.print-shift-soft { color: #4d4246; border-color: #b5a6ab; background: var(--print-shift-production); }
+.ordo-print-timeline em.print-shift-soft { color: #4b493a; border-color: #d2c98b; background: var(--print-shift-production); }
 .ordo-print-timeline em.print-shift-outline { color: #3e4348; border-color: #9da4aa; border-left-color: var(--ordo-brand); background: var(--print-shift-control); }
 
 @media (prefers-reduced-motion: reduce) {
