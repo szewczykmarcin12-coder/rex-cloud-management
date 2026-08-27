@@ -2,7 +2,6 @@ import './tailwind.css';
 import './workrhythm.css';
 import './ordo-studio.css';
 import './ordo-views.css';
-import './ordo-v16.css';
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'

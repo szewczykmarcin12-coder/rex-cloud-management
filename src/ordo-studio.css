@@ -637,3 +637,19 @@ body,
 .stl-feats svg:last-child { margin-left: auto; color: #B86D82; }
 .stl-right-foot { display: flex; align-items: center; gap: 6px; margin: 22px 0 0; color: #B98FA0; font-size: 10.5px; }
 @media (max-width: 860px) { .stl-card { grid-template-columns: 1fr; } .stl-right { display: none; } }
+
+/* ═══════════ ORDO v16 — tokeny i pastelowe rodziny zmian (srebro/antracyt) ═══════════ */
+:root, .workforce-view {
+  --ordo-maroon:#741334; --ordo-maroon-deep:#3F0B1C; --ordo-maroon-ink:#26030F;
+  --ordo-dusty-rose:#A7465F; --ordo-rose-050:#F1E4E8; --ordo-ink:#2B171E; --ordo-muted:#71656A;
+  --ordo-line:#E3DCDD; --ordo-canvas:#F7F5F5; --ordo-surface:#FFFFFF; --ordo-danger:#B94352;
+  --workforce-anthracite:#34383E; --workforce-silver:#C8CDD2; --workforce-canvas:#F4F5F6; --workforce-grid:#E4E7EA;
+  --shift-lead-bg:#E8E7ED; --shift-lead-border:#AAA6B2; --shift-lead-copy:#403F47;
+  --shift-operations-bg:#E3EBEF; --shift-operations-border:#96AAB5; --shift-operations-copy:#33464F;
+  --shift-production-bg:#EEE9EA; --shift-production-border:#B5A6AB; --shift-production-copy:#4D4246;
+  --shift-control-bg:#E7E9EB; --shift-control-border:#9DA4AA; --shift-control-copy:#3E4348;
+  --shift-off:#D5D9DD;
+  --actual-plan-bg:#E9ECEF; --actual-plan-border:#C3C9CF; --actual-performed-bg:#DFE9EE; --actual-performed-border:#91A8B5;
+  --actual-break-bg:#E9E6ED; --actual-break-border:#B9AFC4; --actual-exception-bg:#F0E6E8; --actual-exception-border:#C99FA8;
+  --focus-ring:0 0 0 3px rgba(116,19,52,.18);
+}
