@@ -1,6 +1,6 @@
 {
   "name": "rex-cloud-admin",
-  "version": "3.0.0",
+  "version": "16.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
