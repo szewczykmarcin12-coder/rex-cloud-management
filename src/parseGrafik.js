@@ -277,25 +277,36 @@ export function exportPoziomy(shifts, accounts, monthKey) {
     ...Object.keys(mapa),
   ])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pl'));
 
-  const aoa = [[String(Y), ...daty.flatMap((d) => [`${d.slice(8)}/${d.slice(5, 7)}`, null]), 'SUMA [h]']];
+  // STAŁA geometria szablonu: zawsze 31 par kolumn (B..BK), SUMA [h] w BL, formuły od BM —
+  // niezależnie od liczby dni miesiąca (tak czyta import "grafiku optymalnego").
+  const SLOTY = 31;
+  const naglowek = [String(Y)];
+  for (let d = 0; d < SLOTY; d++) naglowek.push(d < nDni ? `${daty[d].slice(8)}/${daty[d].slice(5, 7)}` : null, null);
+  naglowek.push('SUMA [h]');
+  const aoa = [naglowek];
   osoby.forEach((os) => {
-    aoa.push([os, ...daty.flatMap((d) => { const z = (mapa[os] || {})[d]; return z ? [hhmm(z.s), hhmm(z.e)] : [null, null]; }), null]);
+    const w = [os];
+    for (let d = 0; d < SLOTY; d++) { const z = d < nDni ? (mapa[os] || {})[daty[d]] : null; w.push(z ? hhmm(z.s) : null, z ? hhmm(z.e) : null); }
+    w.push(null);
+    aoa.push(w);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-  // formuly jak w szablonie: SUMA [h] + pomocnicze przeliczenia par (BM.. co 2 kolumny)
-  const sumaCol = 1 + nDni * 2;                        // 0-based: kolumna SUMA [h]
+  // formuly jak w szablonie: SUMA [h] w BL (kol. 64) + pomocnicze pary od BM — zawsze 31 par
+  const sumaCol = 1 + SLOTY * 2;                       // 0-based 63 = kolumna BL
   for (let r = 1; r <= osoby.length; r++) {
     const row = r + 1;                                 // 1-based wiersz arkusza
     ws[XLSX.utils.encode_cell({ r, c: sumaCol })] = { t: 'n', f: `IFERROR(IF(COUNT(BM${row}:CM${row})>0,SUM(BM${row}:EA${row}),""),"")`, z: '0.00' };
-    for (let d = 0; d < nDni; d++) {
+    for (let d = 0; d < SLOTY; d++) {
       const cS = XLSX.utils.encode_col(1 + d * 2), cE = XLSX.utils.encode_col(2 + d * 2);
-      const hc = 64 + d * 2;                           // 0-based BM=64
+      const hc = sumaCol + 1 + d * 2;                  // 0-based 64 = BM
       ws[XLSX.utils.encode_cell({ r, c: hc })] = { t: 'n', f: `IFERROR(IF(${cE}${row}-${cS}${row}>0,(${cE}${row}-${cS}${row})*24,IF(${cS}${row} >0,((24-${cS}${row}*24)+${cE}${row}*24),"")),"")` };
     }
   }
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: osoby.length, c: 64 + (nDni - 1) * 2 } });
-  ws['!cols'] = [{ wch: 24 }, ...daty.flatMap(() => [{ wch: 6 }, { wch: 6 }]), { wch: 9 }, ...Array.from({ length: nDni * 2 }, () => ({ hidden: true }))];
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: osoby.length, c: sumaCol + 1 + (SLOTY - 1) * 2 } });
+  // format tekstowy jak w szablonie dla wypelnionych komorek tekstowych
+  Object.keys(ws).forEach((addr) => { if (addr[0] !== '!' && ws[addr] && ws[addr].t === 's') ws[addr].z = '@'; });
+  ws['!cols'] = [{ wch: 24 }, ...Array.from({ length: SLOTY * 2 }, () => ({ wch: 6 })), { wch: 9 }, ...Array.from({ length: SLOTY * 2 }, () => ({ hidden: true }))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   XLSX.writeFile(wb, `Układ poziomy - plan_${monthKey}-01_${monthKey}-${pad2(nDni)}.xlsx`);
