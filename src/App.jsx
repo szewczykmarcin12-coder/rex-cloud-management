@@ -16,6 +16,12 @@ const colors = {
   accent: { dark: '#3F0B1C', medium: '#741334', light: '#A7465F', bg: '#F1E4E8' }
 };
 
+// ── Jednostka (work center) z /api/org — koniec danych wpisanych na stałe ──
+let UNIT = { code: 'PLK 201043', name: 'Galeria Krakowska', city: 'Kraków', brand: 'Popeyes', region: 'Małopolska', openFrom: '06:00', openTo: '02:00' };
+const unitLabel = () => `${UNIT.code} · ${UNIT.name}`;
+// profil godzinowy sprzedaży per dzień tygodnia (z importu godzinowego) — zastępuje syntetyczną krzywą
+let PROF_DOW = null;
+
 const stationColors = {
   'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#B94352', 'KANAPKI / WRAPY': '#00A3E0',
   'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
@@ -349,7 +355,7 @@ const ObsadaLive = ({ data, setPage }) => {
           </div>
           <div className="live-slider"><span>08:00</span><input type="range" min="0" max="17" value={hSel} onChange={(e) => setHSel(Number(e.target.value))} /><span>01:00</span></div>
           <div className="live-hour-detail">
-            <div><span>Prognoza sprzedaży</span><strong>{sp ? `${fmtG(Math.round(sp * (needG[hSel] || 1) / Math.max(1, needG.reduce((a2, x) => a2 + x, 0))))} zł` : '—'}</strong></div>
+            <div><span>{(((data.salesData || {}).hourly || {})[dzis] || {})[String(LH[hSel]).padStart(2, '0')] ? 'Sprzedaż (POS)' : 'Prognoza sprzedaży'}</span><strong>{(((data.salesData || {}).hourly || {})[dzis] || {})[String(LH[hSel]).padStart(2, '0')] ? `${fmtG(Math.round((((data.salesData || {}).hourly || {})[dzis] || {})[String(LH[hSel]).padStart(2, '0')].sales))} zł` : sp ? `${fmtG(Math.round(sp * (needG[hSel] || 1) / Math.max(1, needG.reduce((a2, x) => a2 + x, 0))))} zł` : '—'}</strong></div>
             <div><span>Godzina</span><strong>{String(LH[hSel]).padStart(2, '0')}:00</strong></div>
             <div><span>Plan</span><strong>{planG[hSel]} osób</strong></div>
             <div><span>Realnie</span><strong>{aktG[hSel]} osób</strong></div>
@@ -472,7 +478,7 @@ const RequestsAdmin = ({ data, setPage }) => {
   };
   const publikuj = async () => {
     setBusy(true);
-    const r = await api('/schedule?action=publish', 'POST', { month: mc });
+    const r = await publikujMiesiac(mc);
     setBusy(false);
     if (r.success) { data.show(`Opublikowano ${mc} — wersja ${r.wersjaPub}. Pracownicy widzą grafik w Employee Hub.`); zaladuj(); }
     else data.show(r.error || 'Błąd publikacji', 'error');
@@ -540,6 +546,11 @@ const RequestsAdmin = ({ data, setPage }) => {
 
 // ═════════ ANALITYKA PRACY — wzorzec ORDO na realnych agregatach ═════════
 const AnalyticsPage = ({ data, setPage }) => {
+  const [snaps, setSnaps] = useState([]);
+  const [cronOk, setCronOk] = useState(false);
+  const zaladujSnaps = () => api('/kpi?days=30').then((r) => { if (r && r.success) { setSnaps(r.snapshots || []); setCronOk(!!r.cronSkonfigurowany); } }).catch(() => {});
+  useEffect(() => { zaladujSnaps(); }, []);
+  const przeliczSnaps = async () => { const r = await api('/kpi-nightly?job=nightly&days=7'); if (r && r.success) { data.show(`Przeliczono ${r.dni} dni`); zaladujSnaps(); } else data.show((r && r.error) || 'Błąd przeliczenia', 'error'); };
   const konta = data.accounts || [];
   const poIdA = new Map(konta.map((a2) => [a2.id, a2]));
   const poNazA = new Map(konta.flatMap((a2) => [a2.grafikName, a2.name, ...(a2.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a2])));
@@ -651,7 +662,56 @@ const AnalyticsPage = ({ data, setPage }) => {
           ))}
         </article>
       </section>
+      <article className="panel" style={{ marginTop: 14, padding: 18 }}>
+        <div className="panel-title"><div><span>SNAPSHOTY NOCNE • VERCEL CRON</span><h2>Dzień po dniu: plan, wykonanie, COL</h2></div><button className="secondary-action" onClick={przeliczSnaps}><RefreshCw size={15} /> Przelicz ostatnie 7 dni</button></div>
+        {!snaps.length ? <div className="dialog-empty" style={{ padding: 16 }}>Brak snapshotów. {cronOk ? 'Cron policzy je automatycznie o 03:15.' : 'Ustaw CRON_SECRET w Vercel (zadanie 03:15 UTC) albo przelicz ręcznie.'}</div> : (
+          <div className="data-table forecast-table" style={{ marginTop: 10 }}>
+            <div className="table-header"><span>Dzień</span><span>Sprzedaż</span><span>Plan h</span><span>Wykonane h</span><span>Koszt plan</span><span>COL plan</span><span>COL actual</span><span>Naruszenia</span></div>
+            {snaps.slice(-14).reverse().map((x) => (
+              <div className="table-row" key={x.date}>
+                <span><b>{x.date.slice(8)}.{x.date.slice(5, 7)}</b><small>{x.completed ? 'Completed' : 'otwarty'}</small></span>
+                <span><strong>{x.sprzedaz ? `${x.sprzedaz.toLocaleString('pl-PL')} zł` : '—'}</strong></span>
+                <span>{x.planH} h</span><span>{x.actualH ? `${x.actualH} h` : '—'}</span>
+                <span>{x.kosztPlan.toLocaleString('pl-PL')} zł</span>
+                <span className={x.colPlan != null && x.colPlan > 25 ? 'table-danger' : 'table-good'}>{x.colPlan != null ? `${x.colPlan}%` : '—'}</span>
+                <span>{x.colActual != null ? `${x.colActual}%` : '—'}</span>
+                <span><em className={x.naruszenia && x.naruszenia.block ? 'status-warning' : 'status-ready'}>{x.naruszenia ? `${x.naruszenia.block} / ${x.naruszenia.warn}` : '—'}</em></span>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
     </div></div>
+  );
+};
+
+// ── Publikacja z bramką zgodności: 409 compliance → dialog z naruszeniami i publikacją z uzasadnieniem ──
+let __complianceHandler = null;
+const publikujMiesiac = async (ym) => {
+  const r = await api('/schedule?action=publish', 'POST', { month: ym });
+  if (r && !r.success && r.compliance && Array.isArray(r.violations) && __complianceHandler) {
+    return new Promise((resolve) => __complianceHandler({
+      ym, violations: r.violations, summary: r.summary || {}, error: r.error,
+      retry: async (reason) => resolve(await api('/schedule?action=publish', 'POST', { month: ym, force: true, reason })),
+      cancel: () => resolve(r),
+    }));
+  }
+  return r;
+};
+const ComplianceGate = () => {
+  const [st, setSt] = useState(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { __complianceHandler = (x) => { setReason(''); setSt(x); }; return () => { __complianceHandler = null; }; }, []);
+  if (!st) return null;
+  const zamknij = () => { st.cancel(); setSt(null); };
+  return (
+    <DialogS title="Grafik narusza reguły prawa pracy" kicker={`PUBLIKACJA • ${st.ym} • ${st.summary.block || 0} BLOKAD`} description={st.error} onClose={zamknij}
+      actions={<><button onClick={zamknij}>Wróć do grafiku</button><button className="dialog-primary" disabled={busy || reason.trim().length < 5} onClick={async () => { setBusy(true); await st.retry(reason.trim()); setBusy(false); setSt(null); }}><Check size={15} /> Opublikuj mimo to</button></>}>
+      <div className="dialog-list">{st.violations.slice(0, 40).map((v, i) => <div key={i}><i>!</i><span><strong>{v.name} • {v.date}</strong><small>{v.rule}: {v.message}</small></span><em>{v.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div>
+      <label className="dialog-field full" style={{ marginTop: 12 }}>Uzasadnienie wyjątku (trafi do dziennika audytu)<textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="np. pisemna zgoda pracownika na dodatkową zmianę, nagła absencja" /></label>
+      <div className="dialog-notice" style={{ marginTop: 12 }}><ShieldCheck size={16} /><span>Lepsza droga: wróć do siatki i popraw zmiany. Wymuszenie publikacji jest odnotowane z autorem, czasem i powodem.</span></div>
+    </DialogS>
   );
 };
 
@@ -687,7 +747,7 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
       </div>
       <button className="unit-switcher" type="button">
         <div className="unit-avatar">PL</div>
-        {!mini && <><div><span>Restauracja</span><strong>PLK 201043 · Galeria Krakowska</strong></div><ChevronDown size={16} /></>}
+        {!mini && <><div><span>Restauracja</span><strong>{unitLabel()}</strong></div><ChevronDown size={16} /></>}
       </button>
       <nav aria-label="Nawigacja główna">
         {sections.map(([sid, slabel]) => {
@@ -794,7 +854,7 @@ const Dashboard = ({ data, setPage, userName }) => {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <Header title={`Dzień dobry, ${(userName || 'Manager').split(' ')[0]}`} subtitle={`${dniPelne[new Date().getDay()]}, ${new Date().getDate()} ${monthsGen[new Date().getMonth()]} · PLK 201043 · Galeria Krakowska`}>
+      <Header title={`Dzień dobry, ${(userName || 'Manager').split(' ')[0]}`} subtitle={`${dniPelne[new Date().getDay()]}, ${new Date().getDate()} ${monthsGen[new Date().getMonth()]} · ${unitLabel()}`}>
         <button className="date-button" onClick={() => setPage('forecast')}><TrendingUp size={15} /><span>Planowanie i popyt</span></button>
         <button className="primary-button" onClick={() => setPage('wt')}><Calendar size={15} /> Otwórz grafik</button>
       </Header>
@@ -936,6 +996,32 @@ const ImportPage = ({ data, setPage }) => {
     data.show('Pobrano plan szkoleń');
   };
 
+  const hourlyRef = useRef();
+  const importHourly = async (file) => {
+    if (!file) return;
+    try {
+      const txt = await file.text();
+      const sep = (txt.match(/;/g) || []).length >= (txt.match(/,/g) || []).length ? ';' : ',';
+      const hourly = {}; let wierszy = 0;
+      txt.split(/\r?\n/).forEach((line) => {
+        const c = line.split(sep).map((x) => x.trim().replace(/^"|"$/g, ''));
+        if (c.length < 3) return;
+        let d = c[0]; const m1 = d.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/); if (m1) d = `${m1[3]}-${m1[2].padStart(2, '0')}-${m1[1].padStart(2, '0')}`;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+        const h = parseInt(String(c[1]).split(':')[0], 10); if (!Number.isInteger(h) || h < 0 || h > 23) return;
+        const sales = parseFloat(String(c[2]).replace(/\s/g, '').replace(',', '.')); if (!Number.isFinite(sales)) return;
+        const trx = c[3] != null && c[3] !== '' ? parseInt(String(c[3]).replace(/\s/g, ''), 10) : 0;
+        (hourly[d] = hourly[d] || {})[String(h).padStart(2, '0')] = { sales, trx: Number.isFinite(trx) ? trx : 0 };
+        wierszy++;
+      });
+      if (!wierszy) return data.show('Nie rozpoznano wierszy. Format: data;godzina;sprzedaż;transakcje', 'error');
+      const r = await api('/sales', 'PUT', { hourly, source: 'csv-godzinowy' });
+      if (r && r.success) { data.show(`Zaimportowano sprzedaż godzinową: ${Object.keys(hourly).length} dni, ${wierszy} godzin. Krzywa popytu używa realnego profilu.`); data.sync(); }
+      else data.show((r && r.error) || 'Błąd importu', 'error');
+    } catch (e) { data.show(e.message || 'Błąd odczytu pliku', 'error'); }
+    if (hourlyRef.current) hourlyRef.current.value = '';
+  };
+
   const handleFile = async (file) => {
     if (!file) return;
     setError(''); setParsing(true); setPreview(null);
@@ -979,6 +1065,8 @@ const ImportPage = ({ data, setPage }) => {
         <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={planSzkolen}><i><CalendarCheck2 size={21} /></i><span><small>ROZWÓJ</small><strong>Plan szkoleń</strong><em>Instruktor, uczestnik, stanowisko i godziny szkoleniowe.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={() => setPage && setPage('settings')}><i><Clock size={21} /></i><span><small>ZGODNOŚĆ</small><strong>Dziennik audytu</strong><em>Publikacje, korekty, decyzje i operacje wrażliwe.</em></span><ChevronRight size={18} /></button>
+        <button className="panel report-card" onClick={() => hourlyRef.current && hourlyRef.current.click()}><i><TrendingUp size={21} /></i><span><small>POS • 15 MIN / GODZINY</small><strong>Sprzedaż godzinowa (CSV)</strong><em>data;godzina;sprzedaż;transakcje — zasila realny profil popytu{(data.salesData || {}).hourlyDays ? ` • ${(data.salesData || {}).hourlyDays} dni w bazie` : ''}.</em></span><Upload size={18} /></button>
+        <input ref={hourlyRef} type="file" accept=".csv,.txt" className="hidden" onChange={(e) => importHourly(e.target.files[0])} />
       </section>
       <section className="reports-grid">
         <article className="panel report-summary">
@@ -1214,7 +1302,7 @@ const PublishCard = ({ data }) => {
     if (!ym) return;
     if (info && info.opublikowany && !confirm(`Publikujesz nową wersję (${info.wersjaPub + 1}) — potwierdzenia pracowników wyzerują się. Kontynuować?`)) return;
     setBusy(true);
-    const r = await api('/schedule?action=publish', 'POST', { month: ym });
+    const r = await publikujMiesiac(ym);
     setBusy(false);
     if (r.success) { data.show(`Opublikowano ${ym} — wersja ${r.wersjaPub} (${r.zmian} zmian)`); zaladuj(ym); }
     else data.show(r.error || 'Błąd publikacji', 'error');
@@ -1401,7 +1489,7 @@ const DyspoAdmin = ({ data, setPage }) => {
           </main>
           <aside className="rex-av-review">
             {sel ? <>
-              <header><div><span>{dyInicjaly(sel.name)}</span><div><small>ZGŁOSZENIE #{String(sel.id).slice(-4).toUpperCase()}</small><strong>{sel.name}</strong><em>{sel.login} · PLK 201043</em></div></div><b className={sel.status}>{sel.status === 'pending' ? 'Do decyzji' : sel.status === 'approved' ? 'Zaakceptowana' : 'Odrzucona'}</b></header>
+              <header><div><span>{dyInicjaly(sel.name)}</span><div><small>ZGŁOSZENIE #{String(sel.id).slice(-4).toUpperCase()}</small><strong>{sel.name}</strong><em>{sel.login} · {UNIT.code}</em></div></div><b className={sel.status}>{sel.status === 'pending' ? 'Do decyzji' : sel.status === 'approved' ? 'Zaakceptowana' : 'Odrzucona'}</b></header>
               {sel.conflict && <div className="rex-av-warning"><AlertTriangle size={16} /><div><strong>Konflikt z opublikowanym grafikiem</strong><span>Decyzja może wymagać korekty grafiku.</span></div></div>}
               <div className="rex-av-review-grid"><span><small>DATA</small><strong>{dyData(sel.date)}</strong></span><span><small>TYP</small><strong>{DY_TYPY[sel.type].label}</strong></span><span><small>GODZINY</small><strong>{dyTime(sel)}</strong></span><span><small>POWTARZALNOŚĆ</small><strong>{sel.recurrence === 'weekly' ? `Co tydzień do ${sel.repeatUntil}` : 'Tylko ten dzień'}</strong></span></div>
               <div className="rex-av-note"><MessageSquare size={15} /><div><small>KOMENTARZ PRACOWNIKA</small><p>{sel.note || 'Brak komentarza.'}</p></div></div>
@@ -1715,6 +1803,32 @@ const TerminalsCard = ({ data }) => {
   );
 };
 
+const UnitCard = ({ data }) => {
+  const [f, setF] = useState({ ...UNIT });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api('/org').then((r) => { if (r && r.success && r.unit) { UNIT = { ...UNIT, ...r.unit }; setF({ ...UNIT }); } }).catch(() => {}); }, []);
+  const zapisz = async () => {
+    setBusy(true);
+    const r = await api('/org', 'PUT', f);
+    setBusy(false);
+    if (r && r.success) { UNIT = { ...UNIT, ...r.unit }; setF({ ...UNIT }); data.show('Dane jednostki zapisane — nagłówki, wydruki i Employee Hub używają nowej konfiguracji'); data.sync(); }
+    else data.show((r && r.error) || 'Błąd zapisu', 'error');
+  };
+  const pole = (k, label, ph) => <label className="block"><span className="block text-[11px] font-semibold mb-1" style={{ color: '#71656A' }}>{label}</span><input value={f[k] || ''} onChange={(e) => setF((x) => ({ ...x, [k]: e.target.value }))} placeholder={ph} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: '#E3DCDD' }} /></label>;
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm">
+      <h3 className="font-bold mb-1" style={{ color: '#2B171E' }}>Jednostka (work center)</h3>
+      <p className="text-xs mb-4" style={{ color: '#71656A' }}>Kod, nazwa i godziny działania restauracji — fundament pod wiele lokali. Używane w nagłówkach, wydruku A4 i aplikacji pracownika.</p>
+      <div className="grid md:grid-cols-3 gap-3">
+        {pole('code', 'Kod jednostki', 'PLK 201043')}{pole('name', 'Nazwa', 'Galeria Krakowska')}{pole('city', 'Miasto', 'Kraków')}
+        {pole('brand', 'Marka', 'Popeyes')}{pole('region', 'Region', 'Małopolska')}
+        <div className="grid grid-cols-2 gap-2">{pole('openFrom', 'Otwarcie', '06:00')}{pole('openTo', 'Zamknięcie', '02:00')}</div>
+      </div>
+      <div className="mt-4"><button onClick={zapisz} disabled={busy} className="primary-action">{busy ? 'Zapisuję…' : 'Zapisz jednostkę'}</button></div>
+    </div>
+  );
+};
+
 const SettingsPage = ({ data }) => {
   const [linked, setLinked] = useState([]);
   const [linkLogin, setLinkLogin] = useState('');
@@ -1760,6 +1874,8 @@ const SettingsPage = ({ data }) => {
     <div className="flex-1 flex flex-col">
       <Header title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+
+        <UnitCard data={data} />
 
         <TerminalsCard data={data} />
 
@@ -1868,7 +1984,9 @@ function optRozbicie(sprzedaz, splh, podloga, tryb, dow) {
   const dir = new Array(NS).fill(0), ind = new Array(NS).fill(0);
   [[6, 7], [24, 25], [25, 26]].forEach(([a, b]) => { const n = KC[a] ? KC[a][dow] : 1; for (let i = sl(a); i < sl(b); i++) ind[i] = Math.max(ind[i], n); });
   for (let h = 7; h <= 23; h++) {
-    const n = tryb === 'krzywa' ? KC[h][dow] : Math.max(podloga, Math.round((sprzedaz * PROF[h]) / splh));
+    const hh = String(h).padStart(2, '0');
+    const pDyn = PROF_DOW && PROF_DOW[dow] && PROF_DOW[dow][hh] != null ? PROF_DOW[dow][hh] : null;
+    const n = tryb === 'krzywa' ? KC[h][dow] : Math.max(podloga, Math.round((sprzedaz * (pDyn != null ? pDyn : PROF[h])) / splh));
     for (const i of [sl(h), sl(h) + 1]) dir[i] = n;
   }
   return { dir, ind };
@@ -3566,7 +3684,7 @@ const RotacjeWzor = ({ data, naGrafik }) => {
       <div className="bg-white rounded-2xl border px-5 py-4 mb-4 flex flex-wrap items-center gap-x-6 gap-y-3" style={{ borderColor: '#E3DCDD' }}>
         <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#EDE3E6', color: colors.primary.dark }}><RefreshCw size={18} /></span>
         <div className="min-w-0">
-          <p className="text-[15px] font-bold flex items-center gap-2" style={{ color: colors.primary.darkest }}>{ileCykli}-tygodniowa rotacja PLK 201043 <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>{wynik ? 'AKTYWOWANA' : 'ACTIVE DRAFT'}</span></p>
+          <p className="text-[15px] font-bold flex items-center gap-2" style={{ color: colors.primary.darkest }}>{ileCykli}-tygodniowa rotacja {UNIT.code} <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>{wynik ? 'AKTYWOWANA' : 'ACTIVE DRAFT'}</span></p>
           <p className="text-[11.5px]" style={{ color: colors.primary.light }}>Start {startTyg} · {det ? det.sloty.length : 0} osób · {zespoly.length} zespoły{zespoly.some((z) => z.id === 'y') ? ' + liderzy' : ''}</p>
         </div>
         <span className="ml-auto flex flex-wrap items-center gap-x-6 gap-y-1">
@@ -4128,7 +4246,7 @@ const PlanObsada = ({ data, setPage }) => {
   const opublikuj = async () => {
     if (!confirm(`Opublikować grafik (${mieszki.join(', ')})? Pracownicy zobaczą nową wersję, potwierdzenia wyzerują się.`)) return;
     setBusy(true);
-    for (const ym of mieszki) { const r = await api('/schedule?action=publish', 'POST', { month: ym }); if (r.success) data.show(`Opublikowano ${ym} — wersja ${r.wersjaPub}`); else if (!String(r.error || '').includes('żadnych zmian')) data.show(r.error || 'Błąd publikacji', 'error'); }
+    for (const ym of mieszki) { const r = await publikujMiesiac(ym); if (r.success) data.show(`Opublikowano ${ym} — wersja ${r.wersjaPub}`); else if (!String(r.error || '').includes('żadnych zmian')) data.show(r.error || 'Błąd publikacji', 'error'); }
     setBusy(false); zaladujPub();
   };
 
@@ -4878,6 +4996,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const [printOpen, setPrintOpen] = useState(false);
   const [rosterData, setRosterData] = useState(null);
   const [fokus, setFokus] = useState(false);                 // pełny ekran do układania grafiku (bez sidebara)
+  const [zgod, setZgod] = useState(null);
+  const [zgodOpen, setZgodOpen] = useState(false);
   const [szukajOs, setSzukajOs] = useState('');
   const [stacjaF, setStacjaF] = useState('');
   const [zoomG, setZoomG] = useState('60');
@@ -4965,7 +5085,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     return {
       dateLabel: `${dniP[d0.getDay()]}, ${d0.getDate()} ${mcP[d0.getMonth()]} ${d0.getFullYear()}`,
       operationalDayLabel: 'Doba operacyjna 06:00–06:00', versionLabel: 'Wersja opublikowana',
-      restaurantName: 'Popeyes Kraków', restaurantDetail: 'Galeria Krakowska', locationCode: 'PLK 201043',
+      restaurantName: `${UNIT.brand} ${UNIT.city}`, restaurantDetail: UNIT.name, locationCode: UNIT.code,
       shiftCount: bezInstr.length, employeeCount: new Set(bezInstr.map(pelne)).size,
       plannedHours: fH(planH), coveragePercent: Math.round(cv.coveragePct),
       coverageAttentionLabel: zle ? `${zle} ${zle === 1 ? 'slot' : zle < 5 ? 'sloty' : 'slotów'} do kontroli` : 'Bez uwag',
@@ -4980,7 +5100,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       ],
       priorities: ['Wbicia i wybicia kartą zgodnie z planem.', 'Reakcja na wskaźnik kalkulatora MPT.', 'Każda zamiana wymaga akceptacji ASM lub RGM.'],
       generatedAt: `Wygenerowano ${String(teraz.getDate()).padStart(2, '0')}.${String(teraz.getMonth() + 1).padStart(2, '0')}.${teraz.getFullYear()} · ${String(teraz.getHours()).padStart(2, '0')}:${String(teraz.getMinutes()).padStart(2, '0')}`,
-      documentLabel: 'Dokument operacyjny · PLK 201043 · strona 1/1',
+      documentLabel: `Dokument operacyjny · ${UNIT.code} · strona 1/1`,
     };
   };
   const otworzWydruk = (d) => { setPrintOpen(false); setRosterData(zbudujRoster(d)); };
@@ -5116,8 +5236,18 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
   const dateLabel = (d) => { const dt = new Date(d); return `${dniPelne[dt.getDay()]}, ${dt.getDate()} ${monthsGen[dt.getMonth()]} ${dt.getFullYear()}`; };
 
+  useEffect(() => {
+    if (view === 'list' || !weekDays.length) { setZgod(null); return; }
+    let aktywne = true;
+    api(`/compliance?month=${weekDays[0].slice(0, 7)}&from=${weekDays[0]}&to=${weekDays[6]}`).then((r) => { if (aktywne && r && r.success) setZgod(r); }).catch(() => {});
+    return () => { aktywne = false; };
+  }, [view, weekStart, data.shifts, data.lastSync]);
+  const zgodChip = (klasa) => (
+    <button className={klasa} title="Zgodność z prawem pracy w tym tygodniu" onClick={() => setZgodOpen(true)} style={zgod && zgod.summary.block ? { borderColor: '#B94352', color: '#B94352' } : undefined}><ShieldCheck size={16} /><span>{!zgod ? 'Zgodność' : zgod.summary.block || zgod.summary.warn ? `${zgod.summary.block} blok. • ${zgod.summary.warn} uwag` : 'Zgodne z KP'}</span></button>
+  );
+
   if (view === 'list') {
-    const wcLabel = 'PLK 201043 · Kraków Galeria Krakowska';
+    const wcLabel = `${UNIT.code} · ${UNIT.city} ${UNIT.name}`;
     const range = (w) => { const e = new Date(w.start); e.setDate(e.getDate() + 6); return `${w.start.slice(8)}.${w.start.slice(5, 7)} – ${ymd(e).slice(8)}.${ymd(e).slice(5, 7)}.${w.start.slice(0, 4)}`; };
     return (
       <div className="flex-1 min-h-0 flex flex-col">
@@ -5171,7 +5301,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
 
             <section className="panel rota-list-panel">
               <div className="rota-list-toolbar">
-                <div className="rota-location-select"><span>WORK CENTER</span><label><LayoutGrid size={15} /><select aria-label="Centrum pracy"><option>PLK 201043 · Galeria Krakowska</option></select><ChevronDown size={14} /></label></div>
+                <div className="rota-location-select"><span>WORK CENTER</span><label><LayoutGrid size={15} /><select aria-label="Centrum pracy"><option>{unitLabel()}</option></select><ChevronDown size={14} /></label></div>
                 <div className="rota-list-summary"><span><b>{weeks.filter((w) => stageOf(w) === 'In progress').length}</b> do ułożenia</span><span><b>{weeks.filter((w) => stageOf(w) === 'Reviewed').length}</b> do zamknięcia</span><span><b>{weeks.filter((w) => stageOf(w) === 'Closed').length}</b> closed</span></div>
                 <div className="rota-list-filters"><label><Search size={14} /><input value={rotaQuery} onChange={(e) => setRotaQuery(e.target.value)} placeholder="Szukaj tygodnia" /></label><label><Filter size={14} /><select value={rotaStatus} onChange={(e) => setRotaStatus(e.target.value)}><option>Wszystkie statusy</option><option>Do ułożenia</option><option>Completed</option><option>Reviewed</option><option>Closed</option></select></label></div>
               </div>
@@ -5231,8 +5361,9 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       {fokus ? (
         <header className="gantt-focus-header">
           <div className="gantt-focus-brand"><b style={{ color: '#741334', fontSize: 19, letterSpacing: '.2em', fontWeight: 850 }}>ORDO</b><span>WORKFORCE STUDIO</span></div>
-          <div className="gantt-focus-context"><span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span><strong>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</strong><small>{zakresTyg === 'dzien' ? dateLabel(day) : 'Pełny ekran do układania grafiku'} • Kraków, Pawia</small></div>
+          <div className="gantt-focus-context"><span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span><strong>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</strong><small>{zakresTyg === 'dzien' ? dateLabel(day) : 'Pełny ekran do układania grafiku'} • {UNIT.city}, {UNIT.name}</small></div>
           <div className="gantt-focus-tools" aria-label="Narzędzia grafiku">
+            {zgodChip('')}
             <button onClick={() => otworzWydruk(day)} title="Wydruk dnia"><Printer size={16} /><span>Wydruk</span></button>
             {zakresTyg === 'dzien' && <button disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }}><Check size={16} /><span>{ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</span></button>}
             <button disabled={data.loading} onClick={() => data.sync()}><RefreshCw size={16} /><span>{data.loading ? 'Zapisuję…' : 'Zapisz'}</span></button>
@@ -5249,6 +5380,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             </div>
             <div className="module-actions">
               <button className="secondary-action" onClick={() => setView('list')}><ChevronLeft size={16} /> Lista tygodni</button>
+              {zgodChip('secondary-action')}
               <button className="secondary-action" title="Pełny ekran do układania grafiku (Esc aby wyjść)" onClick={() => setFokus(true)}><Monitor size={16} /> Pełny ekran</button>
               <button className="secondary-action" onClick={() => (zakresTyg === 'dzien' ? otworzWydruk(day) : setPrintOpen((v) => !v))}><Printer size={16} /> {zakresTyg === 'dzien' ? 'Drukuj ten dzień' : 'Wydruk dnia'}</button>
               {zakresTyg === 'dzien' && <button className={ts.completed[day] ? 'secondary-action' : 'primary-action'} disabled={locked} onClick={() => { data.tsToggleCompleted(day); data.show(!ts.completed[day] ? 'Dzień oznaczony jako Completed' : 'Zdjęto status Completed'); }}><Check size={16} /> {ts.completed[day] ? 'Completed' : 'Zamknij dzień'}</button>}
@@ -5284,6 +5416,15 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         </div>
       )}
 
+      {zgodOpen && zgod && (
+        <DialogS title="Zgodność z prawem pracy" kicker={`TYDZIEŃ ${weekDays[0]} – ${weekDays[6]} • ${zgod.summary.block} BLOKAD • ${zgod.summary.warn} UWAG`} description="Blokady zatrzymują publikację (wyjątek tylko z uzasadnieniem ASM). Uwagi warto rozwiązać przed zamknięciem tygodnia." onClose={() => setZgodOpen(false)} actions={<button className="dialog-primary" onClick={() => setZgodOpen(false)}>Zamknij</button>}>
+          {zgod.violations.length === 0 ? <div className="dialog-empty">Brak naruszeń w tym tygodniu.</div> : (
+            <div className="dialog-list">{zgod.violations.slice(0, 60).map((v, i) => <div key={i}><i style={v.level === 'block' ? { color: '#fff', background: '#B94352' } : undefined}>{v.level === 'block' ? '!' : 'i'}</i><span><strong>{v.name} • {v.date.slice(8)}.{v.date.slice(5, 7)}</strong><small>{v.rule}: {v.message}</small></span><em>{v.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div>
+          )}
+          <p className="dialog-section-title" style={{ marginTop: 12 }}>REGUŁY W SILNIKU</p>
+          <div className="dialog-list">{(zgod.reguly || []).map((r) => <div key={r.code}><i>{r.level === 'block' ? '!' : 'i'}</i><span><strong>{r.name}</strong><small>{r.opis}</small></span><em>{r.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div>
+        </DialogS>
+      )}
       {printOpen && !fokus && (
         <div className="shrink-0 px-5 py-2 flex items-center gap-2 flex-wrap border-b" style={{ backgroundColor: 'white', borderColor: colors.primary.bg }}>
           <span className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>Grafik obsady (PDF) — wybierz dzień:</span>
@@ -5496,7 +5637,8 @@ const useData = () => {
       const rb = await api('/budget');
       if (rb.success) setBudget(rb.data || { employees: [], settings: null, sprzedaz: {}, transakcje: {}, dniS: {} });
       const rsl = await api('/sales');
-      if (rsl.success) setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [] });
+      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0 }); PROF_DOW = rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null; }
+      try { const rorg = await api('/org'); if (rorg && rorg.success && rorg.unit) UNIT = { ...UNIT, ...rorg.unit }; } catch {}
       const rtpl = await api('/templates');
       if (rtpl.success) setTemplates(rtpl.templates || []);
       const rab = await api('/absences');
@@ -5770,6 +5912,7 @@ export default function App() {
         <div className={widok === 'wt' ? 'flex-1 min-h-0 flex flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>{pages[widok] || pages.print}</div>
       </section>
       {navOpen && <button className="scrim" aria-label="Zamknij menu" onClick={() => setNavOpen(false)} />}
+      <ComplianceGate />
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </main>
   );
