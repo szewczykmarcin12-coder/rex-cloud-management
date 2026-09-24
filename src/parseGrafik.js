@@ -211,6 +211,10 @@ export function parseGrafik(arrayBuffer) {
     if (d && m) dni.push({ c, date: `${rok}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
   }
   if (!dni.length) throw new Error('Wiersz 1 nie zawiera dat w formacie DD/MM');
+  // krok kolumn: 2 = para start/koniec (szablon systemu docelowego), 3 = start/koniec/stanowisko (eksport ORDO „zaznacz stanowiska")
+  const odstepy = dni.slice(1).map((x, i) => x.c - dni[i].c).filter((g) => g > 0);
+  const krok = odstepy.length && odstepy.filter((g) => g === 3).length > odstepy.length / 2 ? 3 : 2;
+  let zeStacjami = 0;
   const shifts = [];
   const osoby = new Set();
   for (let r = 1; r < rows.length; r++) {
@@ -225,7 +229,9 @@ export function parseGrafik(arrayBuffer) {
       if (!start || !end) continue;
       let hours = (timeMin(end) - timeMin(start)) / 60;
       if (hours <= 0) hours += 24;   // zmiana przez polnoc (22:00 -> 06:00)
-      shifts.push({ date, name, station: '', start, end, hours: Math.round(hours * 100) / 100 });
+      let station = '';
+      if (krok === 3) { const st = wiersz[c + 2]; if (st != null && String(st).trim()) { station = String(st).trim().toUpperCase().split(/\s*→\s*/)[0].trim(); zeStacjami++; } }
+      shifts.push({ date, name, station, start, end, hours: Math.round(hours * 100) / 100 });
     }
   }
   if (!shifts.length) throw new Error('Nie znaleziono żadnych zmian — sprawdź, czy godziny są w parach kolumn pod datami');
@@ -236,7 +242,7 @@ export function parseGrafik(arrayBuffer) {
     month: firstDate.getMonth(), year: firstDate.getFullYear(),
     monthName: ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'][firstDate.getMonth()],
     firstDate: dates[0], lastDate: dates[dates.length - 1],
-    shiftCount: shifts.length, employeeCount: roster.length, format: 'poziomy',
+    shiftCount: shifts.length, employeeCount: roster.length, format: 'poziomy', krok, hasStations: zeStacjami > 0, zeStacjami,
   };
   return { shifts, roster, meta };
 }
@@ -247,7 +253,8 @@ function timeMin(t) { const [h, m] = String(t).split(':').map(Number); return h 
 // kolumna SUMA [h] + ukryte formuly pomocnicze jak w szablonie.
 // Kilka zmian jednej osoby w dniu jest SCALANE do jednego zakresu (min start – max koniec),
 // bo import docelowego systemu czyta tylko jedna pare na dzien.
-export function exportPoziomy(shifts, accounts, monthKey) {
+export function exportPoziomy(shifts, accounts, monthKey, opcje = {}) {
+  const zeStanowiskami = !!(opcje && opcje.stanowiska);
   const [Y, M] = monthKey.split('-').map(Number);
   const nDni = new Date(Y, M, 0).getDate();
   const daty = Array.from({ length: nDni }, (_, i) => `${Y}-${String(M).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`);
@@ -267,8 +274,9 @@ export function exportPoziomy(shifts, accounts, monthKey) {
     const sMin = timeMin(s2.start);
     let eMin = timeMin(s2.end); if (eMin <= sMin) eMin += 1440;
     const stary = mapa[os][s2.date];
-    if (!stary) mapa[os][s2.date] = { s: sMin, e: eMin };
-    else { scalone++; stary.s = Math.min(stary.s, sMin); stary.e = Math.max(stary.e, eMin); }
+    const st = String(s2.station || '').toUpperCase().trim();
+    if (!stary) mapa[os][s2.date] = { s: sMin, e: eMin, st: st ? [[sMin, st]] : [] };
+    else { scalone++; stary.s = Math.min(stary.s, sMin); stary.e = Math.max(stary.e, eMin); if (st) stary.st.push([sMin, st]); }
   });
 
   // pelny sklad: wszystkie konta + nazwy z grafiku bez konta (rowniez puste wiersze — jak w szablonie)
@@ -280,6 +288,27 @@ export function exportPoziomy(shifts, accounts, monthKey) {
   // STAŁA geometria szablonu: zawsze 31 par kolumn (B..BK), SUMA [h] w BL, formuły od BM —
   // niezależnie od liczby dni miesiąca (tak czyta import "grafiku optymalnego").
   const SLOTY = 31;
+  const stacjeDnia = (z) => [...new Set(z.st.sort((a, b) => a[0] - b[0]).map((x) => x[1]))].join(' → ');
+  if (zeStanowiskami) {
+    // wariant podglądowy: DD/MM | start | koniec | stanowisko — czytelny dla ludzi, importowalny przez ORDO (krok 3)
+    const nag = [String(Y)];
+    for (let d = 0; d < nDni; d++) nag.push(`${daty[d].slice(8)}/${daty[d].slice(5, 7)}`, null, null);
+    nag.push('SUMA [h]');
+    const aoaS = [nag];
+    osoby.forEach((os) => {
+      const w = [os]; let suma = 0;
+      for (let d = 0; d < nDni; d++) { const z = (mapa[os] || {})[daty[d]]; if (z) { w.push(hhmm(z.s), hhmm(z.e), stacjeDnia(z)); suma += (z.e - z.s) / 60; } else w.push(null, null, null); }
+      w.push(Math.round(suma * 100) / 100);
+      aoaS.push(w);
+    });
+    const wsS = XLSX.utils.aoa_to_sheet(aoaS);
+    wsS['!cols'] = [{ wch: 24 }, ...Array.from({ length: nDni * 3 }, (_, i) => ({ wch: i % 3 === 2 ? 14 : 6 })), { wch: 9 }];
+    Object.keys(wsS).forEach((addr) => { if (addr[0] !== '!' && wsS[addr] && wsS[addr].t === 's') wsS[addr].z = '@'; });
+    const wbS = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbS, wsS, 'Sheet1');
+    XLSX.writeFile(wbS, `Układ poziomy - plan_${monthKey}-01_${monthKey}-${pad2(nDni)}_stanowiska.xlsx`);
+    return { osoby: osoby.length, zmian: Object.values(mapa).reduce((a, v) => a + Object.keys(v).length, 0), scalone, stanowiska: true };
+  }
   const naglowek = [String(Y)];
   for (let d = 0; d < SLOTY; d++) naglowek.push(d < nDni ? `${daty[d].slice(8)}/${daty[d].slice(5, 7)}` : null, null);
   naglowek.push('SUMA [h]');

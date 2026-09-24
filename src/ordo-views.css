@@ -1240,3 +1240,16 @@
 .ordo-print-timeline em.print-shift-mid { color:#2B4A5F;border-color:#79A2C0;background:#DCEBF5 }
 .ordo-print-timeline em.print-shift-soft { color:#5C5124;border-color:#C9B45E;background:#F8F1D2 }
 .ordo-print-timeline em.print-shift-outline { color:#37415E;border-color:#8C9AC0;border-left-color:#741334;background:#E4E8F2 }
+
+
+/* ═══ dyspozycje w grafiku ═══ */
+.dyspo-tag { display:inline-block;padding:2px 7px;border-radius:6px;font-size:6.2px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;border:1px solid transparent }
+.dyspo-tag.ok { color:#33464F;background:#E3EBEF;border-color:#96AAB5 }
+.dyspo-tag.no { color:#743647;background:#F0E6E8;border-color:#C99FA8 }
+.dyspo-tag.part { color:#5C5124;background:#F8F1D2;border-color:#C9B45E }
+.gantt-person .dyspo-tag { margin-top:3px;font-style:normal;font-size:6px }
+.weekly-shift-pill { position:relative }
+.weekly-shift-pill.dyspo-kolizja { box-shadow:inset 0 0 0 1px #B94352 }
+.dyspo-warn { position:absolute;top:3px;right:4px;width:12px;height:12px;display:grid;place-items:center;border-radius:50%;color:#fff;background:#B94352;font-size:8px;font-weight:900;font-style:normal }
+
+.dyspo-tag.win { color:#3E3760;background:#E9E4F4;border-color:#9C92BC }

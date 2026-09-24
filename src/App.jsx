@@ -451,7 +451,7 @@ const RequestsAdmin = ({ data, setPage }) => {
   useEffect(zaladuj, [zaladuj]);
 
   const dPL = (d) => d ? new Intl.DateTimeFormat('pl-PL', { weekday: 'short', day: 'numeric', month: 'long' }).format(new Date(d + 'T12:00:00')) : '';
-  const DY_OP = { available: 'Dostępny cały dzień', unavailable: 'Niedostępny cały dzień', from_time: 'Dostępny od', until_time: 'Dostępny do', specific_shift: 'Preferowana zmiana' };
+  const DY_OP = { available: 'Dostępny cały dzień', unavailable: 'Niedostępny cały dzień', from_time: 'Dostępny od', until_time: 'Dostępny do', specific_shift: 'Pracuję' };
   const avItems = reqs.map((r) => ({ id: `av-${r.id}`, rid: r.id, kind: 'availability', name: r.name, meta: dPL(r.date), detail: `${DY_OP[r.type] || r.type}${r.type === 'from_time' ? ` ${r.startTime}` : r.type === 'until_time' ? ` ${r.endTime}` : r.type === 'specific_shift' ? ` ${r.startTime}–${r.endTime}` : ''}`, status: r.status, conflict: !!r.conflict })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 6);
   const AB_OP = { urlop: 'Urlop wypoczynkowy', uz: 'Urlop na żądanie', l4: 'Zwolnienie (L4)', inne: 'Inna absencja' };
   const abItems = absencje.map((a2) => ({ id: `ab-${a2.id}`, rid: a2.id, kind: 'absence', name: a2.name, meta: `${a2.from} – ${a2.to}`, detail: `${AB_OP[a2.type] || a2.type}${a2.reason ? ` • „${a2.reason}"` : ''}`, status: a2.status === 'open' ? 'pending' : a2.status })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 6);
@@ -971,8 +971,10 @@ const ImportPage = ({ data, setPage }) => {
   const [error, setError] = useState('');
   const [stOverride, setStOverride] = useState({});     // nadpisane stanowiska per wiersz
   const [stAll, setStAll] = useState('MANAGER');
+  const [uzyjStacji, setUzyjStacji] = useState(true);       // import: stanowiska z pliku (krok 3) albo ręcznie
+  const [expStacje, setExpStacje] = useState(false);         // eksport: zaznacz stanowiska (3 kolumny na dzień)
   const fileRef = useRef();
-  const stacjaWiersza = (sx, i) => stOverride[i] || sx.station || 'MANAGER';
+  const stacjaWiersza = (sx, i) => stOverride[i] || (uzyjStacji && sx.station) || stAll || 'MANAGER';
   const zEfektywnymiStacjami = () => preview.shifts.map((sx, i) => ({ ...sx, station: stacjaWiersza(sx, i) }));
 
   const [sladAud, setSladAud] = useState([]);
@@ -1034,6 +1036,7 @@ const ImportPage = ({ data, setPage }) => {
         catch { result = parseProstaTabela(buf); }
       }
       setStOverride({}); setStAll('MANAGER');
+      setUzyjStacji(!!(result.meta && result.meta.hasStations));
       setPreview(result);
     } catch (e) {
       setError(e.message || 'Błąd odczytu pliku');
@@ -1059,7 +1062,8 @@ const ImportPage = ({ data, setPage }) => {
       <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view reports-view" style={{ width: '100%' }}>
       <MHead kicker="ORDO WORKFORCE STUDIO • NARZĘDZIA" title="Import / eksport godzin" copy="Raporty godzin, dzienna obsada, szkolenia oraz pełna historia zmian operacyjnych.">
         <button className="secondary-action" onClick={() => fileRef.current && fileRef.current.click()}><Upload size={16} /> Import danych</button>
-        <button className="primary-action" onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami)`, 'success'); }}><Download size={16} /> Eksport payroll</button>
+        <label className="secondary-action" style={{ cursor: 'pointer', gap: 8 }} title="Wariant podglądowy: obok godzin kolumna ze stanowiskiem (3 kolumny na dzień). Bez zaznaczenia: szablon 1:1 dla systemu docelowego."><input type="checkbox" checked={expStacje} onChange={(e) => setExpStacje(e.target.checked)} style={{ accentColor: '#741334' }} /> Zaznacz stanowiska</label>
+        <button className="primary-action" onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: expStacje }); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})${r.stanowiska ? ' — wariant ze stanowiskami' : ' — szablon systemu docelowego'}`, 'success'); }}><Download size={16} /> {expStacje ? 'Eksport ze stanowiskami' : 'Eksport (szablon)'}</button>
       </MHead>
       <section className="report-cards">
         <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
@@ -1102,7 +1106,8 @@ const ImportPage = ({ data, setPage }) => {
             <select value={expM} onChange={(e) => setExpM(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
               {(data.months || []).map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
-            <Btn icon={Download} onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami)`, 'success'); }}>Pobierz XLSX</Btn>
+            <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.darkest }}><input type="checkbox" checked={expStacje} onChange={(e) => setExpStacje(e.target.checked)} style={{ accentColor: '#741334' }} /> Zaznacz stanowiska <span className="text-xs" style={{ color: colors.primary.light }}>(podgląd, 3 kolumny/dzień; bez zaznaczenia — szablon 1:1 do importu w systemie docelowym)</span></label>
+            <Btn icon={Download} onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: expStacje }); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})`, 'success'); }}>{expStacje ? 'Pobierz XLSX ze stanowiskami' : 'Pobierz XLSX (szablon)'}</Btn>
           </div>
           {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w WorkRhythm albo zaimportuj plik.</p>}
         </div>
@@ -1118,7 +1123,11 @@ const ImportPage = ({ data, setPage }) => {
             </div>
             <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.accent.bg }}><div className="flex items-start gap-2"><AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: colors.accent.dark }} /><span className="text-sm" style={{ color: colors.accent.dark }}><strong>„Dodaj godziny do grafiku"</strong> dopisze zmiany do już istniejących (duplikaty osoba+data+godziny są pomijane). <strong>„Zastąp miesiąc"</strong> nadpisze cały miesiąc z pliku.</span></div></div>
             <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: colors.primary.bgLight }}>
-              <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>Stanowisko dla importowanych godzin:</span>
+              <div className="filter-tabs" style={{ marginRight: 6 }}>
+                <button className={uzyjStacji ? 'active' : ''} disabled={!(preview.meta && preview.meta.hasStations)} title={preview.meta && preview.meta.hasStations ? `${preview.meta.zeStacjami} zmian ma stanowisko w pliku` : 'Ten plik nie zawiera kolumny stanowisk'} onClick={() => setUzyjStacji(true)}>Ze stanowiskami z pliku{preview.meta && preview.meta.hasStations ? <b>{preview.meta.zeStacjami}</b> : null}</button>
+                <button className={!uzyjStacji ? 'active' : ''} onClick={() => setUzyjStacji(false)}>Bez stanowisk — przypisz</button>
+              </div>
+              <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{uzyjStacji ? 'Stanowisko dla zmian bez wpisu w pliku:' : 'Stanowisko dla importowanych godzin:'}</span>
               <select value={stAll} onChange={(e) => setStAll(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
                 {STACJE_IMPORT.map((x) => <option key={x} value={x}>{x}</option>)}
               </select>
@@ -1379,7 +1388,7 @@ const DY_TYPY = {
   unavailable: { short: 'Niedost.', label: 'Nie mogę pracować' },
   from_time: { short: 'Od', label: 'Mogę pracować od godziny' },
   until_time: { short: 'Do', label: 'Mogę pracować do godziny' },
-  specific_shift: { short: 'Zmiana', label: 'Preferowana konkretna zmiana' },
+  specific_shift: { short: 'Od–do', label: 'Pracuję w oknie od–do' },
 };
 const dyAddDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const dyStartOfWeek = (iso) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
@@ -4544,6 +4553,33 @@ const PlanFinanse = ({ data, setPage }) => {
 };
 
 // ===================== SIATKA TYGODNIA (planowanie jak MAPAL Scheduler) =====================
+// ── Zatwierdzone dyspozycje w grafiku: mapa accountId → data → wniosek ──
+const useDyspoZatw = (dates) => {
+  const [mapa, setMapa] = useState({});
+  const klucz = (dates || []).join(',');
+  useEffect(() => {
+    if (!dates || !dates.length) return;
+    let ok = true;
+    api('/availability?reqs=1').then((r) => {
+      if (!ok || !r || !r.success) return;
+      const m = {};
+      (r.requests || []).filter((x) => x.status === 'approved' && dates.includes(x.date)).forEach((x) => { (m[x.accountId] = m[x.accountId] || {})[x.date] = x; });
+      setMapa(m);
+    }).catch(() => {});
+    return () => { ok = false; };
+  }, [klucz]);
+  return mapa;
+};
+const dyspoOpis = (r) => !r ? null : r.type === 'available' ? { t: 'dostępny', k: 'ok' } : r.type === 'unavailable' ? { t: 'niedostępny', k: 'no' } : r.type === 'from_time' ? { t: `od ${r.startTime}`, k: 'part' } : r.type === 'until_time' ? { t: `do ${r.endTime}`, k: 'part' } : { t: `${r.startTime}–${r.endTime}`, k: 'win' };
+const dyspoKolizja = (r, x) => {
+  if (!r || !x) return null;
+  const mnD = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+  if (r.type === 'unavailable') return 'zmiana mimo zgłoszonej niedostępności';
+  if (r.type === 'from_time' && mnD(x.start) < mnD(r.startTime)) return `zmiana zaczyna się przed deklarowaną dostępnością od ${r.startTime}`;
+  if (r.type === 'until_time') { let e = mnD(x.end); if (e <= mnD(x.start)) e += 1440; if (e > mnD(r.endTime)) return `zmiana kończy się po deklarowanej dostępności do ${r.endTime}`; }
+  return null;
+};
+
 const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -4554,6 +4590,7 @@ const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
   const stacje = [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean);
   const sprzedazMap = ((data.salesData || {}).sales) || {};
 
+  const dyspoW = useDyspoZatw(days);
   const wiersze = useMemo(() => {
     const zKont = konta.map((a) => {
       const moje = scalParyPlan(zmianyTyg.filter((x) => x.accountId === a.id));
@@ -4651,11 +4688,15 @@ const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
                 {days.map((d) => { const zs = w.moje.filter((x) => x.date === d); return (
                   <div className="weekly-shift-cell" key={d}>
                     {zs.length ? zs.map((x, xi) => (
-                      <button key={xi} className={`weekly-shift-pill weekly-${toneZm(x.station)}`} title={`${x.station} · ${godzZ(x)} h${x.szkoli ? ` · szkoli${x.partnerSzk ? ': ' + x.partnerSzk : ''}` : ''}${x.dodana ? ' · ręczna' : ''}`} onClick={(e) => klikChip(w, x, e)}>
-                        <strong>{x.start}–{x.end}</strong><span>{x.szkoli ? `🎓 ${x.station}` : x.station}</span>
+                      (() => { const rq = w.id ? ((dyspoW[w.id] || {})[d] || null) : null; const kol = dyspoKolizja(rq, x); return (
+                      <button key={xi} className={`weekly-shift-pill weekly-${toneZm(x.station)}${kol ? ' dyspo-kolizja' : ''}`} title={`${x.station} · ${godzZ(x)} h${x.szkoli ? ` · szkoli${x.partnerSzk ? ': ' + x.partnerSzk : ''}` : ''}${x.dodana ? ' · ręczna' : ''}${kol ? ` · ⚠ ${kol}` : ''}`} onClick={(e) => klikChip(w, x, e)}>
+                        <strong>{x.start}–{x.end}</strong><span>{x.szkoli ? `🎓 ${x.station}` : x.station}</span>{kol && <b className="dyspo-warn" aria-label={kol}>!</b>}
                       </button>
+                      ); })()
                     )) : (
-                      <button className="weekly-day-off" style={{ cursor: locked || !w.grafik ? 'default' : 'pointer', border: 0, background: 'transparent', width: '100%' }} onClick={() => !locked && w.grafik && klikPusta(w, d)}>WOLNE</button>
+                      (() => { const op = w.id ? dyspoOpis((dyspoW[w.id] || {})[d]) : null; return (
+                      <button className="weekly-day-off" style={{ cursor: locked || !w.grafik ? 'default' : 'pointer', border: 0, background: 'transparent', width: '100%' }} title={op ? `Zatwierdzona dyspozycja: ${op.t}` : undefined} onClick={() => !locked && w.grafik && klikPusta(w, d)}>{op ? <span className={`dyspo-tag ${op.k}`}>{op.t}</span> : 'WOLNE'}</button>
+                      ); })()
                     )}
                   </div>
                 ); })}
@@ -4858,6 +4899,7 @@ const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '', zoom = '60',
   const gPos = (t) => { let x = plnMin(t) - 360; return Math.max(0, Math.min(x, G_MIN)); };
   const gBar = (x) => { let a2 = plnMin(x.start), b2 = plnMin(x.end); if (b2 <= a2) b2 += 1440; a2 -= 360; b2 -= 360; a2 = Math.max(0, a2); b2 = Math.min(b2, G_MIN); return { left: `${a2 / G_MIN * 100}%`, width: `${Math.max(b2 - a2, 20) / G_MIN * 100}%` }; };
   const gTone = (st2) => { const S = String(st2 || '').toUpperCase(); if (S.includes('KONTROLER')) return 'outline'; const k = BP_KATEGORIA(st2); return k === 'Manager' ? 'deep' : k === 'Kuchnia' ? 'soft' : 'mid'; };
+  const dyspoD = useDyspoZatw([day]);
   const wierszeG = wiersze.filter((w) => (!szukaj || String(w.label).toLowerCase().includes(szukaj.toLowerCase())) && (!stacjaF || w.moje.some((x) => String(x.station || '').toUpperCase() === String(stacjaF).toUpperCase())));
   // ── tryb Actual: odbicia z karty czasu (ts.actuals) na tle planu ──
   const aktMapa = ((data.ts || {}).actuals) || {};
@@ -4900,7 +4942,7 @@ const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '', zoom = '60',
 
             {wierszeG.map((w) => (
               <div className="gantt-row-fragment" key={w.key}>
-                <div className="gantt-left gantt-person"><i>{String(w.label).split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{w.label}</strong><small>{w.funkcja || 'bez konta'} • {w.moje.reduce((a2, x) => a2 + godzZ(x), 0).toFixed(1).replace('.', ',')} h</small></span>{w.moje.some((x) => x.szkoli) && <em>szkoli</em>}</div>
+                <div className="gantt-left gantt-person"><i>{String(w.label).split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{w.label}</strong><small>{w.funkcja || 'bez konta'} • {w.moje.reduce((a2, x) => a2 + godzZ(x), 0).toFixed(1).replace('.', ',')} h</small></span>{w.moje.some((x) => x.szkoli) && <em>szkoli</em>}{(() => { const rq = w.id ? ((dyspoD[w.id] || {})[day] || null) : null; const op = dyspoOpis(rq); if (!op) return null; const kol = w.moje.some((x) => dyspoKolizja(rq, x)); return <em className={`dyspo-tag ${kol ? 'no' : op.k}`} title={`Zatwierdzona dyspozycja: ${op.t}${kol ? ' — kolizja ze zmianą' : ''}`}>{kol ? '⚠ ' : ''}{op.t}</em>; })()}</div>
                 <div className="gantt-person-track" style={{ cursor: locked ? 'default' : 'crosshair' }}
                   onMouseDown={(e) => { if (e.target === e.currentTarget) dragStart(w, e); }}
                   onMouseMove={(e) => dragMove(w, e)}
