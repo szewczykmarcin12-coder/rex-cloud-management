@@ -4,6 +4,7 @@ import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, L
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
+import { exportGO } from './goExport.js';
 import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
 import { DailyRosterPrint } from './DailyRosterPrint.jsx';
@@ -1274,7 +1275,7 @@ const ImportPage = ({ data, setPage }) => {
       <MHead kicker="ORDO WORKFORCE STUDIO • NARZĘDZIA" title="Import / eksport godzin" copy="Raporty godzin, dzienna obsada, szkolenia oraz pełna historia zmian operacyjnych.">
         <button className="secondary-action" onClick={() => fileRef.current && fileRef.current.click()}><Upload size={16} /> Import danych</button>
         <label className="secondary-action" style={{ cursor: 'pointer', gap: 8 }} title="Wariant podglądowy: obok godzin kolumna ze stanowiskiem (3 kolumny na dzień). Bez zaznaczenia: szablon 1:1 dla systemu docelowego."><input type="checkbox" checked={expStacje} onChange={(e) => setExpStacje(e.target.checked)} style={{ accentColor: '#741334' }} /> Zaznacz stanowiska</label>
-        <button className="primary-action" onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: expStacje }); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})${r.stanowiska ? ' — wariant ze stanowiskami' : ' — szablon systemu docelowego'}`, 'success'); }}><Download size={16} /> {expStacje ? 'Eksport ze stanowiskami' : 'Eksport (szablon)'}</button>
+        <button className="primary-action" onClick={async () => { if (!expM) return; try { const r = expStacje ? exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: true }) : await exportGO(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})${r.stanowiska ? ' — wariant ze stanowiskami' : ' — kopia oryginalnego szablonu GO'}`, 'success'); } catch (e) { data.show(e.message || 'Błąd eksportu', 'error'); } }}><Download size={16} /> {expStacje ? 'Eksport ze stanowiskami' : 'Eksport (szablon)'}</button>
       </MHead>
       <section className="report-cards">
         <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
@@ -1336,7 +1337,7 @@ const ImportPage = ({ data, setPage }) => {
               {(data.months || []).map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
             <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.darkest }}><input type="checkbox" checked={expStacje} onChange={(e) => setExpStacje(e.target.checked)} style={{ accentColor: '#741334' }} /> Zaznacz stanowiska <span className="text-xs" style={{ color: colors.primary.light }}>(podgląd, 3 kolumny/dzień; bez zaznaczenia — szablon 1:1 do importu w systemie docelowym)</span></label>
-            <Btn icon={Download} onClick={() => { if (!expM) return; const r = exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: expStacje }); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})`, 'success'); }}>{expStacje ? 'Pobierz XLSX ze stanowiskami' : 'Pobierz XLSX (szablon)'}</Btn>
+            <Btn icon={Download} onClick={async () => { if (!expM) return; try { const r = expStacje ? exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: true }) : await exportGO(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})`, 'success'); } catch (e) { data.show(e.message || 'Błąd eksportu', 'error'); } }}>{expStacje ? 'Pobierz XLSX ze stanowiskami' : 'Pobierz XLSX (szablon)'}</Btn>
           </div>
           {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w WorkRhythm albo zaimportuj plik.</p>}
         </div>

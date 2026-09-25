@@ -13,7 +13,8 @@
     "lucide-react": "^0.263.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "jspdf": "^2.5.1",
-    "jspdf-autotable": "^3.8.2"
+    "jspdf-autotable": "^3.8.2",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
