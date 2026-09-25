@@ -491,6 +491,33 @@ const DyspoOsobaDialog = ({ osoba, reqs, onClose, onDone, data }) => {
   );
 };
 
+// ── Eksport dyspozycji do układu poziomego (odwrotność importu; konwencje: 00:00–23:59 = cały dzień, od = HH:MM–23:59, do = 00:00–HH:MM, niedostępny = pusto) ──
+function eksportDyspoPoziome(reqs, accounts, ym, opcje = {}) {
+  const { tylkoZatwierdzone = true, tylkoCrew = true } = opcje;
+  const MGR_ = new Set(['RGM', 'ASM', 'SM', 'JSM']);
+  const [Y, M] = ym.split('-').map(Number);
+  const nDni = new Date(Y, M, 0).getDate();
+  const daty = Array.from({ length: nDni }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+  const osoby = (accounts || []).filter((a) => (!tylkoCrew || !MGR_.has(a.funkcja)) && a.aktywny !== false).sort((a2, b2) => a2.name.localeCompare(b2.name, 'pl'));
+  const mapa = {};
+  reqs.filter((r) => r.date && r.date.startsWith(ym) && (tylkoZatwierdzone ? r.status === 'approved' : r.status !== 'rejected')).forEach((r) => { (mapa[r.accountId] = mapa[r.accountId] || {})[r.date] = r; });
+  const para = (r) => !r ? [null, null] : r.type === 'available' ? ['00:00', '23:59'] : r.type === 'unavailable' ? [null, null] : r.type === 'from_time' ? [r.startTime, '23:59'] : r.type === 'until_time' ? ['00:00', r.endTime] : [r.startTime, r.endTime];
+  const aoa = [[String(Y), ...daty.flatMap((d) => [`${d.slice(8)}/${d.slice(5, 7)}`, null]), 'DNI Z DYSPOZYCJĄ']];
+  let wierszy = 0, deklaracji = 0;
+  osoby.forEach((a) => {
+    const w = [String(a.name).toUpperCase()]; let n = 0;
+    daty.forEach((d) => { const r = (mapa[a.id] || {})[d]; const [x, y] = para(r); w.push(x, y); if (r) { n++; deklaracji++; } });
+    w.push(n); aoa.push(w); wierszy++;
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  Object.keys(ws).forEach((addr) => { if (addr[0] !== '!' && ws[addr] && ws[addr].t === 's') ws[addr].z = '@'; });
+  ws['!cols'] = [{ wch: 24 }, ...daty.flatMap(() => [{ wch: 6 }, { wch: 6 }]), { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.writeFile(wb, `Dyspozycje - ${ym}${tylkoZatwierdzone ? '' : ' (z oczekujacymi)'}.xlsx`);
+  return { osoby: wierszy, deklaracji };
+}
+
 const RequestsAdmin = ({ data, setPage }) => {
   const [reqs, setReqs] = useState([]);
   const [absencje, setAbsencje] = useState([]);
@@ -561,6 +588,8 @@ const RequestsAdmin = ({ data, setPage }) => {
   return (
     <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view requests-view" style={{ width: '100%' }}>
       <MHead kicker="WORKFORCE • DYSPOZYCYJNOŚĆ" title="Dyspozycyjność" copy="Jedna kolejka decyzji dla dostępności, absencji i zamian — powiązana bezpośrednio z grafikiem dziennym.">
+        <button className="secondary-action" title="Plik w układzie poziomym (jak import): zatwierdzone deklaracje crew na miesiąc docelowy" onClick={() => { const ym = okno && okno.targetMonth ? okno.targetMonth : mc; const r = eksportDyspoPoziome(reqs, data.accounts || [], ym, { tylkoZatwierdzone: true }); data.show(`Wyeksportowano dyspozycje ${ym}: ${r.osoby} osób, ${r.deklaracji} dni`); }}><Download size={16} /> Eksport dyspozycji</button>
+        <button className="secondary-action" title="Wariant z oczekującymi (niezatwierdzonymi) deklaracjami" onClick={() => { const ym = okno && okno.targetMonth ? okno.targetMonth : mc; const r = eksportDyspoPoziome(reqs, data.accounts || [], ym, { tylkoZatwierdzone: false }); data.show(`Wyeksportowano dyspozycje ${ym} (z oczekującymi): ${r.osoby} osób, ${r.deklaracji} dni`); }}><Download size={16} /> + oczekujące</button>
         <button className="secondary-action" onClick={przelaczOkno}><CalendarCheck2 size={16} /> {okno && okno.otwarte ? 'Zamknij okno' : 'Otwórz okno'}</button>
         <button className="primary-action" disabled={busy} onClick={publikuj}><CheckCircle2 size={16} /> {opublikowany ? 'Opublikuj nową wersję' : 'Opublikuj grafik'}</button>
       </MHead>
@@ -1255,6 +1284,7 @@ const ImportPage = ({ data, setPage }) => {
         <input ref={hourlyRef} type="file" accept=".csv,.txt" className="hidden" onChange={(e) => importHourly(e.target.files[0])} />
         <button className="panel report-card" onClick={() => dyspoRef.current && dyspoRef.current.click()}><i><CalendarCheck2 size={21} /></i><span><small>DYSPOZYCYJNOŚĆ</small><strong>Import dyspozycji (XLSX poziomy)</strong><em>Ten sam układ co grafik: A1 rok, DD/MM, wiersz = osoba, para godzin = pracuję od–do; T = dostępny, N = niedostępny.</em></span><Upload size={18} /></button>
         <input ref={dyspoRef} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" onChange={(e) => importDyspoPlik(e.target.files[0])} />
+        <button className="panel report-card" onClick={() => setPage && setPage('dyspo')}><i><Download size={21} /></i><span><small>DYSPOZYCYJNOŚĆ</small><strong>Eksport dyspozycji (XLSX poziomy)</strong><em>Przyciski „Eksport dyspozycji" w module Dyspozycyjność — zatwierdzone lub z oczekującymi.</em></span><ChevronRight size={18} /></button>
       </section>
       {dyspoPrev && (
         <DialogS title="Import dyspozycji" kicker={`${dyspoPrev.plik} • ${dyspoPrev.firstDate} – ${dyspoPrev.lastDate}`} description={`${dyspoPrev.items.length} deklaracji dla ${dyspoPrev.osoby.length} osób. Każda data zastępuje wcześniejszą deklarację tej osoby.`} onClose={() => setDyspoPrev(null)}
