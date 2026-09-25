@@ -599,6 +599,25 @@ const RequestsAdmin = ({ data, setPage }) => {
             </div>
             <button className="full-secondary" disabled={busy} onClick={publikuj}>Przejdź do kolejnego etapu <ChevronRight size={16} /></button>
           </article>
+          {(() => {
+            const MGR_ = new Set(['RGM', 'ASM', 'SM', 'JSM']);
+            const mcDy = okno && okno.targetMonth ? okno.targetMonth : mc;
+            const crew = (data.accounts || []).filter((a) => !MGR_.has(a.funkcja) && a.aktywny !== false);
+            const zDysp = new Set(reqs.filter((r) => r.date && r.date.startsWith(mcDy) && r.status !== 'rejected').map((r) => r.accountId));
+            const brak = crew.filter((a) => !zDysp.has(a.id)).sort((a2, b2) => a2.name.localeCompare(b2.name, 'pl'));
+            const mcL = new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date(mcDy + '-01T12:00:00'));
+            return (
+              <article className="panel availability-map">
+                <div className="panel-title"><div><span>BRAK DYSPOZYCJI • {mcL.toUpperCase()}</span><h2>{brak.length ? `${brak.length} z ${crew.length} crew bez dyspozycji` : 'Komplet dyspozycji crew'}</h2></div><AlertTriangle size={19} style={{ color: brak.length ? '#B94352' : '#96AAB5' }} /></div>
+                {brak.length ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    {brak.map((a) => <span key={a.id} className="dyspo-tag no" style={{ fontSize: 10, textTransform: 'none', letterSpacing: 0, padding: '4px 9px' }} title={`${funkcjaLabel(a.funkcja)} • ${a.umowa || ''} • login ${a.login}`}>{a.name}</span>)}
+                  </div>
+                ) : <div className="dialog-empty" style={{ padding: 12 }}>Każdy pracownik crew ma przynajmniej jedną deklarację na ten miesiąc.</div>}
+                <div className="request-note" style={{ marginTop: 10 }}><ShieldCheck size={16} /><span>Liczone dla miesiąca docelowego okna dyspozycji (bez managerów: RGM/ASM/SM/JSM). Odrzucone deklaracje nie liczą się jako podane.</span></div>
+              </article>
+            );
+          })()}
           <article className="panel availability-map">
             <div className="panel-title"><div><span>NASTĘPNY TYDZIEŃ</span><h2>Pokrycie dostępnością</h2></div><Gauge size={19} /></div>
             {pokrycie.map((x) => <div className="availability-coverage" key={x.d}><span>{x.d}</span><i><b style={{ width: `${x.v}%` }} /></i><strong>{x.v}%</strong></div>)}
