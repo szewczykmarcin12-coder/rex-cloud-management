@@ -434,6 +434,63 @@ const KolejkaWn = ({ title, kicker, icon: Icon, items, onSelect }) => (
   </article>
 );
 
+// ── Kalendarz dyspozycji jednej osoby (jak w Employee Hub) + decyzje zbiorcze ──
+const DyspoOsobaDialog = ({ osoba, reqs, onClose, onDone, data }) => {
+  const mies = [...new Set(reqs.map((r) => r.date.slice(0, 7)))].sort();
+  const domyslny = mies.find((m) => reqs.some((r) => r.date.startsWith(m) && r.status === 'pending')) || mies[mies.length - 1];
+  const [ym, setYm] = useState(domyslny);
+  const [zazn, setZazn] = useState(new Set());
+  const [busy, setBusy] = useState(false);
+  const [nota, setNota] = useState('');
+  const wM = reqs.filter((r) => r.date.startsWith(ym));
+  const poDacie = Object.fromEntries(wM.map((r) => [r.date, r]));
+  const [y, m] = ym.split('-').map(Number);
+  const nDni = new Date(y, m, 0).getDate();
+  const wiodace = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const dni = Array.from({ length: nDni }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+  const opis = (r) => !r ? '' : r.type === 'available' ? '✓ cały dzień' : r.type === 'unavailable' ? '✕' : r.type === 'from_time' ? `od ${r.startTime}` : r.type === 'until_time' ? `do ${r.endTime}` : `${r.startTime}–${r.endTime}`;
+  const kl = (r) => !r ? '' : r.type === 'available' ? 'ok' : r.type === 'unavailable' ? 'no' : r.type === 'specific_shift' ? 'win' : 'part';
+  const pend = wM.filter((r) => r.status === 'pending');
+  const toggle = (id) => setZazn((z) => { const n = new Set(z); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const decyzja = async (ids, status) => {
+    if (!ids.length) return;
+    setBusy(true);
+    const r = await api('/availability?action=decide-bulk', 'POST', { ids, status, managerNote: nota });
+    setBusy(false);
+    if (r && r.success) { data.show(`${status === 'approved' ? 'Zatwierdzono' : 'Odrzucono'} ${r.zmienione} ${r.zmienione === 1 ? 'deklarację' : 'deklaracji'} — ${osoba.name}`); setZazn(new Set()); onDone(); }
+    else data.show((r && r.error) || 'Błąd decyzji', 'error');
+  };
+  const mcL = new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1));
+  return (
+    <DialogS title={osoba.name} kicker={`DYSPOZYCYJNOŚĆ • ${mcL.toUpperCase()} • ${pend.length} DO DECYZJI`} description="Kliknij dni, aby zaznaczyć, albo zatwierdź wszystkie oczekujące jednym przyciskiem. Obwódka = oczekuje, wypełnienie = typ deklaracji." onClose={onClose} size="large"
+      actions={<>
+        <button onClick={onClose}>Zamknij</button>
+        <button disabled={busy || !zazn.size} onClick={() => decyzja([...zazn], 'rejected')} style={{ color: '#B94352' }}><X size={15} /> Odrzuć zaznaczone ({zazn.size})</button>
+        <button disabled={busy || !zazn.size} onClick={() => decyzja([...zazn], 'approved')}><Check size={15} /> Zatwierdź zaznaczone ({zazn.size})</button>
+        <button className="dialog-primary" disabled={busy || !pend.length} onClick={() => decyzja(pend.map((r) => r.id), 'approved')}><Check size={15} /> Zatwierdź wszystkie oczekujące ({pend.length})</button>
+      </>}>
+      <div className="eh-dyspo-tools" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 11, color: '#71656A' }}>
+        <button className="secondary-action" style={{ height: 30 }} disabled={mies.indexOf(ym) === 0} onClick={() => setYm(mies[mies.indexOf(ym) - 1])}><ChevronLeft size={14} /></button>
+        <strong style={{ color: '#2B171E', fontSize: 13 }}>{mcL}</strong>
+        <button className="secondary-action" style={{ height: 30 }} disabled={mies.indexOf(ym) === mies.length - 1} onClick={() => setYm(mies[mies.indexOf(ym) + 1])}><ChevronRight size={14} /></button>
+        <span style={{ marginLeft: 'auto' }}>{wM.filter((r) => r.status === 'approved').length} zatwierdzone • {pend.length} oczekuje • {wM.filter((r) => r.status === 'rejected').length} odrzucone</span>
+        <button className="secondary-action" style={{ height: 30 }} onClick={() => setZazn(new Set(pend.map((r) => r.id)))}>Zaznacz oczekujące</button>
+        <button className="secondary-action" style={{ height: 30 }} onClick={() => setZazn(new Set())}>Wyczyść</button>
+      </div>
+      <div className="dy-kal-weekdays">{['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'].map((d) => <span key={d}>{d}</span>)}</div>
+      <div className="dy-kal-grid">
+        {Array.from({ length: wiodace }, (_, i) => <i key={`p${i}`} />)}
+        {dni.map((d, i) => { const r = poDacie[d]; const sel = r && zazn.has(r.id); return (
+          <button type="button" key={d} disabled={!r} className={`dy-kal-day ${kl(r)}${r ? ` ${r.status}` : ''}${sel ? ' sel' : ''}${(i + wiodace) % 7 >= 5 ? ' weekend' : ''}`} title={r ? `${opis(r)} • ${r.status === 'approved' ? 'zatwierdzona' : r.status === 'rejected' ? 'odrzucona' : 'oczekuje'}${r.conflict ? ' • KONFLIKT z grafikiem' : ''}${r.note ? ` • „${r.note}"` : ''}` : 'brak deklaracji'} onClick={() => r && toggle(r.id)}>
+            <strong>{i + 1}</strong><small>{opis(r)}</small>{r && r.conflict && <b className="dy-kal-conf">!</b>}
+          </button>
+        ); })}
+      </div>
+      <label className="dialog-field full" style={{ marginTop: 12 }}>Notatka do decyzji (opcjonalnie)<input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="np. zaakceptowane zgodnie z ustaleniami" /></label>
+    </DialogS>
+  );
+};
+
 const RequestsAdmin = ({ data, setPage }) => {
   const [reqs, setReqs] = useState([]);
   const [absencje, setAbsencje] = useState([]);
@@ -441,6 +498,7 @@ const RequestsAdmin = ({ data, setPage }) => {
   const [pub, setPub] = useState(null);
   const [sel, setSel] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [osobaDy, setOsobaDy] = useState(null);
   const mc = new Date().toISOString().slice(0, 7);
   const zaladuj = useCallback(() => {
     api('/availability?reqs=1').then((r) => { if (r && r.success) setReqs(r.requests || []); }).catch(() => {});
@@ -457,7 +515,9 @@ const RequestsAdmin = ({ data, setPage }) => {
   const abItems = absencje.map((a2) => ({ id: `ab-${a2.id}`, rid: a2.id, kind: 'absence', name: a2.name, meta: `${a2.from} – ${a2.to}`, detail: `${AB_OP[a2.type] || a2.type}${a2.reason ? ` • „${a2.reason}"` : ''}`, status: a2.status === 'open' ? 'pending' : a2.status })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 6);
   const swItems = (data.swaps || []).map((x) => ({ id: `sw-${x.id}`, rid: x.id, kind: 'swap', name: x.volunteers && x.volunteers.length ? `${x.requester} → ${x.volunteers[0]}` : x.requester, meta: `${dPL(x.date)} • ${x.start}–${x.end}`, detail: `${x.station || 'Zmiana'}${x.volunteers && x.volunteers.length ? ' • jest ochotnik — decyzja w Zamianach' : ' • czeka na ochotnika'}`, status: x.status === 'open' ? 'pending' : 'approved' })).sort((a2, b2) => (a2.status === 'pending' ? 0 : 1) - (b2.status === 'pending' ? 0 : 1)).slice(0, 5);
 
-  const pending = avItems.concat(abItems, swItems).filter((x) => x.status === 'pending').length;
+  // osoby z dyspozycjami: najpierw te z oczekującymi deklaracjami
+  const osobyDy = (() => { const m = new Map(); reqs.forEach((r) => { const o = m.get(r.accountId) || { accountId: r.accountId, name: r.name, login: r.login, pending: 0, approved: 0, rejected: 0, konflikty: 0, mies: new Set() }; o[r.status] = (o[r.status] || 0) + 1; if (r.conflict && r.status === 'pending') o.konflikty++; o.mies.add(r.date.slice(0, 7)); m.set(r.accountId, o); }); return [...m.values()].sort((a2, b2) => (b2.pending - a2.pending) || a2.name.localeCompare(b2.name, 'pl')); })();
+  const pending = reqs.filter((x) => x.status === 'pending').length + abItems.concat(swItems).filter((x) => x.status === 'pending').length;
   const konflikty = avItems.filter((x) => x.conflict && x.status === 'pending').length;
   const zaakcept = avItems.concat(abItems).filter((x) => x.status === 'approved').length;
 
@@ -512,7 +572,20 @@ const RequestsAdmin = ({ data, setPage }) => {
       </section>
       <section className="requests-layout">
         <div className="request-columns">
-          <KolejkaWn title="Dyspozycyjność" kicker="PREFERENCJE PRACOWNIKÓW" icon={CalendarCheck2} items={avItems} onSelect={setSel} />
+          <article className="panel request-queue">
+            <div className="panel-title"><div><span>PREFERENCJE PRACOWNIKÓW • DECYZJE ZBIORCZE</span><h2>Dyspozycyjność</h2></div><CalendarCheck2 size={19} /></div>
+            <div className="request-list">
+              {osobyDy.slice(0, 40).map((o) => (
+                <button key={o.accountId} onClick={() => setOsobaDy(o)}>
+                  <i>{String(o.name).split(/\s+/).map((c) => c[0]).join('').slice(0, 2)}</i>
+                  <span><strong>{o.name}</strong><small>{[...o.mies].sort().map((mm) => new Intl.DateTimeFormat('pl-PL', { month: 'short', year: 'numeric' }).format(new Date(mm + '-01T12:00:00'))).join(', ')}</small><em>{o.approved} zatw. • {o.rejected} odrz.{o.konflikty ? ` • ${o.konflikty} konflikt.` : ''}</em></span>
+                  <b className={`request-status ${o.pending ? 'pending' : 'approved'}`}>{o.pending ? `${o.pending} do decyzji` : 'Komplet'}</b>
+                  <ChevronRight size={16} />
+                </button>
+              ))}
+              {!osobyDy.length && <div className="dialog-empty" style={{ padding: 14 }}>Brak dyspozycji.</div>}
+            </div>
+          </article>
           <KolejkaWn title="Absencje i urlopy" kicker="SALDA I KOLIZJE" icon={Coffee} items={abItems} onSelect={setSel} />
           <KolejkaWn title="Giełda zamian" kicker="KWALIFIKACJE I ODPOCZYNEK" icon={ArrowLeftRight} items={swItems} onSelect={(it) => setPage('swaps')} />
         </div>
@@ -533,6 +606,7 @@ const RequestsAdmin = ({ data, setPage }) => {
           </article>
         </aside>
       </section>
+      {osobaDy && <DyspoOsobaDialog osoba={osobaDy} reqs={reqs.filter((r) => r.accountId === osobaDy.accountId)} data={data} onClose={() => setOsobaDy(null)} onDone={() => { zaladuj(); }} />}
       {sel && (
         <DialogS title={sel.name} kicker={sel.kind === 'availability' ? 'DYSPOZYCYJNOŚĆ' : 'WNIOSEK O NIEOBECNOŚĆ'} description={`${sel.meta} • ${sel.detail}`} onClose={() => setSel(null)}
           actions={sel.status === 'pending' ? <><button onClick={() => decyzja('rejected')} disabled={busy}><X size={15} /> Odrzuć</button><button className="dialog-primary" disabled={busy} onClick={() => decyzja('approved')}><Check size={15} /> Zatwierdź</button></> : <button className="dialog-primary" onClick={() => setSel(null)}>Gotowe</button>}>
@@ -962,6 +1036,62 @@ function parseProstaTabela(buffer) {
   return { shifts, roster: [...new Set(shifts.map((x) => x.name))].sort(), meta: { year: y, month: mm - 1, monthName: ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'][mm - 1], shiftCount: shifts.length, employeeCount: new Set(shifts.map((x) => x.name)).size, firstDate: daty[0], lastDate: daty[daty.length - 1], prostaTabela: true } };
 }
 
+// ── Import dyspozycji w układzie poziomym: A1 = rok, DD/MM co 2 kolumny, wiersze = osoby ──
+// Komórki pary: „10:00 | 20:00” = pracuję od–do; „T/TAK/D/OK” = dostępny cały dzień;
+// „N/NIE/X/-” = niedostępny; „od 14:00” (jedna komórka) = dostępny od; „do 16:00” = dostępny do; pusta = brak deklaracji.
+function parseDyspoPoziome(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+  if (!rows.length) throw new Error('Pusty arkusz');
+  const nag = rows[0] || [];
+  const rok = parseInt(String(nag[0]).trim(), 10);
+  if (!rok || rok < 2000 || rok > 2100) throw new Error('Komórka A1 musi zawierać rok — to nie jest plik w układzie poziomym');
+  const dni = [];
+  for (let c = 1; c < nag.length; c++) {
+    const v = nag[c]; if (v == null || v === '') continue;
+    let d = null, m = null;
+    if (typeof v === 'string' && /^\d{1,2}\/\d{1,2}$/.test(v.trim())) { const [dd, mm] = v.trim().split('/').map(Number); d = dd; m = mm; }
+    else if (v instanceof Date) { d = v.getDate(); m = v.getMonth() + 1; }
+    if (d && m) dni.push({ c, date: `${rok}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+  }
+  if (!dni.length) throw new Error('Wiersz 1 nie zawiera dat w formacie DD/MM');
+  const czas = (v) => {
+    if (v == null || v === '') return null;
+    if (v instanceof Date) return `${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}`;
+    if (typeof v === 'number') { const mi = Math.round((v % 1) * 1440); return `${String(Math.floor(mi / 60) % 24).padStart(2, '0')}:${String(mi % 60).padStart(2, '0')}`; }
+    const m = String(v).match(/(\d{1,2})[:.](\d{2})/); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+  };
+  const items = []; const osoby = new Set();
+  for (let r = 1; r < rows.length; r++) {
+    const w = rows[r] || []; const surowa = w[0];
+    if (surowa == null || String(surowa).trim() === '') continue;
+    const name = String(surowa).trim().toUpperCase(); osoby.add(name);
+    for (const { c, date } of dni) {
+      const a = w[c], b = w[c + 1];
+      const txt = String(a == null ? '' : a).trim().toUpperCase();
+      const t1 = czas(a), t2 = czas(b);
+      if (t1 && t2) {
+        // konwencje arkusza: 00:00–23:59 = cały dzień; 00:00–HH:MM = dostępny do; HH:MM–23:59 (lub –23:30+) = dostępny od; inaczej okno od–do
+        const doKonca = t2 === '23:59' || t2 === '24:00' || t2 >= '23:30';
+        if (t1 === '00:00' && doKonca) items.push({ name, date, type: 'available' });
+        else if (t1 === '00:00') items.push({ name, date, type: 'until_time', endTime: t2 });
+        else if (doKonca) items.push({ name, date, type: 'from_time', startTime: t1 });
+        else items.push({ name, date, type: 'specific_shift', startTime: t1, endTime: t2 });
+        continue;
+      }
+      if (/^OD\s*\d/.test(txt) && t1) { items.push({ name, date, type: 'from_time', startTime: t1 }); continue; }
+      if (/^DO\s*\d/.test(txt) && t1) { items.push({ name, date, type: 'until_time', endTime: t1 }); continue; }
+      if (t1 && !t2) { items.push({ name, date, type: 'from_time', startTime: t1 }); continue; }
+      if (['T', 'TAK', 'D', 'OK', 'DOSTĘPNY', 'DOSTEPNY', '+'].includes(txt)) { items.push({ name, date, type: 'available' }); continue; }
+      if (['N', 'NIE', 'X', '-', '—', 'NIEDOSTĘPNY', 'NIEDOSTEPNY', 'W'].includes(txt)) { items.push({ name, date, type: 'unavailable' }); continue; }
+    }
+  }
+  if (!items.length) throw new Error('Nie znaleziono deklaracji — wpisz pary godzin od–do albo T / N w kolumnach pod datami');
+  const daty = items.map((x) => x.date).sort();
+  return { items, osoby: [...osoby].sort(), dniPliku: dni.map((x) => x.date), firstDate: daty[0], lastDate: daty[daty.length - 1], miesiace: [...new Set(daty.map((d) => d.slice(0, 7)))] };
+}
+
 const STACJE_IMPORT = [...Object.keys(stationColors)];
 
 const ImportPage = ({ data, setPage }) => {
@@ -999,6 +1129,39 @@ const ImportPage = ({ data, setPage }) => {
   };
 
   const hourlyRef = useRef();
+  const dyspoRef = useRef();
+  const [dyspoPrev, setDyspoPrev] = useState(null);
+  const [dyspoAuto, setDyspoAuto] = useState(true);
+  const [dyspoPuste, setDyspoPuste] = useState(true);   // puste dni osób z pliku = niedostępny
+  const [dyspoBusy, setDyspoBusy] = useState(false);
+  const importDyspoPlik = async (file) => {
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const parsed = parseDyspoPoziome(buf);
+      const konta = data.accounts || [];
+      const norm2 = (x) => String(x || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      const mapa = new Map(konta.flatMap((a) => [a.grafikName, a.name, ...(a.aliasy || [])].filter(Boolean).map((n) => [norm2(n), a])));
+      const items = parsed.items.map((it) => ({ ...it, accountId: (mapa.get(norm2(it.name)) || {}).id || null }));
+      setDyspoPrev({ ...parsed, items, bezKonta: [...new Set(items.filter((x) => !x.accountId).map((x) => x.name))], plik: file.name });
+    } catch (e) { data.show(e.message || 'Błąd odczytu pliku', 'error'); }
+    if (dyspoRef.current) dyspoRef.current.value = '';
+  };
+  const wyslijDyspoImport = async () => {
+    if (!dyspoPrev) return;
+    let items = dyspoPrev.items.filter((x) => x.accountId).map(({ name, ...x }) => x);
+    if (dyspoPuste) {
+      const maja = new Set(items.map((x) => `${x.accountId}|${x.date}`));
+      const konta = [...new Set(items.map((x) => x.accountId))];
+      konta.forEach((aid) => dyspoPrev.dniPliku.forEach((d) => { if (!maja.has(`${aid}|${d}`)) items.push({ accountId: aid, date: d, type: 'unavailable' }); }));
+    }
+    if (!items.length) return data.show('Żaden wiersz nie pasuje do konta pracownika', 'error');
+    setDyspoBusy(true);
+    const r = await api('/availability?action=request-bulk', 'POST', { items, autoApprove: dyspoAuto });
+    setDyspoBusy(false);
+    if (r && r.success) { data.show(`Zaimportowano ${r.dni} deklaracji dyspozycji${dyspoAuto ? ' (zatwierdzone)' : ' (do decyzji)'}`); setDyspoPrev(null); data.sync(); }
+    else data.show((r && r.error) || 'Błąd importu dyspozycji', 'error');
+  };
   const importHourly = async (file) => {
     if (!file) return;
     try {
@@ -1071,7 +1234,24 @@ const ImportPage = ({ data, setPage }) => {
         <button className="panel report-card" onClick={() => setPage && setPage('settings')}><i><Clock size={21} /></i><span><small>ZGODNOŚĆ</small><strong>Dziennik audytu</strong><em>Publikacje, korekty, decyzje i operacje wrażliwe.</em></span><ChevronRight size={18} /></button>
         <button className="panel report-card" onClick={() => hourlyRef.current && hourlyRef.current.click()}><i><TrendingUp size={21} /></i><span><small>POS • 15 MIN / GODZINY</small><strong>Sprzedaż godzinowa (CSV)</strong><em>data;godzina;sprzedaż;transakcje — zasila realny profil popytu{(data.salesData || {}).hourlyDays ? ` • ${(data.salesData || {}).hourlyDays} dni w bazie` : ''}.</em></span><Upload size={18} /></button>
         <input ref={hourlyRef} type="file" accept=".csv,.txt" className="hidden" onChange={(e) => importHourly(e.target.files[0])} />
+        <button className="panel report-card" onClick={() => dyspoRef.current && dyspoRef.current.click()}><i><CalendarCheck2 size={21} /></i><span><small>DYSPOZYCYJNOŚĆ</small><strong>Import dyspozycji (XLSX poziomy)</strong><em>Ten sam układ co grafik: A1 rok, DD/MM, wiersz = osoba, para godzin = pracuję od–do; T = dostępny, N = niedostępny.</em></span><Upload size={18} /></button>
+        <input ref={dyspoRef} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" onChange={(e) => importDyspoPlik(e.target.files[0])} />
       </section>
+      {dyspoPrev && (
+        <DialogS title="Import dyspozycji" kicker={`${dyspoPrev.plik} • ${dyspoPrev.firstDate} – ${dyspoPrev.lastDate}`} description={`${dyspoPrev.items.length} deklaracji dla ${dyspoPrev.osoby.length} osób. Każda data zastępuje wcześniejszą deklarację tej osoby.`} onClose={() => setDyspoPrev(null)}
+          actions={<><button onClick={() => setDyspoPrev(null)}>Anuluj</button><button className="dialog-primary" disabled={dyspoBusy} onClick={wyslijDyspoImport}><Check size={15} /> {dyspoBusy ? 'Importuję…' : `Importuj ${dyspoPrev.items.filter((x) => x.accountId).length} deklaracji`}</button></>}>
+          <div className="dialog-stat-grid">
+            <div className="dialog-stat"><span>Pracuję od–do</span><strong>{dyspoPrev.items.filter((x) => x.type === 'specific_shift').length}</strong></div>
+            <div className="dialog-stat"><span>Dostępny / niedostępny</span><strong>{dyspoPrev.items.filter((x) => x.type === 'available').length} / {dyspoPrev.items.filter((x) => x.type === 'unavailable').length}</strong></div>
+            <div className="dialog-stat"><span>Od / do godziny</span><strong>{dyspoPrev.items.filter((x) => x.type === 'from_time').length} / {dyspoPrev.items.filter((x) => x.type === 'until_time').length}</strong></div>
+          </div>
+          <label className="dialog-check-row" style={{ marginTop: 12 }}><input type="checkbox" checked={dyspoPuste} onChange={(e) => setDyspoPuste(e.target.checked)} /> Puste dni osób z pliku = niedostępny <strong>{dyspoPuste ? 'tak' : 'bez deklaracji'}</strong></label>
+          <label className="dialog-check-row" style={{ marginTop: 6 }}><input type="checkbox" checked={dyspoAuto} onChange={(e) => setDyspoAuto(e.target.checked)} /> Zatwierdź od razu (widoczne w grafiku jako zatwierdzone) <strong>{dyspoAuto ? 'zatwierdzone' : 'do decyzji'}</strong></label>
+          {dyspoPrev.bezKonta.length > 0 && <div className="dialog-notice" style={{ marginTop: 12 }}><AlertTriangle size={16} /><span>Bez dopasowanego konta (pominięte): {dyspoPrev.bezKonta.join(', ')}. Dodaj nazwę jako alias w Pracownicy i konta i zaimportuj ponownie.</span></div>}
+          <p className="dialog-section-title" style={{ marginTop: 12 }}>PODGLĄD (pierwsze 40)</p>
+          <div className="dialog-list">{dyspoPrev.items.slice(0, 40).map((x, i) => <div key={i}><i>{x.date.slice(8)}</i><span><strong>{x.name}{!x.accountId ? ' • brak konta' : ''}</strong><small>{x.date} • {x.type === 'specific_shift' ? `pracuję ${x.startTime}–${x.endTime}` : x.type === 'available' ? 'dostępny' : x.type === 'unavailable' ? 'niedostępny' : x.type === 'from_time' ? `od ${x.startTime}` : `do ${x.endTime}`}</small></span></div>)}</div>
+        </DialogS>
+      )}
       <section className="reports-grid">
         <article className="panel report-summary">
           <div className="panel-title"><div><span>GOTOWOŚĆ ROZLICZENIA</span><h2>{new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date())}</h2></div><strong>{gotowoscR}%</strong></div>

@@ -1253,3 +1253,22 @@
 .dyspo-warn { position:absolute;top:3px;right:4px;width:12px;height:12px;display:grid;place-items:center;border-radius:50%;color:#fff;background:#B94352;font-size:8px;font-weight:900;font-style:normal }
 
 .dyspo-tag.win { color:#3E3760;background:#E9E4F4;border-color:#9C92BC }
+
+
+/* ═══ Kalendarz dyspozycji osoby (Studio) ═══ */
+.dy-kal-weekdays { display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;text-align:center;color:#71656A;font-size:9px;font-weight:800;letter-spacing:.06em }
+.dy-kal-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:4px }
+.dy-kal-grid > i { min-height:48px }
+.dy-kal-day { position:relative;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid #E3DCDD;border-radius:9px;background:#fff;color:#2B171E;cursor:pointer;padding:2px }
+.dy-kal-day:disabled { cursor:default;color:#B7A2AA;background:#FBFAFA }
+.dy-kal-day strong { font-size:12px }
+.dy-kal-day small { font-size:8px;font-weight:700;line-height:1.1;text-align:center }
+.dy-kal-day.weekend:not(:disabled) { filter:saturate(1.05) }
+.dy-kal-day.ok { color:#33464F;border-color:#96AAB5;background:#E3EBEF }
+.dy-kal-day.no { color:#743647;border-color:#C99FA8;background:#F0E6E8 }
+.dy-kal-day.part { color:#5C5124;border-color:#C9B45E;background:#F8F1D2 }
+.dy-kal-day.win { color:#3E3760;border-color:#9C92BC;background:#E9E4F4 }
+.dy-kal-day.pending { box-shadow:inset 0 0 0 2px #741334 }
+.dy-kal-day.rejected { opacity:.45;text-decoration:line-through }
+.dy-kal-day.sel { outline:3px solid #741334;outline-offset:1px }
+.dy-kal-conf { position:absolute;top:3px;right:4px;width:12px;height:12px;display:grid;place-items:center;border-radius:50%;color:#fff;background:#B94352;font-size:8px;font-weight:900 }
