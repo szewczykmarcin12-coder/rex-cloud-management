@@ -9,172 +9,24 @@ import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
 import { DailyRosterPrint } from './DailyRosterPrint.jsx';
 import MonthlyForecast from './MonthlyForecast.jsx';
+import { DEFAULT_MODULE, getModule, getArea, modulesOfArea, visibleAreas, resolveLegacy, moduleForWrTab, hashFor, parseHash, clampToRole, searchModules } from './navigation.js';
+import { ForecastPlan } from './views/DemandModel.jsx';
+import { BudgetPlan } from './views/BudgetPlan.jsx';
+import { PlanObsada } from './views/Staffing.jsx';
+import { AutoplanAOP } from './views/Autoplan.jsx';
+import { PlanPage } from './views/HourLimits.jsx';
+import { ForecastQualityPage } from './views/ForecastQuality.jsx';
+import { API_BASE, HUB_URL, api, store } from './lib/api.js';
+import { D3, NS, SZAB, f0, optRozbicie } from './lib/demandEngine.js';
+import { FUNKCJE, WT_TICKS, colors, dayNames, dniMiesiaca, dniPelne, etykietaStacji, funkcjaLabel, godzZ, jestInstruktor, kosztGodzin, months, monthsGen, opisZmiany, paraOpis, scalParyPlan, stationColor, stationColors, statusZamiany, wtAct, wtDur, wtHours, wtKey, wtMonday, wtRel, ymd } from './lib/domain.js';
+import { publikujMiesiac, setComplianceHandler } from './lib/publish.js';
+import { UNIT, setProfDow, setUnit, unitLabel } from './lib/runtime.js';
+import { Btn, DNI_KROTKIE, DialogS, Header, MHead, MMetric, Toast, opisDnia } from './ui/primitives.jsx';
+import { AnalyticsPage } from './views/Analytics.jsx';
 
-const API_BASE = String(import.meta.env.VITE_API_BASE || 'https://rex-cloud-backend.vercel.app/api').replace(/\/$/, '');
 
-const colors = {
-  primary: { darkest: '#3F0B1C', dark: '#741334', medium: '#A7465F', light: '#B86D82', bg: '#F1E4E8', bgLight: '#F7F5F5' },
-  accent: { dark: '#3F0B1C', medium: '#741334', light: '#A7465F', bg: '#F1E4E8' }
-};
-
-// ── Jednostka (work center) z /api/org — koniec danych wpisanych na stałe ──
-let UNIT = { code: 'PLK 201043', name: 'Galeria Krakowska', city: 'Kraków', brand: 'Popeyes', region: 'Małopolska', openFrom: '06:00', openTo: '02:00' };
-const unitLabel = () => `${UNIT.code} · ${UNIT.name}`;
-// profil godzinowy sprzedaży per dzień tygodnia (z importu godzinowego) — zastępuje syntetyczną krzywą
-let PROF_DOW = null;
-
-const stationColors = {
-  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#B94352', 'KANAPKI / WRAPY': '#00A3E0',
-  'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
-  'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#71656A',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#2B171E', 'MGR FUNKCYJNE': '#5A3542',
-  'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#5A3542'
-};
-const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
-const godzZ = (s) => (s.hours != null ? s.hours : 0);
-const jestMgr = (st) => ['MANAGER', 'MGR FUNKCYJNE'].includes((st || '').toUpperCase());
-// Rola szkoleniowa: nowy model (s.rola) albo stary (station 'training'/'instruktor')
-const rolaSzk = (s) => {
-  const r = (s.rola || '').toLowerCase();
-  if (r === 'instruktor' || r === 'training') return r;
-  const st = (s.station || '').toLowerCase();
-  if (st === 'instruktor' || st === 'training') return st;
-  return null;
-};
-const jestInstruktor = (s) => rolaSzk(s) === 'instruktor';
-const jestUczen = (s) => rolaSzk(s) === 'training';
-const jestSzkStacja = (s) => (s.station || '').toUpperCase() === 'SZKOLENIA' && !s.rola;
-const jestSzkolenie = (s) => !!rolaSzk(s) || jestSzkStacja(s);
-// Pozycja do wyświetlenia (stare dane training/instruktor pokazują "Szkolenie")
-const etykietaStacji = (s) => {
-  const st = (s.station || '').toLowerCase();
-  if (st === 'training' || st === 'instruktor') return 'Szkolenie';
-  return s.station;
-};
-// Znacznik szkolenia obok pozycji
-const paraOpis = (s) => {
-  const r = rolaSzk(s);
-  if (!r) return null;
-  const kto = s.partner ? `: ${s.partner}` : '';
-  return r === 'instruktor' ? `Szkolenie · szkoli${kto}` : `Szkolenie · instr.${kto}`;
-};
-
-const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
-const monthsGen = ['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'];
-const dniPelne = ['niedziela','poniedziałek','wtorek','środa','czwartek','piątek','sobota'];
-// Data lokalna YYYY-MM-DD — NIGDY przez toISOString (UTC cofa dzień w strefach dodatnich!)
-const ymd = (d) => (typeof d === 'string' ? d : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-
-// ── Czas pracy (Working Time) — oś od 06:00 ──
-const WT_BASE = 360;
-const wtToMin = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
-const wtClock = (m) => { m = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
-const wtRel = (t) => ((wtToMin(t) - WT_BASE) + 1440) % 1440;
-const wtDur = (a, b) => { let s = wtToMin(a), e = wtToMin(b); if (e <= s) e += 1440; return e - s; };
-const wtKeyLegacy = (s) => `${s.name}|${s.date}|${s.station}|${s.start}|${s.end}`;
-// DATA-02/COR-03: klucz wykonania po stabilnym sid — edycja godzin/osoby nie osieroca wpisu
-const wtKey = (s) => (s && s.sid ? `sid:${s.sid}` : wtKeyLegacy(s));
-const wtAct = (actuals, s) => (actuals || {})[wtKey(s)] || (actuals || {})[wtKeyLegacy(s)];
-const wtMonday = (ds) => { const d = new Date(ds); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return ymd(d); };
-const wtHours = (min) => (min / 60).toFixed(2).replace('.', ',');
-const WT_TICKS = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
-
-// ── Planowanie godzin (plan miesiąca + ręczne godziny MGR / MGR funkcyjne) ──
-const dniMiesiaca = (ym) => {
-  if (!ym) return [];
-  const [y, m] = ym.split('-').map(Number);
-  const n = new Date(y, m, 0).getDate();
-  const out = [];
-  for (let d = 1; d <= n; d++) out.push(`${ym}-${String(d).padStart(2, '0')}`);
-  return out;
-};
-const sumaDodatkow = (mapaDni) => Object.values(mapaDni || {}).reduce((a, v) => a + (Number(v) || 0), 0);
-const sumaManualWszystkie = (planowanie) => Object.values(planowanie || {}).reduce((a, p) => a + sumaDodatkow(p.mgr) + sumaDodatkow(p.mgrFunk), 0);
-const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
-  const mShifts = shifts.filter(s => (s.date || '').slice(0, 7) === ym);
-  const crew = mShifts.filter(s => !jestMgr(s.station) && !jestSzkolenie(s)).reduce((a, s) => a + godzZ(s), 0);
-  const szkol = mShifts.filter(s => jestUczen(s) || jestSzkStacja(s)).reduce((a, s) => a + godzZ(s), 0);
-  const mgrSched = mShifts.filter(s => (s.station || '').toUpperCase() === 'MANAGER').reduce((a, s) => a + godzZ(s), 0);
-  const funkSched = mShifts.filter(s => (s.station || '').toUpperCase() === 'MGR FUNKCYJNE').reduce((a, s) => a + godzZ(s), 0);
-  const p = (planowanie || {})[ym] || {};
-  const mgrManual = sumaDodatkow(p.mgr);
-  const funkManual = sumaDodatkow(p.mgrFunk);
-  const mgr = mgrSched + mgrManual;
-  const funk = funkSched + funkManual;
-  const total = crew + szkol + mgr + funk;
-  const planTotal = Number(p.planTotal) || 0;
-  return { crew, szkol, mgrSched, mgrManual, funkSched, funkManual, mgr, funk, total, planTotal, mShifts };
-};
-
-// ── Giełda zamian (wyświetlanie) ──
-const dfmt = (ds) => { const d = new Date(ds); const dni = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb']; return `${dni[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
-const opisZmiany = (s) => `${dfmt(s.date)} · ${s.station} · ${s.start}–${s.end} (${s.hours}h)`;
-const statusZamiany = (s) => {
-  if (s.status === 'approved') return { txt: `Zatwierdzona — przejmuje: ${s.approvedVolunteerDisplay || s.approvedVolunteer}`, kol: '#741334', bg: '#F1E4E8' };
-  if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#B94352', bg: '#F5E3E8' };
-  if (s.status === 'cancelled') return { txt: 'Anulowana', kol: '#A38D95', bg: '#EDE3E6' };
-  return s.volunteers.length ? { txt: `Zgłoszeń: ${s.volunteers.length}`, kol: '#B86D82', bg: '#F5E9ED' } : { txt: 'Otwarta', kol: colors.primary.medium, bg: colors.primary.bgLight };
-};
-const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
-
-const store = {
-  get: (k, d = null) => { try { const v = localStorage.getItem('rex_admin_' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set: (k, v) => { try { localStorage.setItem('rex_admin_' + k, JSON.stringify(v)); } catch {} },
-  del: (k) => { try { localStorage.removeItem('rex_admin_' + k); } catch {} }
-};
-
-const api = async (path, method = 'GET', body = null) => {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  const tok = store.get('admin_token');
-  if (tok) opts.headers.Authorization = `Bearer ${tok}`;               // SEC-01: sesja przy każdym wywołaniu
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(`${API_BASE}${path}`, opts);
-  const j = await r.json().catch(() => ({ success: false, error: 'Nieprawidłowa odpowiedź serwera' }));
-  if (r.status === 401 && tok) {                                       // sesja wygasła → pełne wylogowanie
-    store.del('admin_token'); store.del('admin_session');
-    try { location.reload(); } catch {}
-  }
-  return j;
-};
 
 // ===================== UI =====================
-
-const Btn = ({ children, variant = 'primary', icon: Icon, onClick, disabled, loading, className = '' }) => {
-  const vars = {
-    primary: { bg: colors.primary.dark, text: 'white' },
-    secondary: { bg: colors.primary.bg, text: colors.primary.dark },
-    danger: { bg: '#B94352', text: 'white' },
-    ghost: { bg: 'transparent', text: colors.primary.light },
-    accent: { bg: colors.accent.medium, text: 'white' },
-    success: { bg: '#A7465F', text: 'white' }
-  };
-  const v = vars[variant] || vars.primary;
-  return <button onClick={onClick} disabled={disabled || loading} className={`px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-all hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-sm ${className}`} style={{ background: v.bg, color: v.text }}>{loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : Icon && <Icon className="w-4 h-4" />}{children}</button>;
-};
-
-const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]); const bg = { success: '#741334', error: '#B94352', info: '#5A3542' }[type] || colors.primary.medium; return <div className="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-lg z-50 flex items-center gap-2" style={{ backgroundColor: bg }}>{type === 'success' ? <Check className="w-5 h-5" /> : type === 'error' ? <X className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}{message}</div>; };
-
-const StatCard = ({ label, value, icon: Icon, color }) => (
-  <article className="metric-card">
-    <span className="metric-icon" style={{ color, background: `${color}1a` }}><Icon size={18} /></span>
-    <div className="metric-copy"><span>{String(label).toUpperCase()}</span><strong>{value}</strong><small>ORDO Workforce Studio</small></div>
-    <span className="metric-progress"><i style={{ width: '62%' }} /></span>
-  </article>
-);
-
-const Header = ({ title, subtitle, children }) => (
-  <div className="page-wrap" style={{ paddingTop: 24, paddingBottom: 0 }}>
-    <div className="page-heading" style={{ marginBottom: 6 }}>
-      <div>
-        <div className="eyebrow"><span className="status-pulse" /> ORDO WORKFORCE STUDIO</div>
-        <h1>{title}</h1>
-        {subtitle && <p>{subtitle}</p>}
-      </div>
-      {children && <div className="heading-actions">{children}</div>}
-    </div>
-  </div>);
-
-// ===================== LOGIN =====================
 
 const Login = ({ onLogin }) => {
   const [login, setLogin] = useState('');
@@ -259,15 +111,6 @@ const Login = ({ onLogin }) => {
   );
 };
 
-const HUB_URL = String(import.meta.env.VITE_HUB_URL || 'https://rex-cloud-app.vercel.app');
-const MHead = ({ kicker, title, copy, children }) => (
-  <div className="module-heading"><div><span>{kicker}</span><h1>{title}</h1><p>{copy}</p></div>{children && <div className="module-actions">{children}</div>}</div>
-);
-const MMetric = ({ label, value, helper, tone = 'blue', icon: Icon }) => (
-  <article className="mini-metric"><div className={`mini-metric-icon ${tone}`}><Icon size={18} /></div><span>{label}</span><strong>{value}</strong><small>{helper}</small></article>
-);
-
-// ═════════ OBSADA LIVE (Live Command) — wzorzec ORDO na danych z Employee Hub ═════════
 const ObsadaLive = ({ data, setPage }) => {
   const dzis = ymd(new Date());
   const LH = Array.from({ length: 18 }, (_, i) => (8 + i) % 24);       // 08:00–01:00
@@ -668,164 +511,12 @@ const RequestsAdmin = ({ data, setPage }) => {
 };
 
 // ═════════ ANALITYKA PRACY — wzorzec ORDO na realnych agregatach ═════════
-const AnalyticsPage = ({ data, setPage }) => {
-  const [snaps, setSnaps] = useState([]);
-  const [cronOk, setCronOk] = useState(false);
-  const zaladujSnaps = () => api('/kpi?days=30').then((r) => { if (r && r.success) { setSnaps(r.snapshots || []); setCronOk(!!r.cronSkonfigurowany); } }).catch(() => {});
-  useEffect(() => { zaladujSnaps(); }, []);
-  const przeliczSnaps = async () => { const r = await api('/kpi-nightly?job=nightly&days=7'); if (r && r.success) { data.show(`Przeliczono ${r.dni} dni`); zaladujSnaps(); } else data.show((r && r.error) || 'Błąd przeliczenia', 'error'); };
-  const konta = data.accounts || [];
-  const poIdA = new Map(konta.map((a2) => [a2.id, a2]));
-  const poNazA = new Map(konta.flatMap((a2) => [a2.grafikName, a2.name, ...(a2.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a2])));
-  const kontoZA = (x) => poIdA.get(x.accountId) || poNazA.get(String(x.name || '').toUpperCase().trim()) || null;
-  const MGRA = new Set(['RGM', 'ASM']);
-  const FUNKA = new Set(['SM', 'JSM']);
-
-  const agreg = useMemo(() => {
-    const m = new Map();
-    (data.shifts || []).filter((x) => x.date && !jestInstruktor(x)).forEach((x) => {
-      const k = x.date.slice(0, 7);
-      const o = m.get(k) || { h: 0, koszt: 0, crew: 0, mgr: 0, funk: 0, szkol: 0 };
-      const g = godzZ(x); const kt = kontoZA(x);
-      o.h += g; o.koszt += kosztGodzin(kt, g);
-      if (x.rola === 'training') o.szkol += g;
-      else if (kt && MGRA.has(kt.funkcja)) o.mgr += g;
-      else if (kt && FUNKA.has(kt.funkcja)) o.funk += g;
-      else o.crew += g;
-      m.set(k, o);
-    });
-    Object.entries(((data.salesData || {}).sales) || {}).forEach(([d, v]) => {
-      const k = String(d).slice(0, 7);
-      const o = m.get(k) || { h: 0, koszt: 0, crew: 0, mgr: 0, funk: 0, szkol: 0 };
-      o.sprzedaz = (o.sprzedaz || 0) + (Number(v) || 0);
-      m.set(k, o);
-    });
-    return [...m.entries()].sort((a2, b2) => a2[0].localeCompare(b2[0])).slice(-12);
-  }, [data.shifts, data.salesData, konta]);
-
-  const sumS = agreg.reduce((a2, [, o]) => a2 + (o.sprzedaz || 0), 0);
-  const sumK = agreg.reduce((a2, [, o]) => a2 + o.koszt, 0);
-  const sumH = agreg.reduce((a2, [, o]) => a2 + o.h, 0);
-  const colR = sumS ? (sumK / sumS * 100) : null;
-  const splh = sumH ? sumS / sumH : null;
-  const maxS = Math.max(1, ...agreg.map(([, o]) => o.sprzedaz || 0));
-  const colD = agreg.map(([, o]) => o.sprzedaz ? o.koszt / o.sprzedaz * 100 : null);
-  const colMin = Math.min(...colD.filter((v) => v != null), 15), colMax = Math.max(...colD.filter((v) => v != null), 30);
-  const mcL = (k) => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][Number(k.slice(5, 7)) - 1];
-  const fmtA = (n) => Math.round(n).toLocaleString('pl-PL');
-
-  const dniComp = Object.entries(((data.ts || {}).completed) || {}).filter(([, v]) => v).length;
-  const dniZmian = new Set((data.shifts || []).map((x) => x.date)).size;
-  const zgodnosc = dniZmian ? Math.min(100, Math.round(dniComp / dniZmian * 100)) : 0;
-
-  const crewS = agreg.reduce((a2, [, o]) => a2 + o.crew, 0), mgrS = agreg.reduce((a2, [, o]) => a2 + o.mgr, 0), funkS = agreg.reduce((a2, [, o]) => a2 + o.funk, 0), szkS = agreg.reduce((a2, [, o]) => a2 + o.szkol, 0);
-  const tot = Math.max(1, crewS + mgrS + funkS + szkS);
-  const pc = (v) => `${Math.round(v / tot * 100)}%`;
-  const donut = `conic-gradient(#741334 0 ${crewS / tot * 360}deg, #5A3542 ${crewS / tot * 360}deg ${(crewS + mgrS) / tot * 360}deg, #A7465F ${(crewS + mgrS) / tot * 360}deg ${(crewS + mgrS + funkS) / tot * 360}deg, #B86D82 ${(crewS + mgrS + funkS) / tot * 360}deg 360deg)`;
-
-  // wnioski heurystyczne z danych
-  const dow = Array.from({ length: 7 }, () => ({ h: 0, s: 0 }));
-  (data.shifts || []).filter((x) => x.date && !jestInstruktor(x)).forEach((x) => { const d = new Date(x.date + 'T12:00:00').getDay(); dow[(d + 6) % 7].h += godzZ(x); });
-  Object.entries(((data.salesData || {}).sales) || {}).forEach(([d, v]) => { const i = (new Date(d + 'T12:00:00').getDay() + 6) % 7; dow[i].s += Number(v) || 0; });
-  const dniN = ['poniedziałki', 'wtorki', 'środy', 'czwartki', 'piątki', 'soboty', 'niedziele'];
-  const najdrozszy = dow.map((o, i) => ({ i, r: o.s ? o.h / o.s * 1000 : 0 })).filter((x) => x.r).sort((a2, b2) => b2.r - a2.r)[0];
-  const wnioski = [
-    najdrozszy ? [`Przejrzyj obsadę w ${dniN[najdrozszy.i]}`, `najwyższy stosunek godzin do sprzedaży`, `Potencjał: obniżenie COL`, 'save'] : ['Uzupełnij dane sprzedaży', 'import w Planowaniu i popycie', 'Odblokuje analizę COL', 'save'],
-    [`Szkolenia: ${szkS.toFixed(0)} h w okresie`, szkS ? 'sprawdź rozliczenie par instruktor–uczeń' : 'brak godzin szkoleniowych', `${pc(szkS)} wszystkich godzin`, 'skill'],
-    [zgodnosc < 100 ? 'Domknij karty czasu' : 'Karty czasu domknięte', `${dniComp}/${dniZmian} dni oznaczonych Completed`, `Zgodność: ${zgodnosc}%`, 'forecast'],
-  ];
-
-  const eksport = () => {
-    const rows = ['Miesiąc;Sprzedaż;Koszt;Godziny;COL %', ...agreg.map(([k, o]) => `${k};${Math.round(o.sprzedaz || 0)};${Math.round(o.koszt)};${o.h.toFixed(1)};${o.sprzedaz ? (o.koszt / o.sprzedaz * 100).toFixed(1) : ''}`)];
-    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = 'analityka-pracy-r12.csv'; a2.click(); URL.revokeObjectURL(u);
-  };
-
-  return (
-    <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view analytics-view" style={{ width: '100%' }}>
-      <MHead kicker="OPERATIONAL INSIGHTS • R12" title="Analityka pracy" copy="Jeden obraz kosztu, produktywności, zgodności, jakości prognozy i doświadczenia pracowników.">
-        <button className="secondary-action" onClick={() => setPage('forecast')}><Calendar size={16} /> Planowanie i popyt</button>
-        <button className="primary-action" onClick={eksport}><Download size={16} /> Eksport raportu</button>
-      </MHead>
-      <section className="analytics-kpis">
-        <MMetric icon={CircleDollarSign} label="COL R12" value={colR != null ? `${colR.toFixed(1).replace('.', ',')}%` : '—'} helper={colR != null ? 'koszt / sprzedaż' : 'brak danych sprzedaży'} tone="mint" />
-        <MMetric icon={Gauge} label="SPLH" value={splh != null ? `${Math.round(splh)} zł` : '—'} helper="sprzedaż / roboczogodzina" tone="blue" />
-        <MMetric icon={Clock3} label="Godziny (okres)" value={`${fmtA(sumH)} h`} helper={`${agreg.length} mies. z danymi`} tone="violet" />
-        <MMetric icon={ShieldCheck} label="Zgodność grafików" value={`${zgodnosc}%`} helper={`${dniComp}/${dniZmian} dni Completed`} tone="mint" />
-      </section>
-      <section className="analytics-grid">
-        <article className="panel performance-chart">
-          <div className="panel-title"><div><span>SPRZEDAŻ VS COST OF LABOUR</span><h2>Wzrost przy malejącym udziale kosztu</h2></div><div className="forecast-legend"><span><i className="sales-key" />Sprzedaż tys.</span><span><i className="hours-key" />COL %</span></div></div>
-          <div className="dual-chart">
-            {agreg.map(([k, o], i) => (
-              <div key={k} title={`${k}: ${fmtA(o.sprzedaz || 0)} zł • COL ${colD[i] != null ? colD[i].toFixed(1) : '—'}%`}>
-                <i style={{ height: `${(o.sprzedaz || 0) / maxS * 100}%` }} />
-                {colD[i] != null && <b style={{ bottom: `${((colD[i] - colMin) / Math.max(1, colMax - colMin)) * 80 + 8}%` }} />}
-                {i % 2 === 0 && <span>{mcL(k)}</span>}
-              </div>
-            ))}
-          </div>
-          <div className="chart-callout"><TrendingUp size={17} /><span>{sumS ? `Sprzedaż ${fmtA(sumS)} zł w okresie, COL ${colR.toFixed(1).replace('.', ',')}%.` : 'Zaimportuj sprzedaż, aby zobaczyć pełny obraz COL.'}</span></div>
-        </article>
-        <article className="panel insights-panel">
-          <div className="panel-title"><div><span>WNIOSKI</span><h2>Co warto zrobić</h2></div><Sparkles size={20} /></div>
-          {wnioski.map(([title, detail, impact, tone]) => <button className="insight-item" key={title} onClick={() => setPage(tone === 'save' ? 'forecast' : tone === 'skill' ? 'wt' : 'wt')}><i className={tone}><Sparkles size={16} /></i><div><strong>{title}</strong><span>{detail}</span><em>{impact}</em></div><ChevronRight size={17} /></button>)}
-        </article>
-        <article className="panel category-cost-panel">
-          <div className="panel-title"><div><span>KOSZT WEDŁUG GRUP</span><h2>Struktura roboczogodzin</h2></div><strong>{fmtA(sumK)} zł</strong></div>
-          <div className="donut-layout">
-            <div className="cost-donut" style={{ background: donut }}><div><strong>{fmtA(sumH)} h</strong><span>total</span></div></div>
-            <div>{[['Crew', pc(crewS), '#741334'], ['Manager', pc(mgrS), '#5A3542'], ['Mgr funkcyjny', pc(funkS), '#A7465F'], ['Szkolenia', pc(szkS), '#B86D82']].map(([label, value, color]) => <div className="donut-key" key={label}><span><i style={{ background: color }} />{label}</span><strong>{value}</strong></div>)}</div>
-          </div>
-        </article>
-        <article className="panel forecast-quality-panel">
-          <div className="panel-title"><div><span>JAKOŚĆ DANYCH</span><h2>Kompletność okresu</h2></div><em>{zgodnosc}%</em></div>
-          {[['Dni z grafikiem', `${dniZmian}`, 100], ['Dni ze sprzedażą', `${Object.keys(((data.salesData || {}).sales) || {}).length}`, dniZmian ? Math.min(100, Object.keys(((data.salesData || {}).sales) || {}).length / dniZmian * 100) : 0], ['Dni Completed', `${dniComp}`, zgodnosc], ['Zmiany z kontem', `${Math.round((data.shifts || []).filter((x) => x.accountId).length / Math.max(1, (data.shifts || []).length) * 100)}%`, (data.shifts || []).filter((x) => x.accountId).length / Math.max(1, (data.shifts || []).length) * 100]].map(([label, value, score]) => (
-            <div className="quality-row" key={String(label)}><span>{label}</span><div><i style={{ width: `${score}%` }} /></div><strong>{value}</strong></div>
-          ))}
-        </article>
-      </section>
-      <article className="panel" style={{ marginTop: 14, padding: 18 }}>
-        <div className="panel-title"><div><span>SNAPSHOTY NOCNE • VERCEL CRON</span><h2>Dzień po dniu: plan, wykonanie, COL</h2></div><button className="secondary-action" onClick={przeliczSnaps}><RefreshCw size={15} /> Przelicz ostatnie 7 dni</button></div>
-        {!snaps.length ? <div className="dialog-empty" style={{ padding: 16 }}>Brak snapshotów. {cronOk ? 'Cron policzy je automatycznie o 03:15.' : 'Ustaw CRON_SECRET w Vercel (zadanie 03:15 UTC) albo przelicz ręcznie.'}</div> : (
-          <div className="data-table forecast-table" style={{ marginTop: 10 }}>
-            <div className="table-header"><span>Dzień</span><span>Sprzedaż</span><span>Plan h</span><span>Wykonane h</span><span>Koszt plan</span><span>COL plan</span><span>COL actual</span><span>Naruszenia</span></div>
-            {snaps.slice(-14).reverse().map((x) => (
-              <div className="table-row" key={x.date}>
-                <span><b>{x.date.slice(8)}.{x.date.slice(5, 7)}</b><small>{x.completed ? 'Completed' : 'otwarty'}</small></span>
-                <span><strong>{x.sprzedaz ? `${x.sprzedaz.toLocaleString('pl-PL')} zł` : '—'}</strong></span>
-                <span>{x.planH} h</span><span>{x.actualH ? `${x.actualH} h` : '—'}</span>
-                <span>{x.kosztPlan.toLocaleString('pl-PL')} zł</span>
-                <span className={x.colPlan != null && x.colPlan > 25 ? 'table-danger' : 'table-good'}>{x.colPlan != null ? `${x.colPlan}%` : '—'}</span>
-                <span>{x.colActual != null ? `${x.colActual}%` : '—'}</span>
-                <span><em className={x.naruszenia && x.naruszenia.block ? 'status-warning' : 'status-ready'}>{x.naruszenia ? `${x.naruszenia.block} / ${x.naruszenia.warn}` : '—'}</em></span>
-              </div>
-            ))}
-          </div>
-        )}
-      </article>
-    </div></div>
-  );
-};
-
 // ── Publikacja z bramką zgodności: 409 compliance → dialog z naruszeniami i publikacją z uzasadnieniem ──
-let __complianceHandler = null;
-const publikujMiesiac = async (ym) => {
-  const r = await api('/schedule?action=publish', 'POST', { month: ym });
-  if (r && !r.success && r.compliance && Array.isArray(r.violations) && __complianceHandler) {
-    return new Promise((resolve) => __complianceHandler({
-      ym, violations: r.violations, summary: r.summary || {}, error: r.error,
-      retry: async (reason) => resolve(await api('/schedule?action=publish', 'POST', { month: ym, force: true, reason })),
-      cancel: () => resolve(r),
-    }));
-  }
-  return r;
-};
 const ComplianceGate = () => {
   const [st, setSt] = useState(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { __complianceHandler = (x) => { setReason(''); setSt(x); }; return () => { __complianceHandler = null; }; }, []);
+  useEffect(() => { setComplianceHandler((x) => { setReason(''); setSt(x); }); return () => setComplianceHandler(null); }, []);
   if (!st) return null;
   const zamknij = () => { st.cancel(); setSt(null); };
   return (
@@ -838,26 +529,16 @@ const ComplianceGate = () => {
   );
 };
 
-const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTab, bumpWr, userName, mini, setMini, open, onClose }) => {
-  const items = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
-    { id: 'forecast', label: 'Planowanie i popyt', icon: TrendingUp, section: 'main' },
-    { id: 'live', label: 'Obsada LIVE', icon: Activity, live: true, section: 'main' },
-    { id: 'wr-schedule', page: 'wt', wr: 'schedule', label: 'Schedule', icon: Calendar, section: 'workforce' },
-    { id: 'wr-actual', page: 'wt', wr: 'actual', label: 'Actual', icon: Activity, section: 'workforce' },
-    { id: 'wr-blueprints', page: 'wt', wr: 'blueprints', label: 'Blueprints', icon: BookOpen, section: 'workforce' },
-    { id: 'wr-cycles', page: 'wt', wr: 'cycles', label: 'ShiftCycles', icon: TimerReset, section: 'workforce' },
-    { id: 'wr-tna', page: 'wt', wr: 'tna', label: 'Time & Attendance', icon: Clock3, live: true, section: 'workforce' },
-    { id: 'dyspo', label: 'Dyspozycyjność', icon: CalendarCheck2, section: 'workforce' },
-    { id: 'emps', label: 'Pracownicy i konta', icon: Users, section: 'team' },
-    { id: 'analytics', label: 'Analityka', icon: TrendingUp, section: 'tools' },
-    { id: 'swaps', label: 'Zamiany i wnioski', icon: RefreshCw, badge: pendingSwaps || null, section: 'team' },
-    { id: 'import', label: 'Import / eksport godzin', icon: Upload, section: 'tools' },
-  ];
-  const sections = [['main', 'GŁÓWNE'], ['workforce', 'WORKFORCE'], ['team', 'ZESPÓŁ'], ['tools', 'NARZĘDZIA']];
-  const widoczne = role === 'asm' ? null : ['dashboard', 'wt'];
-  const klik = (m) => { if (m.page === 'wt') { setPage('wt'); setWrTab(m.wr); bumpWr(); } else setPage(m.id); };
-  const aktywny = (m) => page === (m.page || m.id) && (!m.wr || wrTab === m.wr);
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Powłoka Studio: obszary (menu boczne) → moduły (pasek poziomy) → widok. Katalog w navigation.js.
+// ═══════════════════════════════════════════════════════════════════════════════
+const NAV_ICONS = { LayoutDashboard, TrendingUp, Calendar, Activity, Gauge, Users, Settings, Zap, CircleDollarSign, LayoutGrid, Bot, BookOpen, TimerReset, Clock3, CheckCircle2, Clock, ShieldCheck, Printer, CalendarCheck2, RefreshCw, Upload };
+const NavIcon = ({ name, size = 18 }) => { const I = NAV_ICONS[name] || LayoutGrid; return <I size={size} />; };
+
+const Sidebar = ({ moduleId, go, logout, role, badges = {}, userName, mini, setMini, open, onClose }) => {
+  const mod = getModule(moduleId);
+  const areas = visibleAreas(role);
+  const badgeArea = (a) => modulesOfArea(a.id, role).reduce((n, m) => n + (m.badge && badges[m.badge] ? badges[m.badge] : 0), 0);
   return (
     <aside className={'sidebar' + (mini ? ' mini' : '') + (open ? ' open' : '')}>
       <div className="sidebar-head">
@@ -872,29 +553,81 @@ const Sidebar = ({ page, setPage, logout, role, pendingSwaps = 0, wrTab, setWrTa
         <div className="unit-avatar">PL</div>
         {!mini && <><div><span>Restauracja</span><strong>{unitLabel()}</strong></div><ChevronDown size={16} /></>}
       </button>
-      <nav aria-label="Nawigacja główna">
-        {sections.map(([sid, slabel]) => {
-          const grupa = items.filter((m) => m.section === sid && (!widoczne || widoczne.includes(m.page || m.id)));
-          if (!grupa.length) return null;
-          return (
-            <div className="nav-section" key={sid}>
-              {!mini && <p>{slabel}</p>}
-              {grupa.map((m) => { const Icon = m.icon; return (
-                <button key={m.id} title={m.label} className={aktywny(m) ? 'active' : ''} onClick={() => { klik(m); onClose && onClose(); }}>
-                  <Icon size={18} />{!mini && <span>{m.label}</span>}{m.live && <i className="live-dot" />}{m.badge ? <b>{m.badge}</b> : null}
-                </button>
-              ); })}
-            </div>
-          );
-        })}
+      <nav aria-label="Obszary">
+        <div className="nav-section">
+          {!mini && <p>OBSZARY</p>}
+          {areas.map((a) => { const aktywny = mod && mod.area === a.id; const b = badgeArea(a); const pierwszy = modulesOfArea(a.id, role)[0]; return (
+            <button key={a.id} title={a.hint} className={aktywny ? 'active' : ''} onClick={() => { go(aktywny ? moduleId : pierwszy.id); onClose && onClose(); }}>
+              <NavIcon name={a.icon} />{!mini && <span>{a.label}</span>}{a.id === 'realizacja' && <i className="live-dot" />}{b ? <b>{b}</b> : null}
+            </button>
+          ); })}
+        </div>
+        {!mini && mod && (
+          <div className="nav-section nav-modules">
+            <p>{(getArea(mod.area) || {}).label}</p>
+            {modulesOfArea(mod.area, role).map((m) => (
+              <button key={m.id} className={'nav-sub' + (m.id === moduleId ? ' active' : '')} title={m.desc} onClick={() => { go(m.id); onClose && onClose(); }}>
+                <NavIcon name={m.icon} size={15} /><span>{m.label}</span>{m.badge && badges[m.badge] ? <b>{badges[m.badge]}</b> : null}
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
       <div className="sidebar-bottom">
         <a className="employee-app-link" href={HUB_URL} target="_blank" rel="noreferrer" title="ORDO Employee Hub"><SmartphoneIcon size={18} />{!mini && <><span>ORDO Employee Hub</span><ChevronRight size={16} /></>}</a>
-        {role === 'asm' && <button title="Ustawienia" onClick={() => { setPage('settings'); onClose && onClose(); }}><Settings size={18} />{!mini && <span>Ustawienia</span>}</button>}
+        {role === 'asm' && <button title="Ustawienia i audyt" onClick={() => { go('ustawienia'); onClose && onClose(); }}><Settings size={18} />{!mini && <span>Ustawienia</span>}</button>}
         <button title="Wyloguj się" onClick={logout}><LogOut size={18} />{!mini && <span>Wyloguj się</span>}</button>
         <div className="user-card"><div className="avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div>{!mini && <><div><strong>{userName || 'Kierownik zmiany'}</strong><span>{role === 'asm' ? 'General Manager' : 'Kierownik zmiany'}</span></div><MoreHorizontal size={18} /></>}</div>
       </div>
     </aside>
+  );
+};
+
+// Poziomy pasek modułów bieżącego obszaru + opis aktywnego modułu
+const ModuleBar = ({ moduleId, go, role, badges = {} }) => {
+  const mod = getModule(moduleId); if (!mod) return null;
+  const area = getArea(mod.area); const lista = modulesOfArea(mod.area, role);
+  return (
+    <div className="module-bar" role="tablist" aria-label={area ? area.label : 'Moduły'}>
+      <div className="module-bar-row">
+        <span className="module-bar-area"><NavIcon name={area ? area.icon : 'LayoutGrid'} size={14} /> {area ? area.label : ''}</span>
+        <div className="module-bar-tabs">
+          {lista.map((m) => <button key={m.id} role="tab" aria-selected={m.id === moduleId} className={m.id === moduleId ? 'active' : ''} title={m.desc} onClick={() => go(m.id)}><NavIcon name={m.icon} size={14} /><span>{m.label}</span>{m.badge && badges[m.badge] ? <b>{badges[m.badge]}</b> : null}</button>)}
+        </div>
+      </div>
+      <p className="module-bar-desc">{mod.desc}</p>
+    </div>
+  );
+};
+
+// Wyszukiwarka modułów: polskie znaki i zapis bez diakrytyków, strzałki, Enter, Escape
+const ModuleSearch = ({ role, go }) => {
+  const [q, setQ] = useState('');
+  const [idx, setIdx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const wyniki = useMemo(() => searchModules(q, role), [q, role]);
+  const wybierz = (m) => { if (!m) return; go(m.id); setQ(''); setOpen(false); setIdx(0); };
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setIdx((i) => Math.min(wyniki.length - 1, i + 1)); setOpen(true); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx((i) => Math.max(0, i - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); wybierz(wyniki[idx] && wyniki[idx].module); }
+    else if (e.key === 'Escape') { setQ(''); setOpen(false); e.target.blur(); }
+  };
+  return (
+    <div className="search" style={{ position: 'relative' }}>
+      <Search size={18} />
+      <input aria-label="Szukaj modułu" placeholder="Szukaj narzędzia: grafik, actual, budżet, dyspozycje…" value={q} onChange={(e) => { setQ(e.target.value); setIdx(0); setOpen(true); }} onKeyDown={onKey} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} />
+      <kbd>Enter</kbd>
+      {open && q.trim() && (
+        <div className="search-results" role="listbox">
+          {!wyniki.length ? <div className="search-empty">Brak modułu pasującego do „{q}”.</div> : wyniki.map((w, i) => (
+            <button key={w.module.id} role="option" aria-selected={i === idx} className={i === idx ? 'active' : ''} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setIdx(i)} onClick={() => wybierz(w.module)}>
+              <NavIcon name={w.module.icon} size={15} /><span><strong>{w.module.label}</strong><small>{w.area ? w.area.label : ''} · {w.module.desc}</small></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -1391,66 +1124,6 @@ const ImportPage = ({ data, setPage }) => {
 
 // ===================== SCHEDULE VIEW =====================
 
-const SchedulePage = ({ data }) => {
-  const today = new Date();
-  const [weekStart, setWeekStart] = useState(() => { const d = data.meta.firstDate ? new Date(data.meta.firstDate) : new Date(today); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); });
-
-  const weekDates = useMemo(() => { const arr = []; const start = new Date(weekStart); for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); arr.push(ymd(d)); } return arr; }, [weekStart]);
-  const changeWeek = (dir) => { const d = new Date(weekStart); d.setDate(d.getDate() + dir * 7); setWeekStart(ymd(d)); };
-  const label = () => { const s = new Date(weekStart); const e = new Date(weekStart); e.setDate(e.getDate() + 6); return `${s.getDate()} ${months[s.getMonth()].slice(0,3)} – ${e.getDate()} ${months[e.getMonth()].slice(0,3)} ${e.getFullYear()}`; };
-
-  const shiftsByDate = (ds) => data.shifts.filter(s => s.date === ds).sort((a,b) => (a.start||'').localeCompare(b.start||''));
-
-  return (
-    <div className="flex-1 flex flex-col">
-      <Header title="Grafik" subtitle="Podgląd zaimportowanego grafiku">
-        <div className="flex items-center gap-2 rounded-xl p-1" style={{ backgroundColor: colors.primary.bg }}>
-          <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-white rounded-lg"><ChevronLeft className="w-5 h-5" /></button>
-          <span className="px-4 font-semibold text-sm min-w-[220px] text-center" style={{ color: colors.primary.dark }}>{label()}</span>
-          <button onClick={() => changeWeek(1)} className="p-2 hover:bg-white rounded-lg"><ChevronRight className="w-5 h-5" /></button>
-        </div>
-        <Btn variant="secondary" icon={RefreshCw} onClick={data.sync} loading={data.loading}>Odśwież</Btn>
-      </Header>
-      <div className="flex-1 p-6 overflow-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        {data.shifts.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center shadow-sm"><Calendar className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.light }} /><p style={{ color: colors.primary.light }}>Brak grafiku. Zaimportuj plik Excel.</p></div>
-        ) : (
-          <div className="grid grid-cols-7 gap-3">
-            {weekDates.map(ds => {
-              const d = new Date(ds);
-              const list = shiftsByDate(ds);
-              const isToday = ds === ymd(today);
-              const totalH = list.reduce((a, s) => a + (s.hours || 0), 0);
-              return (
-                <div key={ds} className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col" style={isToday ? { boxShadow: `0 0 0 2px ${colors.accent.dark}` } : {}}>
-                  <div className="p-3 text-center border-b" style={{ backgroundColor: isToday ? colors.accent.bg : colors.primary.bg }}>
-                    <p className="text-xs font-semibold" style={{ color: colors.primary.light }}>{dayNames[d.getDay()]}</p>
-                    <p className="text-lg font-bold" style={{ color: isToday ? colors.accent.dark : colors.primary.darkest }}>{d.getDate()}</p>
-                    <p className="text-[10px]" style={{ color: colors.primary.light }}>{list.length} zmian · {totalH.toFixed(0)}h</p>
-                  </div>
-                  <div className="p-2 space-y-1.5 flex-1 min-h-[200px]">
-                    {list.map((s, i) => (
-                      <div key={i} className="rounded-lg p-1.5 text-[11px]" style={{ backgroundColor: stationColor(s.station) + '12', borderLeft: `3px solid ${stationColor(s.station)}` }}>
-                        <p className="font-bold truncate" style={{ color: colors.primary.darkest }}>{s.name}</p>
-                        <p style={{ color: colors.primary.light }}>{s.start}–{s.end}</p>
-                        <p className="truncate" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</p>
-                        {paraOpis(s) && <p className="truncate italic" style={{ color: '#5A3542' }}>{paraOpis(s)}</p>}
-                      </div>
-                    ))}
-                    {list.length === 0 && <p className="text-center text-xs py-4" style={{ color: colors.primary.light }}>—</p>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ===================== PRINT =====================
-
 const PrintPage = ({ data }) => {
   const [mode, setMode] = useState('day'); // 'day' | 'range'
   const [singleDate, setSingleDate] = useState(data.meta.firstDate || ymd(new Date()));
@@ -1627,123 +1300,6 @@ const dyInicjaly = (n) => String(n || '?').split(' ').map((x) => x[0]).join('').
 const dyData = (d) => new Intl.DateTimeFormat('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(d + 'T12:00:00'));
 const dyKlasa = (t) => t === 'available' ? 'available' : t === 'unavailable' ? 'unavailable' : 'limited';
 
-const DyspoAdmin = ({ data, setPage }) => {
-  const [weekStart, setWeekStart] = useState(dyStartOfWeek(new Date().toISOString().slice(0, 10)));
-  const [reqs, setReqs] = useState([]);
-  const [selId, setSelId] = useState(null);
-  const [filtr, setFiltr] = useState('pending');
-  const [q, setQ] = useState('');
-  const [nota, setNota] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [okno, setOkno] = useState(null);
-  const weekEnd = dyAddDays(weekStart, 6);
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const date = dyAddDays(weekStart, i); const d = new Date(date + 'T12:00:00'); return { date, label: new Intl.DateTimeFormat('pl-PL', { weekday: 'short' }).format(d).replace('.', '').toUpperCase(), day: String(d.getDate()) }; }), [weekStart]);
-  // FIX: lista i KPI obejmują WSZYSTKIE zgłoszenia (nie tylko widoczny tydzień) — siatka filtruje lokalnie
-  const zaladuj = useCallback(() => {
-    api('/availability?reqs=1').then((r) => {
-      if (!r || !r.success) return;
-      setReqs(r.requests || []);
-      setSelId((cur) => cur && (r.requests || []).some((x) => x.id === cur) ? cur : ((r.requests || [])[0] || {}).id || null);
-    }).catch(() => {});
-    api('/availability?window=1').then((r) => { if (r && r.success) setOkno(r.okno); }).catch(() => {});
-  }, []);
-  useEffect(zaladuj, [zaladuj]);
-  // start: pokaż tydzień miesiąca, na który zbieramy dyspozycje
-  useEffect(() => { if (okno && okno.targetMonth) setWeekStart((w) => w === dyStartOfWeek(new Date().toISOString().slice(0, 10)) ? dyStartOfWeek(`${okno.targetMonth}-01`) : w); }, [okno && okno.targetMonth]);
-  const przelaczOkno = async () => {
-    if (!okno) return;
-    const r = await api('/availability?action=window', 'POST', { open: !okno.otwarte });
-    if (r.success) { setOkno(r.okno); data.show(r.okno.otwarte ? 'Okno dyspozycji otwarte' : 'Okno dyspozycji zamknięte'); }
-    else data.show(r.error || 'Błąd', 'error');
-  };
-  const mcNazwa = (ym) => { const [y, m] = String(ym || '').split('-').map(Number); return y ? new Intl.DateTimeFormat('pl-PL', { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1)) : ''; };
-  const sel = reqs.find((x) => x.id === selId) || null;
-  useEffect(() => { setNota((sel && sel.managerNote) || ''); }, [selId]);
-  const osoby = useMemo(() => { const m = new Map(); reqs.forEach((r) => m.set(r.accountId, { id: r.accountId, name: r.name, login: r.login })); return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl')); }, [reqs]);
-  const widoczne = useMemo(() => { const n = q.trim().toLocaleLowerCase('pl'); return reqs.filter((r) => (filtr === 'all' || (filtr === 'conflict' ? r.conflict : r.status === filtr)) && (!n || r.name.toLocaleLowerCase('pl').includes(n))); }, [filtr, q, reqs]);
-  const licz = { pending: reqs.filter((r) => r.status === 'pending').length, approved: reqs.filter((r) => r.status === 'approved').length, conflict: reqs.filter((r) => r.conflict).length, osoby: new Set(reqs.map((r) => r.accountId)).size };
-  const decyzja = async (status) => {
-    if (!sel) return; setBusy(true);
-    const r = await api('/availability?action=decide', 'POST', { id: sel.id, status, managerNote: nota });
-    setBusy(false);
-    if (r.success) { setReqs((xs) => xs.map((x) => x.id === r.request.id ? r.request : x)); data.show(status === 'approved' ? 'Dyspozycja zaakceptowana' : 'Dyspozycja odrzucona'); }
-    else data.show(r.error || 'Nie udało się zapisać decyzji', 'error');
-  };
-  const weekLabel = `${new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' }).format(new Date(weekStart + 'T12:00:00'))}–${new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(weekEnd + 'T12:00:00'))}`;
-  const naDzien = (aid, date) => reqs.find((r) => r.accountId === aid && (r.date === date || (r.recurrence === 'weekly' && r.date <= date && (!r.repeatUntil || r.repeatUntil >= date) && new Date(r.date + 'T12:00:00').getDay() === new Date(date + 'T12:00:00').getDay())));
-  return (
-    <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: '#F7F5F5' }}>
-      <div className="rex-av-admin">
-        <header className="rex-av-heading">
-          <div><span>WORKRHYTHM · DYSPOZYCYJNOŚĆ</span><h1>Dyspozycyjność zespołu</h1><p>Preferencje pracowników, decyzje managera i konflikty z grafikiem.</p></div>
-          <div><button className="rex-av-btn secondary" onClick={zaladuj}><RefreshCw size={16} /> Odśwież</button><button className="rex-av-btn primary" onClick={() => setPage('wt')}><CalendarCheck2 size={16} /> Otwórz w Schedule</button></div>
-        </header>
-        {okno && (
-          <div className="rounded-xl px-4 py-3 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style={{ backgroundColor: okno.otwarte ? '#F1E4E8' : '#F5E3E8', border: `1px solid ${okno.otwarte ? '#E3DCDD' : '#E0B9C4'}`, color: okno.otwarte ? '#741334' : '#B94352' }}>
-            <strong>Okno dyspozycji na {mcNazwa(okno.targetMonth)}: {okno.otwarte ? 'OTWARTE' : 'ZAMKNIĘTE'}</strong>
-            <span>{okno.otwarte ? `pracownicy składają do 20.${okno.deadline.slice(5, 7)}.${okno.deadline.slice(0, 4)}` : 'termin (20. dzień miesiąca) minął — otworzyć może wyłącznie ASM'}</span>
-            {okno.reczne && <span className="text-xs">ręcznie {okno.reczne.open ? 'otwarte' : 'zamknięte'} przez {okno.reczne.by}</span>}
-            <button onClick={przelaczOkno} className="ml-auto px-3 py-1.5 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: okno.otwarte ? '#B94352' : '#741334' }}>{okno.otwarte ? 'Zamknij okno' : 'Otwórz okno (ASM)'}</button>
-          </div>
-        )}
-        <section className="rex-av-kpis">
-          <article><span className="amber"><Clock3 /></span><div><small>DO DECYZJI</small><strong>{licz.pending}</strong><em>zgłoszeń</em></div></article>
-          <article><span className="green"><UserCheck /></span><div><small>ZAAKCEPTOWANE</small><strong>{licz.approved}</strong><em>w tym tygodniu</em></div></article>
-          <article><span className="red"><AlertTriangle /></span><div><small>KONFLIKTY</small><strong>{licz.conflict}</strong><em>z grafikiem</em></div></article>
-          <article><span className="teal"><Users /></span><div><small>PRACOWNICY</small><strong>{licz.osoby}</strong><em>ze zgłoszeniami</em></div></article>
-        </section>
-        <section className="rex-av-toolbar">
-          <div className="rex-av-tabs">
-            {[['pending', `Do decyzji · ${licz.pending}`], ['all', 'Wszystkie'], ['conflict', `Konflikty · ${licz.conflict}`], ['approved', 'Zaakceptowane']].map(([id, label]) => <button key={id} className={filtr === id ? 'active' : ''} onClick={() => setFiltr(id)}>{label}</button>)}
-          </div>
-          <div className="rex-av-tools">
-            <label><Search size={15} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj pracownika..." /></label>
-            <button aria-label="Filtry"><Filter size={16} /></button>
-            <div><button onClick={() => setWeekStart(dyAddDays(weekStart, -7))}><ChevronLeft size={16} /></button><strong>{weekLabel}</strong><button onClick={() => setWeekStart(dyAddDays(weekStart, 7))}><ChevronRight size={16} /></button></div>
-          </div>
-        </section>
-        <div className="rex-av-layout">
-          <main>
-            <section className="rex-av-week-grid">
-              <div className="rex-av-grid-head"><div>PRACOWNIK</div>{days.map((d) => <div key={d.date}><span>{d.label}</span><strong>{d.day}</strong></div>)}</div>
-              {osoby.map((o) => <div className="rex-av-grid-row" key={o.id}>
-                <div className="rex-av-person"><span>{dyInicjaly(o.name)}</span><div><strong>{o.name}</strong><small>{o.login}</small></div></div>
-                {days.map((d) => { const it = naDzien(o.id, d.date); return <button key={d.date} className={`rex-av-cell ${it ? `${dyKlasa(it.type)} ${it.status}` : 'empty'} ${it && it.conflict ? 'conflict' : ''}`} onClick={() => it && setSelId(it.id)} disabled={!it}>
-                  {it ? <><span>{DY_TYPY[it.type].short}</span><strong>{dyTime(it)}</strong>{it.recurrence === 'weekly' && <Repeat2Icon />}{it.conflict && <AlertTriangle size={10} />}</> : <i>—</i>}
-                </button>; })}
-              </div>)}
-              {!osoby.length && <div className="rex-av-empty">Brak zgłoszeń w wybranym tygodniu.</div>}
-              <div className="rex-av-legend"><span><i className="available" /> Dostępny</span><span><i className="limited" /> Ograniczenie</span><span><i className="unavailable" /> Niedostępny</span><span><i className="pending" /> Oczekuje</span><span><AlertTriangle size={11} /> Konflikt</span></div>
-            </section>
-            <section className="rex-av-queue">
-              <header><div><strong>Lista zgłoszeń</strong><span>{widoczne.length} pozycji</span></div><small>aktualizacja po decyzji</small></header>
-              {widoczne.map((r) => <button key={r.id} className={sel && sel.id === r.id ? 'active' : ''} onClick={() => setSelId(r.id)}>
-                <span className="rex-av-avatar">{dyInicjaly(r.name)}</span>
-                <span><strong>{r.name}</strong><small>{DY_TYPY[r.type].label} · {dyTime(r)}</small></span>
-                <time>{new Intl.DateTimeFormat('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date(r.date + 'T12:00:00'))}</time>
-                {r.conflict && <em className="conflict"><AlertTriangle size={11} /> konflikt</em>}
-                <b className={r.status}>{r.status === 'pending' ? 'Do decyzji' : r.status === 'approved' ? 'Zaakceptowana' : 'Odrzucona'}</b>
-              </button>)}
-            </section>
-          </main>
-          <aside className="rex-av-review">
-            {sel ? <>
-              <header><div><span>{dyInicjaly(sel.name)}</span><div><small>ZGŁOSZENIE #{String(sel.id).slice(-4).toUpperCase()}</small><strong>{sel.name}</strong><em>{sel.login} · {UNIT.code}</em></div></div><b className={sel.status}>{sel.status === 'pending' ? 'Do decyzji' : sel.status === 'approved' ? 'Zaakceptowana' : 'Odrzucona'}</b></header>
-              {sel.conflict && <div className="rex-av-warning"><AlertTriangle size={16} /><div><strong>Konflikt z opublikowanym grafikiem</strong><span>Decyzja może wymagać korekty grafiku.</span></div></div>}
-              <div className="rex-av-review-grid"><span><small>DATA</small><strong>{dyData(sel.date)}</strong></span><span><small>TYP</small><strong>{DY_TYPY[sel.type].label}</strong></span><span><small>GODZINY</small><strong>{dyTime(sel)}</strong></span><span><small>POWTARZALNOŚĆ</small><strong>{sel.recurrence === 'weekly' ? `Co tydzień do ${sel.repeatUntil}` : 'Tylko ten dzień'}</strong></span></div>
-              <div className="rex-av-note"><MessageSquare size={15} /><div><small>KOMENTARZ PRACOWNIKA</small><p>{sel.note || 'Brak komentarza.'}</p></div></div>
-              <label className="rex-av-manager-note"><span>Notatka managera</span><textarea value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Opcjonalna informacja dla pracownika..." /></label>
-              <div className="rex-av-actions"><button className="reject" disabled={busy} onClick={() => decyzja('rejected')}><X size={15} /> Odrzuć</button><button className="approve" disabled={busy} onClick={() => decyzja('approved')}><Check size={15} /> Akceptuj</button></div>
-              <button className="rex-av-schedule-link" onClick={() => setPage('wt')}><CalendarCheck2 size={14} /> Pokaż w grafiku</button>
-            </> : <div className="rex-av-empty">Wybierz zgłoszenie z listy.</div>}
-          </aside>
-        </div>
-      </div>
-    </div>
-  );
-};
-const Repeat2Icon = () => <RefreshCw size={10} />;
-
 // ═════════ REX WorkRhythm Modules v1.0.0 — Time & Attendance (live) ═════════
 const TA_NAZWY = { clock_in: 'Wejście', break_start: 'Start przerwy', break_end: 'Koniec przerwy', clock_out: 'Wyjście' };
 const taTone = (t) => t === 'clock_in' ? 'in' : t === 'clock_out' ? 'out' : 'break';
@@ -1857,7 +1413,7 @@ const TaLive = ({ data }) => {
 
   return (
     <div className="module-view time-view">
-      <MHead kicker={`WORKFORCE • ${dayLbl.toUpperCase()}`} title="Time & Attendance" copy="Odbicia, przerwy, korekty oraz różnice między grafikiem a rzeczywistym czasem pracy.">
+      <MHead kicker={`WORKFORCE • ${dayLbl.toUpperCase()}`} title="Rejestr obecności" copy="Odbicia, przerwy, korekty oraz różnice między grafikiem a rzeczywistym czasem pracy.">
         <button className="secondary-action" onClick={raport}><Download size={16} /> Raport</button>
         <button className="primary-action" onClick={zamknij}><Lock size={16} /> {completedD ? 'Dzień zamknięty' : 'Zamknij dzień'}</button>
       </MHead>
@@ -1910,27 +1466,6 @@ const TaLive = ({ data }) => {
     </div>
   );
 };
-const DialogS = ({ title, kicker, description, onClose, children, actions, size = 'medium' }) => {
-  useEffect(() => {
-    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    const onKey = (ev) => { if (ev.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
-  }, [onClose]);
-  return (
-    <div className="dialog-backdrop" onMouseDown={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
-      <section className={`app-dialog dialog-${size}`} role="dialog" aria-modal="true">
-        <header className="dialog-header"><div>{kicker && <span>{kicker}</span>}<h2>{title}</h2>{description && <p>{description}</p>}</div><button onClick={onClose} aria-label="Zamknij"><X size={19} /></button></header>
-        <div className="dialog-body">{children}</div>
-        {actions && <footer className="dialog-actions">{actions}</footer>}
-      </section>
-    </div>
-  );
-};
-
-// ── WFM-02: dostępność — akceptacja propozycji pracowników ──
-const DNI_KROTKIE = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
-const opisDnia = (w) => !w || w.tryb === 'pelna' ? 'cały dzień' : w.tryb === 'brak' ? '—' : `${w.od}–${w.do}`;
 const AvailabilityAdmin = ({ data }) => {
   const [lista, setLista] = useState(null);
   const zaladuj = () => { api('/availability').then((r) => { if (r && r.success) setLista(r.list || []); }).catch(() => {}); };
@@ -2045,12 +1580,12 @@ const TerminalsCard = ({ data }) => {
 const UnitCard = ({ data }) => {
   const [f, setF] = useState({ ...UNIT });
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api('/org').then((r) => { if (r && r.success && r.unit) { UNIT = { ...UNIT, ...r.unit }; setF({ ...UNIT }); } }).catch(() => {}); }, []);
+  useEffect(() => { api('/org').then((r) => { if (r && r.success && r.unit) { setUnit(r.unit); setF({ ...UNIT }); } }).catch(() => {}); }, []);
   const zapisz = async () => {
     setBusy(true);
     const r = await api('/org', 'PUT', f);
     setBusy(false);
-    if (r && r.success) { UNIT = { ...UNIT, ...r.unit }; setF({ ...UNIT }); data.show('Dane jednostki zapisane — nagłówki, wydruki i Employee Hub używają nowej konfiguracji'); data.sync(); }
+    if (r && r.success) { setUnit(r.unit); setF({ ...UNIT }); data.show('Dane jednostki zapisane — nagłówki, wydruki i Employee Hub używają nowej konfiguracji'); data.sync(); }
     else data.show((r && r.error) || 'Błąd zapisu', 'error');
   };
   const pole = (k, label, ph) => <label className="block"><span className="block text-[11px] font-semibold mb-1" style={{ color: '#71656A' }}>{label}</span><input value={f[k] || ''} onChange={(e) => setF((x) => ({ ...x, [k]: e.target.value }))} placeholder={ph} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: '#E3DCDD' }} /></label>;
@@ -2170,1265 +1705,7 @@ const SettingsPage = ({ data }) => {
 
 // ===================== PLAN GODZIN =====================
 
-const Sekcja = ({ children, kolor, tytul, ikona: Ik }) => (
-  <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: `4px solid ${kolor}` }}>
-    <div className="flex items-center gap-2 mb-4">{Ik && <Ik className="w-5 h-5" style={{ color: kolor }} />}<h3 className="text-lg font-semibold" style={{ color: colors.primary.darkest }}>{tytul}</h3></div>
-    {children}
-  </div>
-);
-
-const toISOdate = (v) => { if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`; const s = String(v); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`; const d = new Date(v); return isNaN(d) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-// ===================== OPTYMALIZACJA (silnik MAPAL-style, sloty 30 min) =====================
-const OC = { cel: "#741334", silnik: "#A7465F", obsada: "#5A3542", ok: "#5A3542", warn: "#A7465F", bad: "#B94352" };
-const S0 = 6, NS = 48;                       // doba operacyjna 06:00 → 06:00
-const sl = (h) => (h - S0) * 2;
-const hmS = (i) => { const t = (S0 * 60 + i * 30) % 1440; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
-const D3 = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"];
-const PIK = [13, 14, 15, 16, 17, 18, 19, 20];
-
-// profil godzinowy sprzedaży (udział doby) — z historii micros
-const ZLH = { 7: 433, 8: 640, 9: 935, 10: 1231, 11: 1805, 12: 2350, 13: 2714, 14: 2706, 15: 2614, 16: 2530, 17: 2553, 18: 2447, 19: 2647, 20: 2417, 21: 1962, 22: 1378, 23: 901 };
-const SUMZ = Object.values(ZLH).reduce((a, b) => a + b, 0);
-const PROF = {}; Object.entries(ZLH).forEach(([h, v]) => { PROF[h] = v / SUMZ; });
-
-// macierz obsady docelowej (krzywa celu) wg godziny × dzień tygodnia (0=Pon)
-const KC = {
-  6: [2,2,2,2,2,2,2], 7: [3,3,3,3,3,3,3], 8: [3,3,3,3,3,3,3], 9: [3,3,3,3,3,3,3],
-  10: [3,3,3,3,3,3,3], 11: [4,4,4,4,5,4,5], 12: [5,5,5,5,6,6,6], 13: [6,6,6,6,7,7,7],
-  14: [6,6,6,6,7,7,7], 15: [6,6,6,6,7,6,7], 16: [6,6,6,6,6,6,7], 17: [6,6,6,6,7,6,7],
-  18: [6,5,6,6,6,6,6], 19: [6,6,6,6,7,6,7], 20: [5,5,6,6,6,6,6], 21: [4,4,5,5,5,5,5],
-  22: [3,3,3,3,4,3,4], 23: [3,3,3,3,3,3,3], 24: [3,3,3,3,3,3,3], 25: [1,1,1,1,1,1,1],
-};
-const SZAB = [
-  { n: "OTWARCIE 06–16", od: 6, do: 16, kol: "#5A3542" }, { n: "OTWARCIE 06–15", od: 6, do: 15, kol: "#5A3542" },
-  { n: "KONTROLER I 07–15", od: 7, do: 15, kol: "#A7465F" }, { n: "DOSTAWA 07–12", od: 7, do: 12, kol: "#A7465F" },
-  { n: "DOSTAWA+SMAŻ 07–17", od: 7, do: 17, kol: "#A7465F" }, { n: "DOSTAWA 07–15", od: 7, do: 15, kol: "#A7465F" },
-  { n: "SMAŻENIE I 10–18", od: 10, do: 18, kol: "#B5482F" }, { n: "ŚRODEK 11–21", od: 11, do: 21, kol: "#A7465F" },
-  { n: "ŚRODEK 12–22", od: 12, do: 22, kol: "#A7465F" }, { n: "FLEX SZCZYT 12–20", od: 12, do: 20, kol: "#C0392B" },
-  { n: "ZAMKNIĘCIE 15–01", od: 15, do: 25, kol: "#741334" }, { n: "WSPARCIE WIECZ 16–24", od: 16, do: 24, kol: "#5A3542" },
-  { n: "ZAMKNIĘCIE 16–01", od: 16, do: 25, kol: "#741334" }, { n: "ZAMKNIĘCIE 17–02", od: 17, do: 26, kol: "#741334" },
-  { n: "PREP 18–24", od: 18, do: 24, kol: "#8A8880" }, { n: "ZMYWAK 22–06", od: 22, do: 30, kol: "#4A4A48" },
-];
-
-function optZapotrzebowanie(sprzedaz, splh, podloga, tryb, dow) {
-  const dem = new Array(NS).fill(0);
-  [[6, 7], [24, 25], [25, 26]].forEach(([a, b]) => { const n = KC[a] ? KC[a][dow] : 1; for (let i = sl(a); i < sl(b); i++) dem[i] = Math.max(dem[i], n); });
-  for (let h = 7; h <= 23; h++) {
-    const n = tryb === "krzywa" ? KC[h][dow] : Math.max(podloga, Math.round((sprzedaz * PROF[h]) / splh));
-    for (const i of [sl(h), sl(h) + 1]) dem[i] = Math.max(dem[i], n);
-  }
-  return dem;
-}
-function optRozbicie(sprzedaz, splh, podloga, tryb, dow) {
-  const dir = new Array(NS).fill(0), ind = new Array(NS).fill(0);
-  [[6, 7], [24, 25], [25, 26]].forEach(([a, b]) => { const n = KC[a] ? KC[a][dow] : 1; for (let i = sl(a); i < sl(b); i++) ind[i] = Math.max(ind[i], n); });
-  for (let h = 7; h <= 23; h++) {
-    const hh = String(h).padStart(2, '0');
-    const pDyn = PROF_DOW && PROF_DOW[dow] && PROF_DOW[dow][hh] != null ? PROF_DOW[dow][hh] : null;
-    const n = tryb === 'krzywa' ? KC[h][dow] : Math.max(podloga, Math.round((sprzedaz * (pDyn != null ? pDyn : PROF[h])) / splh));
-    for (const i of [sl(h), sl(h) + 1]) dir[i] = n;
-  }
-  return { dir, ind };
-}
-
-function optKsztaltuj(dem, wlaczone) {
-  const cand = SZAB.filter((t) => wlaczone[t.n]).map((t) => ({ t, s: sl(t.od), len: sl(t.do) - sl(t.od) })).filter((c) => c.s >= 0 && c.s + c.len <= NS);
-  const cover = new Array(NS).fill(0), out = [];
-  if (!cand.length) return { out, cover };
-  for (let g = 0; g < 60; g++) {
-    if (dem.every((d, i) => cover[i] >= d)) break;
-    let best = null, bs = -1;
-    for (const c of cand) { let gain = 0; for (let i = c.s; i < c.s + c.len; i++) if (cover[i] < dem[i]) gain++; if (!gain) continue; const sc = gain / c.len; if (sc > bs + 1e-9) { bs = sc; best = c; } }
-    if (!best) break;
-    for (let i = best.s; i < best.s + best.len; i++) cover[i]++;
-    out.push({ ...best });
-  }
-  for (let k = out.length - 1; k >= 0; k--) { const c = out[k]; let ok = true; for (let i = c.s; i < c.s + c.len; i++) if (cover[i] - 1 < dem[i]) { ok = false; break; } if (ok) { for (let i = c.s; i < c.s + c.len; i++) cover[i]--; out.splice(k, 1); } }
-  out.sort((a, b) => a.s - b.s);
-  return { out, cover };
-}
-const f0 = (v) => Math.round(v).toLocaleString("pl-PL");
-const fH1 = (v) => `${v.toFixed(1).replace(".", ",")} h`;
-
-const OptKpi = ({ label, value, sub, tone }) => (
-  <div className="rounded-xl p-3 bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}>
-    <div className="text-[11px]" style={{ color: colors.primary.light }}>{label}</div>
-    <div className="font-mono text-lg mt-0.5" style={{ color: tone || colors.primary.darkest }}>{value}</div>
-    {sub && <div className="text-[10px]" style={{ color: "#A38D95" }}>{sub}</div>}
-  </div>
-);
-const OptSuw = ({ label, value, min, max, step, unit, onChange }) => (
-  <div>
-    <div className="flex items-baseline justify-between"><span className="text-xs font-medium" style={{ color: colors.primary.dark }}>{label}</span><span className="font-mono text-xs" style={{ color: OC.silnik }}>{value.toLocaleString("pl-PL")} {unit}</span></div>
-    <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full" style={{ accentColor: OC.silnik }} />
-  </div>
-);
-
-const OptWidokDnia = ({ dem, kc, cover, shifts }) => {
-  const W = 780, PL = 116, cw = (W - PL - 4) / NS;
-  const rows = [{ l: "Krzywa celu", a: kc, c: OC.cel }, { l: "Zapotrzebowanie", a: dem, c: OC.silnik }, { l: "Obsada z szablonów", a: cover, c: OC.obsada }];
-  const diff = cover.map((c, i) => c - dem[i]);
-  const H = 22 * (rows.length + 2) + 12, gH = Math.max(26, shifts.length * 15 + 6);
-  return (
-    <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 700 }}>
-        {[...Array(NS)].map((_, i) => { const h = S0 + Math.floor(i / 2); return PIK.includes(h) ? <rect key={i} x={PL + i * cw} y={0} width={cw} height={8} fill={OC.bad} opacity=".7" /> : null; })}
-        <text x={2} y={7} fontSize="7.5" fill="#A38D95">Szczyt 13–20</text>
-        {[...Array(NS)].map((_, i) => i % 4 === 0 ? <text key={i} x={PL + i * cw} y={18} fontSize="7" fill="#A38D95">{hmS(i).slice(0, 2)}</text> : null)}
-        {rows.map((r, ri) => (<g key={ri}>
-          <text x={2} y={22 * (ri + 1) + 17} fontSize="8.5" fill={r.c}>{r.l}</text>
-          {r.a.map((v, i) => (<g key={i}>
-            <rect x={PL + i * cw} y={22 * (ri + 1) + 7} width={cw - .3} height={13} fill={r.c} opacity={v > 0 ? Math.min(.1 + v * .1, .85) : .04} />
-            <text x={PL + i * cw + cw / 2} y={22 * (ri + 1) + 17} fontSize="6.5" textAnchor="middle" fill={v > 3 ? "#fff" : "#A38D95"}>{v > 0 ? v : ""}</text>
-          </g>))}
-        </g>))}
-        <text x={2} y={22 * (rows.length + 1) + 17} fontSize="8.5" fill={colors.primary.darkest}>Różnica</text>
-        {diff.map((v, i) => { if (dem[i] === 0 && v === 0) return null; const h = S0 + Math.floor(i / 2), kryt = v < 0 && PIK.includes(h);
-          return (<g key={i}>
-            <rect x={PL + i * cw} y={22 * (rows.length + 1) + 7} width={cw - .3} height={13} fill={v === 0 ? OC.ok : v > 0 ? OC.warn : kryt ? OC.bad : "#E5A5A0"} opacity={v === 0 ? .18 : .75} />
-            <text x={PL + i * cw + cw / 2} y={22 * (rows.length + 1) + 17} fontSize="6.5" textAnchor="middle" fill={v === 0 ? OC.ok : "#fff"}>{v === 0 ? "✓" : v > 0 ? `+${v}` : v}</text>
-          </g>); })}
-      </svg>
-      <svg viewBox={`0 0 ${W} ${gH}`} className="w-full" style={{ minWidth: 700 }}>
-        {shifts.map((c, i) => (<g key={i}>
-          <rect x={PL + c.s * cw} y={2 + i * 15} width={c.len * cw - 1} height={12} rx="2" fill={c.t.kol} />
-          <text x={PL + c.s * cw + 3} y={11 + i * 15} fontSize="7.5" fill="#fff">{c.len * cw > 70 ? c.t.n : ""}</text>
-        </g>))}
-      </svg>
-    </div>
-  );
-};
-
-// ── P4: jakość prognozy — backtest MAPE/WAPE + korekty dnia z uzasadnieniem ──
-const ForecastQuality = ({ data }) => {
-  const [dane, setDane] = useState(null);
-  const [edytuj, setEdytuj] = useState(null);   // { date, value, reason }
-  const zaladuj = () => { api('/forecast?days=14').then((r) => { if (r && r.success) setDane(r); }).catch(() => {}); };
-  useEffect(zaladuj, []);
-  const zapisz = async () => {
-    if (!edytuj) return;
-    const r = await api('/forecast?action=override', 'POST', edytuj);
-    if (r.success) { setEdytuj(null); zaladuj(); data.show(edytuj.value == null || edytuj.value === '' ? 'Korekta usunięta' : `Korekta ${edytuj.date} zapisana`); }
-    else data.show(r.error || 'Błąd korekty', 'error');
-  };
-  const bt = dane && dane.backtest;
-  const DK = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
-  return (
-    <div className="bg-white rounded-xl p-4 shadow-sm border mb-3" style={{ borderColor: colors.primary.bg }}>
-      <div className="flex flex-wrap items-center gap-4 mb-3">
-        <span className="text-sm font-bold" style={{ color: colors.primary.darkest }}>Jakość prognozy (baseline sezonowy)</span>
-        {bt && bt.dni > 0 ? (<>
-          <span className="text-xs" style={{ color: colors.primary.medium }}>MAPE <b style={{ color: bt.mape > 15 ? '#B94352' : '#741334' }}>{String(bt.mape).replace('.', ',')}%</b></span>
-          <span className="text-xs" style={{ color: colors.primary.medium }}>WAPE <b style={{ color: bt.wape > 12 ? '#B94352' : '#741334' }}>{String(bt.wape).replace('.', ',')}%</b></span>
-          <span className="text-xs text-slate-400">backtest: {bt.dni} zakończonych dni · prognoza liczona tylko z danych sprzed dnia</span>
-        </>) : <span className="text-xs" style={{ color: '#A7465F' }}>za mało historii sprzedaży do pomiaru błędu — importuj dane dzienne</span>}
-      </div>
-      {dane && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {dane.days.map((d) => (
-            <button key={d.date} onClick={() => setEdytuj({ date: d.date, value: d.override ? d.override.value : (d.baseline ?? ''), reason: d.override ? d.override.reason : '' })}
-              className="shrink-0 w-[92px] rounded-lg border px-2 py-1.5 text-left hover:shadow-sm"
-              style={{ borderColor: d.override ? '#A7465F' : colors.primary.bg, backgroundColor: d.override ? '#F1E4E8' : 'white' }}>
-              <p className="text-[10px] font-bold" style={{ color: colors.primary.light }}>{DK[d.dow]} {d.date.slice(8)}.{d.date.slice(5, 7)}</p>
-              <p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{d.forecast != null ? d.forecast.toLocaleString('pl-PL') : '—'}</p>
-              <p className="text-[9.5px] truncate" style={{ color: d.override ? '#A7465F' : colors.primary.light }}>{d.override ? `korekta: ${d.override.reason}` : (d.baseline != null ? 'baseline' : 'brak historii')}</p>
-            </button>
-          ))}
-        </div>
-      )}
-      {edytuj && (
-        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg p-3" style={{ backgroundColor: colors.primary.bgLight }}>
-          <span className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>Korekta {edytuj.date}:</span>
-          <div><label className="block text-[10px]" style={{ color: colors.primary.light }}>Prognoza (zł)</label><input type="number" value={edytuj.value} onChange={(e) => setEdytuj((x) => ({ ...x, value: e.target.value }))} className="w-28 px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-          <div className="flex-1 min-w-[180px]"><label className="block text-[10px]" style={{ color: colors.primary.light }}>Uzasadnienie (wymagane)</label><input value={edytuj.reason} onChange={(e) => setEdytuj((x) => ({ ...x, reason: e.target.value }))} placeholder="np. promocja, mecz, święto" className="w-full px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-          <button onClick={zapisz} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zapisz</button>
-          <button onClick={() => { setEdytuj((x) => ({ ...x, value: '' })); }} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>Usuń korektę</button>
-          <button onClick={() => setEdytuj(null)} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: 'white', color: colors.primary.dark }}>Anuluj</button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ForecastPlan = ({ data, setPage }) => {
-  const [tab, setTab] = useState("miesiac");
-  const hydrated = useRef(false);
-  const [mIdx, setMIdx] = useState(new Date().getMonth());   // zawsze bieżący miesiąc na start
-  const [yrSel, setYrSel] = useState(new Date().getFullYear());
-  const [splh, setSplh] = useState(420);
-  const [podloga, setPodloga] = useState(3);
-  const [tryb, setTryb] = useState("silnik");
-  const [wl, setWl] = useState(() => Object.fromEntries(SZAB.map((t) => [t.n, true])));
-  const [dzien, setDzien] = useState(12);
-  const [realSales, setRealSales] = useState({});
-  const [realChecks, setRealChecks] = useState({});
-  const [importInfo, setImportInfo] = useState(null);
-  const [korekta, setKorekta] = useState(0);      // ręczna korekta prognozy w %
-  const [oknoTyg, setOknoTyg] = useState(8);      // ile tygodni historii bierzemy pod uwagę
-  const [limitMies, setLimitMies] = useState(4700);
-  const [mgrDoba, setMgrDoba] = useState(32);
-  const [szkol, setSzkol] = useState(162);
-  const fileRef = useRef(null);
-
-  useEffect(() => {
-    if (hydrated.current || !data.salesData) return;
-    const sd = data.salesData;
-    if (sd.sales && Object.keys(sd.sales).length) {
-      setRealSales(sd.sales); setRealChecks(sd.checks || {});
-      const ks = Object.keys(sd.sales).sort();
-      setImportInfo({ n: ks.length, from: ks[0], to: ks[ks.length - 1], checks: Object.keys(sd.checks || {}).length });
-    }
-    if (sd.params) { const p = sd.params; if (p.splh) setSplh(p.splh); if (p.podloga) setPodloga(p.podloga); if (p.tryb) setTryb(p.tryb); if (p.limitMies) setLimitMies(p.limitMies); if (p.mgrDoba) setMgrDoba(p.mgrDoba); if (p.szkol != null) setSzkol(p.szkol); if (p.wl) setWl((w) => ({ ...w, ...p.wl })); }
-    hydrated.current = true;
-  }, [data.salesData]);
-
-  useEffect(() => { if (!hydrated.current) return; data.saveSales({ params: { splh, podloga, tryb, limitMies, mgrDoba, szkol, wl } }); }, [splh, podloga, tryb, limitMies, mgrDoba, szkol, wl]);
-
-  const onImport = async (file) => {
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-      const sales = {}, checks = {};
-      let secFrom = null, secTo = null;
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i] || [];
-        if (!r.some((c) => String(c).trim().toLowerCase() === "business date")) continue;
-        const hdr = r.map((c) => String(c || "").toLowerCase());
-        const cDate = hdr.findIndex((h) => h.includes("business date"));
-        const cGross = hdr.findIndex((h) => h.includes("gross sales"));
-        const cChecks = hdr.findIndex((h) => h.includes("checks count"));
-        for (let j = i + 1; j < rows.length; j++) {
-          const q = rows[j]; if (!q) continue;
-          if (String(q[cDate]).trim().toLowerCase() === "business date") break;
-          const ds = toISOdate(q[cDate]); if (!ds) continue;
-          if (cGross >= 0 && !isNaN(Number(q[cGross]))) sales[ds] = Number(q[cGross]);
-          if (cChecks >= 0 && !isNaN(Number(q[cChecks]))) checks[ds] = Number(q[cChecks]);
-          if (!secFrom || ds < secFrom) secFrom = ds;
-          if (!secTo || ds > secTo) secTo = ds;
-        }
-      }
-      const keys = Object.keys(sales);
-      if (!keys.length) { data.show("Nie znaleziono danych sprzedaży w pliku", "error"); return; }
-      setRealSales((p) => ({ ...p, ...sales })); setRealChecks((p) => ({ ...p, ...checks }));
-      keys.sort(); const last = new Date(keys[keys.length - 1]);
-      setImportInfo({ n: keys.length, from: secFrom, to: secTo, checks: Object.keys(checks).length });
-      data.saveSales({ sales, checks });
-      data.show(`Zaimportowano ${keys.length} dni sprzedaży${Object.keys(checks).length ? " + paragony" : ""}`);
-    } catch (e) { data.show("Błąd importu: " + e.message, "error"); }
-  };
-
-  const yrShifts = useMemo(() => { const ys = data.shifts.map((s) => +s.date.slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
-  const year = yrSel || yrShifts;
-  // ── SILNIK ESTYMACJI: profil dnia tygodnia z okna historii + trend tygodniowy ──
-  const PRED = useMemo(() => {
-    const daty = Object.keys(realSales).sort();
-    if (!daty.length) return null;
-    const ostatnia = daty[daty.length - 1];
-    const granica = new Date(ostatnia); granica.setDate(granica.getDate() - oknoTyg * 7);
-    const okno = daty.filter((d) => new Date(d) >= granica);
-    const uzyte = okno.length ? okno : daty;
-
-    // średnie wg dnia tygodnia w oknie
-    const acc = Array.from({ length: 7 }, () => ({ s: 0, n: 0 }));
-    uzyte.forEach((d) => { const dw = new Date(d).getDay(); acc[dw].s += realSales[d]; acc[dw].n++; });
-    const wd = acc.map((a) => (a.n ? a.s / a.n : null));
-
-    // trend: regresja liniowa na tygodniowych sumach
-    const tyg = {};
-    uzyte.forEach((d) => { const x = new Date(d); const pon = new Date(x); pon.setDate(x.getDate() - ((x.getDay() + 6) % 7)); const k = ymd(pon); tyg[k] = (tyg[k] || 0) + realSales[d]; });
-    const klucze = Object.keys(tyg).sort();
-    const pelne = klucze.length > 2 ? klucze.slice(0, -1) : klucze;   // ostatni tydzień bywa niepełny
-    let trend = 0, pewnosc = 0;
-    if (pelne.length >= 3) {
-      const ys = pelne.map((k) => tyg[k]); const n = ys.length;
-      const sx = (n - 1) * n / 2, sxx = (n - 1) * n * (2 * n - 1) / 6;
-      const sy = ys.reduce((a, b) => a + b, 0), sxy = ys.reduce((a, y, i) => a + i * y, 0);
-      const m = (n * sxy - sx * sy) / (n * sxx - sx * sx);
-      const sr = sy / n;
-      // Im mniej pełnych tygodni, tym ostrożniej ekstrapolujemy trend (tłumienie).
-      pewnosc = Math.max(0, Math.min(1, (n - 2) / 6));
-      if (sr > 0 && isFinite(m)) trend = Math.max(-0.03, Math.min(0.03, (m / sr) * pewnosc));
-    }
-    return { wd, trend, pewnosc, pelneTyg: pelne.length, ostatnia, tygodni: klucze.length, dni: uzyte.length, od: uzyte[0], do: ostatnia };
-  }, [realSales, oknoTyg]);
-
-  const estymuj = (ds) => {
-    if (!PRED) return null;
-    const dw = new Date(ds).getDay();
-    const baza = PRED.wd[dw] != null ? PRED.wd[dw] : PRED.wd.filter((x) => x != null).reduce((a, b, _, arr) => a + b / arr.length, 0);
-    if (!baza) return null;
-    const tygRoznica = (new Date(ds) - new Date(PRED.ostatnia)) / (7 * 864e5);
-    return baza * (1 + PRED.trend * tygRoznica) * (1 + korekta / 100);
-  };
-
-  const wdAvg = useMemo(() => { const acc = Array.from({ length: 7 }, () => ({ s: 0, n: 0 })); Object.entries(realSales).forEach(([ds, v]) => { const dw = new Date(ds).getDay(); acc[dw].s += v; acc[dw].n++; }); return acc.map((a) => (a.n ? a.s / a.n : null)); }, [realSales]);
-  const hasReal = wdAvg.some((x) => x != null);
-
-  const R = useMemo(() => {
-    const dim = new Date(year, mIdx + 1, 0).getDate();
-    const dni = Array.from({ length: dim }, (_, k) => {
-      const d = k + 1, ds = ymd(new Date(year, mIdx, d));
-      const js = new Date(ds).getDay(), dow = (js + 6) % 7; // 0=Pon
-      const realna = realSales[ds];
-      const est = realna == null ? estymuj(ds) : null;
-      const sprzedaz = realna != null ? realna : (est != null ? est : 35000);
-      const jestEst = realna == null;
-      const checks = realChecks[ds] || 0;
-      const akt = data.shifts.filter((s) => s.date === ds && !jestInstruktor(s)).reduce((a, s) => a + godzZ(s), 0);
-      const dem = optZapotrzebowanie(sprzedaz, splh, podloga, tryb, dow);
-      const kc = optZapotrzebowanie(sprzedaz, splh, podloga, "krzywa", dow);
-      const { out, cover } = optKsztaltuj(dem, wl);
-      const he = out.reduce((a, c) => a + c.len, 0) / 2;
-      const { dir, ind } = optRozbicie(sprzedaz, splh, podloga, tryb, dow);
-      // pokrycie wynikające z REALNEGO grafiku (do porównania z obsadą idealną — jak Defecto/Exceso w MAPAL)
-      const coverAkt = new Array(NS).fill(0);
-      data.shifts.filter((x) => x.date === ds && !jestInstruktor(x)).forEach((x) => {
-        const a = wtRel(x.start); const dl = Math.round(wtDur(x.start, x.end) / 30);
-        for (let i = 0; i < dl; i++) { const p = Math.floor(a / 30) + i; if (p >= 0 && p < NS) coverAkt[p]++; }
-      });
-      let excA = 0, dDirA = 0, dIndA = 0;
-      for (let i = 0; i < NS; i++) {
-        const r = coverAkt[i] - dem[i];
-        if (r > 0) excA += r;
-        else if (r < 0) { const t = dir[i] + ind[i] || 1; dDirA += (-r) * (dir[i] / t); dIndA += (-r) * (ind[i] / t); }
-      }
-      let exc = 0, dDir = 0, dInd = 0;
-      for (let i = 0; i < NS; i++) {
-        const r = cover[i] - dem[i];
-        if (r > 0) exc += r;
-        else if (r < 0) { const t = dir[i] + ind[i] || 1; dDir += (-r) * (dir[i] / t); dInd += (-r) * (ind[i] / t); }
-      }
-      const ideal = dem.reduce((a, b) => a + b, 0) / 2;
-      return { d, ds, dow, sprzedaz, jestEst, checks, akt, dem, kc, cover, dir, ind, shifts: out, he, ideal, coverAkt, exc: exc / 2, dDir: dDir / 2, dInd: dInd / 2, excA: excA / 2, dDirA: dDirA / 2, dIndA: dIndA / 2,
-        splhA: akt ? sprzedaz / akt : 0, splhE: he ? sprzedaz / he : 0,
-        mptA: checks ? (akt * 60) / checks : 0, mptE: checks ? (he * 60) / checks : 0 };
-    });
-    const sumS = dni.reduce((a, x) => a + x.sprzedaz, 0), sumA = dni.reduce((a, x) => a + x.akt, 0);
-    const sumE = dni.reduce((a, x) => a + x.he, 0), sumC = dni.reduce((a, x) => a + x.checks, 0);
-    const zalogaMap = {};
-    data.shifts.filter((x) => String(x.date || '').startsWith(`${year}-${String(mIdx + 1).padStart(2, '0')}`) && !jestInstruktor(x)).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); zalogaMap[k] = (zalogaMap[k] || 0) + godzZ(x); });
-    const byDow = [...Array(7)].map((_, i) => { const g = dni.filter((x) => x.dow === i); return { dow: i, n: g.length, s: g.length ? g.reduce((a, x) => a + x.sprzedaz, 0) / g.length : 0, a: g.length ? g.reduce((a, x) => a + x.akt, 0) / g.length : 0, e: g.length ? g.reduce((a, x) => a + x.he, 0) / g.length : 0 }; });
-    return { dni, dim, sumS, sumA, sumE, sumC, byDow, zalogaMap, splhA: sumA ? sumS / sumA : 0, splhE: sumE ? sumS / sumE : 0, mgr: mgrDoba * dim };
-  }, [year, mIdx, realSales, realChecks, wdAvg, PRED, korekta, splh, podloga, tryb, wl, data.shifts, mgrDoba]);
-
-  const D = R.dni[Math.min(dzien, R.dim) - 1] || R.dni[0];
-  const roz = R.sumE - R.sumA;
-  const przesun = R.dni.reduce((a, x) => a + Math.abs(x.he - x.akt), 0);
-  const razem = R.sumE + R.mgr + szkol;
-
-  const TABS = [["miesiac", "Miesiąc"], ["dzien", "Dzień"], ["pulpit", "Pulpit"], ["prognoza", "Prognoza"], ["zaloga", "Załoga"], ["dane", "Dane"], ["param", "Parametry"]];
-  const kosztMies = useMemo(() => {
-    const poId = new Map((data.accounts || []).map((a) => [a.id, a]));
-    const poNazwie = new Map((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((n) => [String(n).toUpperCase().trim(), a])));
-    const pre = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
-    return data.shifts.filter((x) => String(x.date || '').startsWith(pre) && !jestInstruktor(x)).reduce((a, x) => {
-      const k = (x.accountId && poId.get(x.accountId)) || poNazwie.get(String(x.name || '').toUpperCase().trim());
-      return a + kosztGodzin(k, godzZ(x));
-    }, 0);
-  }, [data.shifts, data.accounts, year, mIdx]);
-  const dniEst = R.dni.filter((x) => x.jestEst).length;
-  const sumaEst = R.dni.filter((x) => x.jestEst).reduce((a, x) => a + x.sprzedaz, 0);
-
-  return (
-    <div>
-      <Header title="Optymalizacja" subtitle="Silnik obsady: sprzedaż → zapotrzebowanie w slotach 30 min → szablony zmian → godziny i COL">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-white/80">Miesiąc</span>
-          <select value={mIdx} onChange={(e) => setMIdx(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ color: colors.primary.darkest }}>{months.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
-        </div>
-      </Header>
-      <div className="p-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#F7F5F5", color: colors.primary.dark }}>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files[0] && onImport(e.target.files[0])} />
-          <button onClick={() => fileRef.current && fileRef.current.click()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.medium }}><Upload size={15} />Importuj sprzedaż (Excel)</button>
-          {importInfo ? <span className="text-sm">Wczytano <b>{importInfo.n}</b> dni ({importInfo.from} → {importInfo.to}){importInfo.checks ? `, paragony: ${importInfo.checks} dni` : ""}.</span> : <span className="text-sm">Wgraj raport „Sales Day by Day". Bez importu silnik używa średnich dni tygodnia.</span>}
-          {hasReal && <button onClick={() => { setRealSales({}); setRealChecks({}); setImportInfo(null); data.clearSales(); }} className="ml-auto text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: "white", color: colors.primary.dark }}>Wyczyść</button>}
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-xs">
-          <button onClick={() => setPage && setPage('wt')} className="px-3 py-1.5 rounded-full font-medium" style={{ backgroundColor: 'white', color: colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>← Siatka grafiku (planowanie)</button>
-          <button onClick={() => setPage && setPage('plan')} className="px-3 py-1.5 rounded-full font-medium" style={{ backgroundColor: 'white', color: colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>Budżet i koszty pracy (COL) →</button>
-        </div>
-        {dniEst > 0 && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#F1E4E8", color: "#A7465F" }}>
-            <span className="text-sm"><b>Prognoza</b> — {dniEst} z {R.dim} dni tego miesiąca nie ma jeszcze danych sprzedaży, więc są <b>estymowane</b>{PRED ? ` na podstawie ${PRED.dni} dni historii (${PRED.od} → ${PRED.do})` : ""}.</span>
-            <button onClick={() => setTab("prognoza")} className="ml-auto text-xs px-3 py-1.5 rounded-lg font-medium text-white" style={{ backgroundColor: colors.primary.medium }}>Ustawienia prognozy</button>
-          </div>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <OptKpi label="Godziny crew — grafik" value={f0(R.sumA) + " h"} sub={`SPLH ${f0(R.splhA)} zł/rbh`} />
-          <OptKpi label="Godziny crew — silnik" value={f0(R.sumE) + " h"} sub={`SPLH ${f0(R.splhE)} zł/rbh`} tone={roz < 0 ? OC.ok : OC.warn} />
-          <OptKpi label="Różnica" value={`${roz >= 0 ? "+" : "−"}${f0(Math.abs(roz))} h`} tone={roz < 0 ? OC.ok : OC.warn} sub={`${R.sumA ? (roz / R.sumA * 100).toFixed(1).replace(".", ",") : 0}% · przesunięcie ${f0(przesun)} h`} />
-          <OptKpi label="Limit miesiąca" value={`${f0(limitMies)} h`} sub={`crew ${f0(R.sumE)} + mgr ${f0(R.mgr)} + szkol. ${szkol} = ${f0(razem)}`} tone={razem > limitMies ? OC.bad : OC.ok} />
-          <OptKpi label="Koszt pracy — grafik (szac.)" value={`${f0(kosztMies)} zł`} sub={`${R.sumS ? (kosztMies / R.sumS * 100).toFixed(1).replace('.', ',') : 0}% sprzedaży · pełny COL w module Budżet`} tone={R.sumS && kosztMies / R.sumS > 0.2 ? OC.warn : undefined} />
-        </div>
-
-        <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: colors.primary.bgLight }}>
-          {TABS.map(([id, l]) => <button key={id} onClick={() => setTab(id)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: tab === id ? colors.primary.medium : "transparent", color: tab === id ? "white" : colors.primary.dark }}>{l}</button>)}
-        </div>
-
-        {tab === "miesiac" && (
-          <Sekcja kolor={colors.primary.medium} tytul={`Dzień po dniu — ${months[mIdx]} ${year}`}>
-            <div className="overflow-x-auto"><div className="min-w-[760px]">
-              <div className="grid grid-cols-[54px_1fr_1fr_1fr_1fr_1fr_86px] gap-2 px-2 py-2 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}>
-                <span>Dzień</span><span className="text-right">Sprzedaż</span><span className="text-right">Grafik h</span><span className="text-right">Silnik h</span><span className="text-right">Δ h</span><span className="text-right">SPLH silnik</span><span className="text-center">Status</span>
-              </div>
-              {R.dni.map((x) => { const d = x.he - x.akt, over = d > 1.5, under = d < -1.5; return (
-                <div key={x.d} className="grid grid-cols-[54px_1fr_1fr_1fr_1fr_1fr_86px] gap-2 px-2 py-1.5 text-sm items-center border-b cursor-pointer hover:bg-slate-50" style={{ borderColor: "#EDE3E6" }} onClick={() => { setDzien(x.d); setTab("dzien"); }}>
-                  <span style={{ color: colors.primary.dark }}>{D3[x.dow]} {x.d}</span>
-                  <span className="text-right" style={{ color: colors.primary.darkest }}>{f0(x.sprzedaz)}</span>
-                  <span className="text-right" style={{ color: colors.primary.dark }}>{fH1(x.akt)}</span>
-                  <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
-                  <span className="text-right font-medium" style={{ color: over ? OC.warn : under ? OC.ok : "#A38D95" }}>{d >= 0 ? "+" : ""}{d.toFixed(1)}</span>
-                  <span className="text-right" style={{ color: colors.primary.dark }}>{f0(x.splhE)}</span>
-                  <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: over ? "#F1E4E8" : under ? "#F1E4E8" : "#EDE3E6", color: over ? OC.warn : under ? OC.ok : "#71656A" }}>{over ? "dołóż" : under ? "oszczędność" : "OK"}</span></span>
-                </div>); })}
-            </div></div>
-          </Sekcja>
-        )}
-
-        {tab === "dzien" && D && (<>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm" style={{ color: colors.primary.light }}>Dzień:</span>
-            <select value={dzien} onChange={(e) => setDzien(Number(e.target.value))} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>{R.dni.map((x) => <option key={x.d} value={x.d}>{D3[x.dow]} {x.d} · {f0(x.sprzedaz)} zł</option>)}</select>
-            <div className="flex gap-1 ml-auto">{[["silnik", "Silnik (ze sprzedaży)"], ["krzywa", "Krzywa celu"]].map(([id, l]) => <button key={id} onClick={() => setTryb(id)} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ backgroundColor: tryb === id ? OC.silnik : "white", color: tryb === id ? "white" : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{l}</button>)}</div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <OptKpi label="Sprzedaż" value={`${f0(D.sprzedaz)} zł`} sub={D.checks ? `${f0(D.checks)} paragonów` : "—"} />
-            <OptKpi label="Grafik / Silnik" value={`${fH1(D.akt)} / ${fH1(D.he)}`} sub={`Δ ${(D.he - D.akt).toFixed(1)} h`} tone={D.he < D.akt ? OC.ok : OC.warn} />
-            <OptKpi label="SPLH silnika" value={f0(D.splhE)} sub={`grafik ${f0(D.splhA)}`} />
-            <OptKpi label="MPT silnika" value={D.mptE ? D.mptE.toFixed(2) : "—"} sub={D.mptA ? `grafik ${D.mptA.toFixed(2)}` : "brak paragonów"} />
-          </div>
-          <Sekcja kolor={OC.silnik} tytul="Zapotrzebowanie vs obsada (sloty 30 min)"><OptWidokDnia dem={D.dem} kc={D.kc} cover={D.cover} shifts={D.shifts} /></Sekcja>
-          <Sekcja kolor={OC.obsada} tytul={`Proponowane zmiany (${D.shifts.length}) — ${fH1(D.he)}`}>
-            <div className="flex flex-wrap gap-2">{D.shifts.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-lg text-white font-medium" style={{ backgroundColor: c.t.kol }}>{c.t.n}</span>)}</div>
-          </Sekcja>
-        </>)}
-
-        {tab === "pulpit" && (<>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <OptKpi label="Niedobór pracy bezpośredniej" value={`${f1(R.dni.reduce((a, x) => a + x.dDirA, 0))} h`} tone={PC.dir} sub="grafik vs obsada idealna" />
-            <OptKpi label="Niedobór pracy pośredniej" value={`${f1(R.dni.reduce((a, x) => a + x.dIndA, 0))} h`} tone={PC.ind} sub="prep i sprzątanie" />
-            <OptKpi label="Nadmiar obsady" value={`${f1(R.dni.reduce((a, x) => a + x.excA, 0))} h`} tone={PC.plan} sub="godziny ponad krzywą" />
-            <OptKpi label="Obsada idealna" value={`${f0(R.dni.reduce((a, x) => a + x.ideal, 0))} h`} sub="suma zapotrzebowania" />
-          </div>
-
-          <Karta tytul="Rozbieżność miesiąca" podtytul="grafik vs obsada idealna">
-            <div className="flex flex-wrap justify-around gap-2">
-              <Zegar label="Niedobór pracy bezpośredniej" wartosc={R.dni.reduce((a, x) => a + x.dDirA, 0)} max={300} kolor={PC.dir} />
-              <Zegar label="Niedobór pracy pośredniej" wartosc={R.dni.reduce((a, x) => a + x.dIndA, 0)} max={300} kolor={PC.ind} />
-              <Zegar label="Nadmiar obsady" wartosc={R.dni.reduce((a, x) => a + x.excA, 0)} max={600} kolor={PC.plan} />
-            </div>
-            <div className="text-xs text-center mt-1" style={{ color: PC.mute }}>Zsumowane w jedną liczbę te trzy wskaźniki znoszą się nawzajem — dlatego trzymamy je osobno.</div>
-          </Karta>
-
-          <Karta tytul="Niedobór i nadmiar" podtytul="wg dni tygodnia, w godzinach"
-            prawo={<span style={{ color: PC.mute }}><span style={{ color: PC.dir }}>■</span> bezpośrednia <span style={{ color: PC.ind }}>■</span> pośrednia <span style={{ color: PC.plan }}>■</span> nadmiar</span>}>
-            <Rozbieznosc procent={false} grupy={[...Array(7)].map((_, i) => {
-              const g = R.dni.filter((x) => x.dow === i);
-              const dDir = g.reduce((a, x) => a + x.dDirA, 0), dInd = g.reduce((a, x) => a + x.dIndA, 0);
-              const exc = g.reduce((a, x) => a + x.excA, 0), ideal = g.reduce((a, x) => a + x.ideal, 0) || 1;
-              return { nazwa: D3[i], def: dDir + dInd, dDir, dInd, exc, pDef: (dDir + dInd) / ideal * 100, pDir: dDir / ideal * 100, pInd: dInd / ideal * 100, pExc: exc / ideal * 100 };
-            })} />
-          </Karta>
-
-          <Karta tytul="Ewolucja sprzedaży narastająco" podtytul="odchylenie od średniej dziennej, skumulowane"
-            prawo={<span style={{ color: PC.mute }}>{months[mIdx]} {year} · {f0(R.sumS)} zł</span>}>
-            <Ewolucja dni={R.dni} />
-          </Karta>
-
-          <Karta tytul={`Przebieg dnia — ${DNI_PELNE[D.dow]} ${D.d}`} podtytul={`${f0(D.sprzedaz)} zł${D.checks ? ` · ${f0(D.checks)} transakcji` : ''}`}>
-            <div className="flex gap-1 flex-wrap mb-2">
-              {R.dni.map((x) => (
-                <button key={x.d} onClick={() => setDzien(x.d)} className="px-1.5 py-0.5 rounded font-mono" style={{ fontSize: 10, background: x.d === dzien ? PC.ink : PC.bg, color: x.d === dzien ? '#fff' : x.dow >= 5 ? PC.bad : PC.mute, border: `1px solid ${x.d === dzien ? PC.ink : PC.line}` }}>{x.d}</button>))}
-            </div>
-            <Sroddzienny D={D} nakladka="brak" />
-            <div className="flex gap-4 text-xs mt-1" style={{ color: PC.mute }}>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 inline-block" style={{ background: PC.ind }} />praca pośrednia</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 inline-block" style={{ background: PC.dir }} />praca bezpośrednia</span>
-              <span className="flex items-center gap-1"><span className="w-3 inline-block" style={{ height: 2, background: PC.plan }} />obsada zaplanowana</span>
-            </div>
-          </Karta>
-
-          <div className="grid md:grid-cols-2 gap-2">
-            <Karta tytul="Ranking dni tygodnia" podtytul="SPLH z grafiku">
-              <Ranking jednostka="zł/rbh" dane={[...Array(7)].map((_, i) => { const g = R.dni.filter((x) => x.dow === i); const sh = g.reduce((a, x) => a + x.akt, 0); return { n: D3[i], v: sh ? g.reduce((a, x) => a + x.sprzedaz, 0) / sh : 0 }; })} />
-            </Karta>
-            <Karta tytul="Struktura sprzedaży wg pory dnia" podtytul="z profilu godzinowego">
-              <Piers czesci={[
-                { n: 'Poranek 07–11', v: [7, 8, 9, 10].reduce((a, h) => a + ZLH[h], 0), kol: '#DFC9D1' },
-                { n: 'Lunch 11–15', v: [11, 12, 13, 14].reduce((a, h) => a + ZLH[h], 0), kol: PC.accent },
-                { n: 'Popołudnie 15–19', v: [15, 16, 17, 18].reduce((a, h) => a + ZLH[h], 0), kol: PC.plan },
-                { n: 'Wieczór 19–23', v: [19, 20, 21, 22, 23].reduce((a, h) => a + ZLH[h], 0), kol: PC.cel },
-              ]} />
-            </Karta>
-          </div>
-
-          <Karta tytul="Godziny idealne vs zaplanowane" podtytul="średnia na dzień tygodnia, linia = wykonanie w %"
-            prawo={<span style={{ color: PC.mute }}><span style={{ color: PC.cel }}>■</span> idealne <span style={{ color: PC.plan }}>■</span> w grafiku <span style={{ color: PC.bad }}>—</span> %</span>}>
-            <SlupkiLinia dane={[...Array(7)].map((_, i) => { const g = R.dni.filter((x) => x.dow === i) ; const n = g.length || 1; return { n: D3[i], a: g.reduce((x, y) => x + y.ideal, 0) / n, b: g.reduce((x, y) => x + y.akt, 0) / n }; })} />
-          </Karta>
-
-          <Karta tytul="Rozkład załogi wg godzin miesiąca" podtytul={`${Object.keys(R.zalogaMap).length} osób`}>
-            <Histogram kubelki={(() => { const h = Object.values(R.zalogaMap); return [
-              { l: '<40 h', n: h.filter((x) => x < 40).length },
-              { l: '40–80', n: h.filter((x) => x >= 40 && x < 80).length },
-              { l: '80–120', n: h.filter((x) => x >= 80 && x < 120).length },
-              { l: '120–160', n: h.filter((x) => x >= 120 && x < 160).length },
-              { l: '160–200', n: h.filter((x) => x >= 160 && x < 200).length },
-              { l: '200+', n: h.filter((x) => x >= 200).length }]; })()} />
-          </Karta>
-        </>)}
-
-        {tab === "prognoza" && (<>
-          <ForecastQuality data={data} />
-          {!PRED ? (
-            <Sekcja kolor="#A7465F" tytul="Brak historii sprzedaży">
-              <p className="text-sm" style={{ color: colors.primary.dark }}>Aby prognozować kolejny miesiąc, zaimportuj najpierw raport „Sales Day by Day" z co najmniej kilku tygodni. Im dłuższa historia, tym stabilniejszy profil dni tygodnia i trend.</p>
-            </Sekcja>
-          ) : (<>
-            <Sekcja kolor={colors.primary.medium} tytul="Podstawa prognozy">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <OptKpi label="Dni historii" value={f0(PRED.dni)} sub={`${PRED.od} → ${PRED.do}`} />
-                <OptKpi label="Tygodnie w próbie" value={f0(PRED.tygodni)} />
-                <OptKpi label="Trend tygodniowy" value={`${PRED.trend >= 0 ? "+" : ""}${(PRED.trend * 100).toFixed(2).replace(".", ",")}%`} tone={PRED.trend >= 0 ? OC.ok : OC.warn} sub={`pewność ${Math.round(PRED.pewnosc * 100)}% · ${PRED.pelneTyg} pełnych tyg.`} />
-                <OptKpi label="Dni estymowane" value={`${f0(dniEst)} / ${R.dim}`} sub={dniEst ? `${f0(sumaEst)} zł prognozy` : "miesiąc ma pełne dane"} />
-              </div>
-            </Sekcja>
-
-            <Sekcja kolor="#2B171E" tytul="Sterowanie prognozą">
-              <div className="grid md:grid-cols-2 gap-6">
-                <OptSuw label="Okno historii" value={oknoTyg} min={2} max={26} step={1} unit="tyg." onChange={setOknoTyg} />
-                <OptSuw label="Ręczna korekta (np. wydarzenie, remont)" value={korekta} min={-30} max={30} step={1} unit="%" onChange={setKorekta} />
-              </div>
-              <p className="text-xs text-slate-400 mt-3">Krótsze okno szybciej reaguje na zmiany (nowe menu, sezon), dłuższe jest stabilniejsze. Korekta przesuwa całą prognozę w górę lub w dół.</p>
-            </Sekcja>
-
-            <Sekcja kolor="#5A3542" tytul="Średnia sprzedaż wg dnia tygodnia (z okna historii)">
-              <BPBars unit="zł" items={[1, 2, 3, 4, 5, 6, 0].map((js) => ({ label: D3[(js + 6) % 7], value: PRED.wd[js] || 0, n: 0, color: (js === 0 || js === 5 || js === 6) ? OC.silnik : colors.primary.medium }))} />
-            </Sekcja>
-
-            <Sekcja kolor={OC.silnik} tytul={`Prognoza dzienna — ${months[mIdx]} ${year}`}>
-              <BPLine labels={R.dni.map((x) => String(x.d))} unit="" series={[{ name: "Sprzedaż (dane + prognoza)", color: OC.silnik, data: R.dni.map((x) => x.sprzedaz), fill: true }]} />
-              <div className="overflow-x-auto mt-3"><div className="min-w-[560px]">
-                <div className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Dzień</span><span className="text-right">Sprzedaż zł</span><span className="text-right">Rekom. h</span><span className="text-right">Plan h</span><span className="text-center">Źródło</span></div>
-                {R.dni.map((x) => (
-                  <div key={x.d} className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-sm items-center border-b" style={{ borderColor: "#EDE3E6" }}>
-                    <span style={{ color: colors.primary.dark }}>{D3[x.dow]} {x.d}</span>
-                    <span className="text-right" style={{ color: colors.primary.darkest }}>{f0(x.sprzedaz)}</span>
-                    <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
-                    <span className="text-right" style={{ color: colors.primary.dark }}>{fH1(x.akt)}</span>
-                    <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: x.jestEst ? "#F1E4E8" : "#F1E4E8", color: x.jestEst ? "#A7465F" : "#5A3542" }}>{x.jestEst ? "prognoza" : "dane"}</span></span>
-                  </div>
-                ))}
-              </div></div>
-            </Sekcja>
-          </>)}
-        </>)}
-
-        {tab === "zaloga" && (
-          <Sekcja kolor="#2B171E" tytul={`Załoga — godziny pracowników w miesiącu (${months[mIdx]} ${year})`}>
-            {(() => {
-              const pre = `${year}-${String(mIdx + 1).padStart(2, "0")}`;
-              const mies = data.shifts.filter((s) => (s.date || "").slice(0, 7) === pre && !jestInstruktor(s));
-              // godziny po IDENTYFIKATORZE KONTA; zapasowo po nazwie w grafiku / aliasach
-              const poId = {}, poNazwie = {};
-              mies.forEach((s) => {
-                if (s.accountId) poId[s.accountId] = (poId[s.accountId] || 0) + godzZ(s);
-                else { const k = String(s.name || "").toUpperCase().trim(); poNazwie[k] = (poNazwie[k] || 0) + godzZ(s); }
-              });
-              const wiersze = (data.accounts || []).map((a) => {
-                const klucze = [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim());
-                const h = (poId[a.id] || 0) + klucze.reduce((x, k) => x + (poNazwie[k] || 0), 0);
-                const zmian = mies.filter((s) => s.accountId === a.id || klucze.includes(String(s.name || "").toUpperCase().trim())).length;
-                return { id: a.id, name: a.name, funkcja: a.funkcja, instruktor: a.instruktor, grafik: a.grafikName, h, zmian, koszt: kosztGodzin(a, h) };
-              }).sort((a, b) => b.h - a.h || a.name.localeCompare(b.name));
-              const przypisaneNazwy = new Set((data.accounts || []).flatMap((a) => [a.grafikName, ...(a.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim())));
-              const bezKonta = Object.entries(poNazwie).filter(([k]) => !przypisaneNazwy.has(k)).sort((a, b) => b[1] - a[1]);
-              const max = Math.max(1, ...wiersze.map((x) => x.h));
-              const sumaH = wiersze.reduce((a, x) => a + x.h, 0);
-              if (!mies.length) return <p className="text-slate-400 text-sm">Brak grafiku w tym miesiącu.</p>;
-              return (<>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <OptKpi label="Pracowników ze zmianami" value={f0(wiersze.filter((x) => x.h > 0).length)} sub={`z ${wiersze.length} kont`} />
-                  <OptKpi label="Godziny przypisane" value={`${f0(sumaH)} h`} />
-                  <OptKpi label="Koszt (szac.)" value={`${f0(wiersze.reduce((a, x) => a + x.koszt, 0))} zł`} />
-                  <OptKpi label="Bez konta" value={f0(bezKonta.length)} sub={bezKonta.length ? `${f0(bezKonta.reduce((a, x) => a + x[1], 0))} h poza rozliczeniem` : "wszystko przypisane"} tone={bezKonta.length ? OC.warn : OC.ok} />
-                </div>
-                <div className="space-y-1.5">
-                  {wiersze.filter((x) => x.h > 0).map((w) => (
-                    <div key={w.id}>
-                      <div className="flex items-center justify-between text-xs mb-0.5 gap-2">
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="font-medium truncate" style={{ color: colors.primary.darkest }}>{w.name}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{funkcjaLabel(w.funkcja)}</span>
-                          {w.instruktor && <span className="shrink-0">🎓</span>}
-                        </span>
-                        <span className="shrink-0"><b style={{ color: colors.primary.darkest }}>{fH1(w.h)}</b><span className="text-slate-400"> · {w.zmian} zm. · {f0(w.koszt)} zł</span></span>
-                      </div>
-                      <div className="h-2.5 rounded" style={{ backgroundColor: colors.primary.bgLight }}><div className="h-2.5 rounded" style={{ width: `${w.h / max * 100}%`, backgroundColor: w.h > 200 ? OC.warn : colors.primary.medium }} /></div>
-                    </div>
-                  ))}
-                  <p className="text-xs text-slate-400 mt-2">Suma: {fH1(sumaH)} · pracowników ze zmianami: {wiersze.filter((x) => x.h > 0).length}</p>
-                  {wiersze.some((x) => x.h === 0) && <p className="text-xs text-slate-300">Bez zmian w tym miesiącu: {wiersze.filter((x) => x.h === 0).map((x) => x.name).join(", ")}</p>}
-                </div>
-                {bezKonta.length > 0 && (
-                  <div className="mt-4 rounded-xl p-3" style={{ backgroundColor: "#F5E9ED" }}>
-                    <p className="text-xs font-semibold mb-1.5" style={{ color: "#A7465F" }}>Zmiany bez konta — nie liczą się do pracowników powyżej. Uzupełnij „Nazwę w grafiku" lub alias w module Pracownicy i kliknij „Przypisz zmiany do kont".</p>
-                    <div className="flex flex-wrap gap-1.5">{bezKonta.map(([k, h]) => <span key={k} className="text-xs px-2 py-1 rounded-lg font-mono" style={{ backgroundColor: "white", color: "#A7465F" }}>{k} <span className="opacity-60">{fH1(h)}</span></span>)}</div>
-                  </div>
-                )}
-              </>);
-            })()}
-          </Sekcja>
-        )}
-
-        {tab === "dane" && (<>
-          {(() => { const sd = data.salesData || {}; const braki = sd.braki || []; const meta = sd.meta; return (
-            <div className="rounded-xl p-3 mb-3 text-xs flex flex-wrap items-center gap-x-5 gap-y-1" style={{ backgroundColor: braki.length ? '#F1E4E8' : '#F1E4E8', color: braki.length ? '#A7465F' : '#741334' }}>
-              <b>Jakość danych sprzedaży (P4):</b>
-              {meta ? <span>import v{meta.wersja} · {new Date(meta.importedAt).toLocaleString('pl-PL')} · {meta.source} · {meta.importedBy}</span> : <span>brak zarejestrowanych importów</span>}
-              {braki.length ? <span>braki w ostatnich 30 dniach: <b>{braki.length}</b> ({braki.slice(0, 5).join(', ')}{braki.length > 5 ? '…' : ''})</span> : <span>komplet danych za ostatnie 30 dni</span>}
-            </div>
-          ); })()}
-          <Sekcja kolor={colors.primary.medium} tytul="Średnie wg dnia tygodnia">
-            <div className="overflow-x-auto"><div className="min-w-[520px]">
-              <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 px-2 py-2 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Dzień</span><span className="text-right">Śr. sprzedaż</span><span className="text-right">Śr. grafik h</span><span className="text-right">Śr. silnik h</span><span className="text-right">Δ h</span></div>
-              {R.byDow.map((b) => (<div key={b.dow} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 px-2 py-1.5 text-sm border-b" style={{ borderColor: "#EDE3E6" }}>
-                <span style={{ color: colors.primary.dark }}>{D3[b.dow]}</span><span className="text-right">{f0(b.s)} zł</span><span className="text-right">{fH1(b.a)}</span><span className="text-right" style={{ color: OC.silnik }}>{fH1(b.e)}</span>
-                <span className="text-right font-medium" style={{ color: b.e - b.a > 0 ? OC.warn : OC.ok }}>{(b.e - b.a) >= 0 ? "+" : ""}{(b.e - b.a).toFixed(1)}</span></div>))}
-            </div></div>
-          </Sekcja>
-          <Sekcja kolor="#5A3542" tytul="Profil godzinowy sprzedaży (udział doby)">
-            <div className="flex items-end gap-1 h-32">{Object.entries(ZLH).map(([h, v]) => (<div key={h} className="flex-1 flex flex-col items-center justify-end">
-              <div className="w-full rounded-t" style={{ height: `${v / Math.max(...Object.values(ZLH)) * 100}%`, backgroundColor: PIK.includes(+h) ? OC.silnik : colors.primary.bg }} />
-              <span className="text-[9px] mt-1" style={{ color: colors.primary.light }}>{h}</span></div>))}</div>
-            <p className="text-xs text-slate-400 mt-2">Rozkład z historii micros — steruje podziałem dziennej sprzedaży na sloty. Docelowo: zasilany realnym eksportem godzinowym.</p>
-          </Sekcja>
-        </>)}
-
-        {tab === "param" && (
-          <div className="grid md:grid-cols-2 gap-4">
-            <Sekcja kolor={OC.silnik} tytul="Parametry silnika">
-              <div className="space-y-4">
-                <OptSuw label="Docelowy SPLH" value={splh} min={280} max={600} step={10} unit="zł/rbh" onChange={setSplh} />
-                <OptSuw label="Podłoga obsady (min. osób)" value={podloga} min={1} max={5} step={1} unit="os." onChange={setPodloga} />
-                <OptSuw label="Limit godzin / miesiąc" value={limitMies} min={3000} max={6000} step={50} unit="h" onChange={setLimitMies} />
-                <OptSuw label="Godziny MGR / doba" value={mgrDoba} min={16} max={48} step={1} unit="h" onChange={setMgrDoba} />
-                <OptSuw label="Godziny szkoleniowe / m-c" value={szkol} min={0} max={400} step={2} unit="h" onChange={setSzkol} />
-                <div><p className="text-xs font-medium mb-1" style={{ color: colors.primary.dark }}>Tryb zapotrzebowania</p>
-                  <div className="flex gap-1">{[["silnik", "Ze sprzedaży (SPLH)"], ["krzywa", "Krzywa celu (KC)"]].map(([id, l]) => <button key={id} onClick={() => setTryb(id)} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ backgroundColor: tryb === id ? OC.silnik : "white", color: tryb === id ? "white" : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{l}</button>)}</div></div>
-              </div>
-            </Sekcja>
-            <Sekcja kolor={OC.obsada} tytul="Szablony zmian (włącz/wyłącz)">
-              <div className="space-y-1">{SZAB.map((t) => (
-                <label key={t.n} className="flex items-center gap-2 text-sm py-1 cursor-pointer">
-                  <input type="checkbox" checked={!!wl[t.n]} onChange={(e) => setWl((p) => ({ ...p, [t.n]: e.target.checked }))} />
-                  <span className="w-3 h-3 rounded" style={{ backgroundColor: t.kol }} />
-                  <span style={{ color: colors.primary.dark }}>{t.n}</span>
-                  <span className="ml-auto text-xs text-slate-400">{t.do - t.od} h</span>
-                </label>))}</div>
-            </Sekcja>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-
-
-
-// ===================== PULPIT WSKAŹNIKÓW (wykresy wzorowane na GIR/MAPAL) =====================
-const PC = { bg: '#F5F4F0', card: '#FFFFFF', line: '#DEDCD5', ink: '#1C1E21', mute: '#8C8A83', accent: '#A7465F', cel: '#741334', plan: '#5A3542', dir: '#B5482F', ind: '#A7465F', bad: '#B94352', ok: '#5A3542' };
-const DNI_PELNE = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
-const f1 = (v) => (v || 0).toFixed(1).replace('.', ',');
-const hmL = (i) => String(Math.floor(((S0 * 60 + i * 30) % 1440) / 60)).padStart(2, '0');
-
-/* 1. Ewolucja — wariancja narastająca, pole zielone nad zerem / czerwone pod */
-function Ewolucja({ dni }) {
-  const W = 720, H = 190, PL = 34, PB = 22, PT = 8;
-  const plan = dni.reduce((a, x) => a + x.sprzedaz, 0) / 31;
-  let cs = 0, cp = 0;
-  const pts = dni.map((x, i) => {
-    cs += x.sprzedaz; cp += plan;
-    return { i, v: ((cs - cp) / cp) * 100, d: x.d };
-  });
-  const mx = Math.max(3, ...pts.map((p) => Math.abs(p.v))) * 1.15;
-  const X = (i) => PL + (i * (W - PL - 8)) / 30;
-  const Y = (v) => PT + ((H - PT - PB) / 2) * (1 - v / mx);
-  const y0 = Y(0);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 560 }}>
-      {[-mx, -mx / 2, 0, mx / 2, mx].map((v, i) => (<g key={i}>
-        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={v === 0 ? PC.mute : PC.line} />
-        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7.5" fill={PC.mute}>{v.toFixed(0)}%</text></g>))}
-      {pts.slice(1).map((p, k) => {
-        const a = pts[k], dodatnie = (a.v + p.v) / 2 >= 0;
-        return <polygon key={k} points={`${X(a.i)},${y0} ${X(a.i)},${Y(a.v)} ${X(p.i)},${Y(p.v)} ${X(p.i)},${y0}`}
-          fill={dodatnie ? PC.ok : PC.bad} opacity=".28" />;
-      })}
-      <polyline points={pts.map((p) => `${X(p.i)},${Y(p.v)}`).join(" ")} fill="none" stroke={PC.ink} strokeWidth="1.6" />
-      {pts.map((p, i) => i % 5 === 0 || i === 30 ? (
-        <g key={i}><circle cx={X(p.i)} cy={Y(p.v)} r="2.4" fill={p.v >= 0 ? PC.ok : PC.bad} />
-          <text x={X(p.i)} y={H - 6} fontSize="7" textAnchor="middle" fill={PC.mute}>{p.d}</text></g>) : null)}
-      <text x={W - 8} y={Y(pts[30].v) - 6} fontSize="9" textAnchor="end" fill={pts[30].v >= 0 ? PC.ok : PC.bad}>
-        {pts[30].v >= 0 ? "+" : ""}{f1(pts[30].v)}%</text>
-    </svg>
-  );
-}
-
-/* 2. Zegar półkolisty */
-function Zegar({ label, wartosc, max, kolor }) {
-  const W = 160, H = 96, cx = 80, cy = 80, r = 58;
-  const frac = Math.max(0, Math.min(1, wartosc / max));
-  const pol = (a) => [cx + r * Math.cos(Math.PI * (1 - a)), cy - r * Math.sin(Math.PI * (1 - a))];
-  const [x1, y1] = pol(0), [x2, y2] = pol(frac);
-  const [bx, by] = pol(1);
-  return (
-    <div className="flex flex-col items-center">
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: 150 }}>
-        <path d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${bx} ${by}`} fill="none" stroke={PC.line} strokeWidth="11" />
-        <path d={`M ${x1} ${y1} A ${r} ${r} 0 ${frac > 0.5 ? 1 : 0} 1 ${x2} ${y2}`} fill="none" stroke={kolor} strokeWidth="11" strokeLinecap="round" />
-        <text x={cx} y={cy - 12} textAnchor="middle" fontSize="20" fill={PC.ink} fontFamily="ui-monospace,monospace">{f1(wartosc)}</text>
-        <text x={cx} y={cy + 2} textAnchor="middle" fontSize="8" fill={PC.mute}>godzin</text>
-        <text x={12} y={cy + 10} fontSize="7" fill={PC.mute}>0</text>
-        <text x={W - 12} y={cy + 10} fontSize="7" textAnchor="end" fill={PC.mute}>{max}</text>
-      </svg>
-      <div className="text-xs text-center" style={{ color: PC.mute }}>{label}</div>
-    </div>
-  );
-}
-
-/* 3. Rozbieżność — słupki rozchodzące się od zera */
-function Rozbieznosc({ grupy, procent }) {
-  const W = 700, rowH = 30, PL = 46, H = grupy.length * rowH + 22;
-  const mx = Math.max(...grupy.map((g) => Math.max(procent ? g.pDef : g.def, procent ? g.pExc : g.exc))) * 1.1 || 1;
-  const mid = PL + (W - PL - 16) / 2, half = (W - PL - 20) / 2;
-  const sc = (v) => (v / mx) * half;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 540 }}>
-      <line x1={mid} x2={mid} y1={0} y2={H - 16} stroke={PC.mute} strokeWidth=".8" />
-      {grupy.map((g, i) => {
-        const y = i * rowH + 6;
-        const dDir = sc(procent ? g.pDir : g.dDir), dInd = sc(procent ? g.pInd : g.dInd), e = sc(procent ? g.pExc : g.exc);
-        const jed = procent ? "%" : "h";
-        return (<g key={i}>
-          <text x={2} y={y + 13} fontSize="9" fill={PC.mute}>{g.nazwa}</text>
-          <rect x={mid - dDir - dInd} y={y} width={dInd} height={17} fill={PC.ind} />
-          <rect x={mid - dDir} y={y} width={dDir} height={17} fill={PC.dir} />
-          <rect x={mid} y={y} width={e} height={17} fill={PC.plan} opacity=".8" />
-          {dDir + dInd > 3 && <text x={mid - dDir - dInd - 4} y={y + 12} fontSize="8" textAnchor="end" fill={PC.bad}>
-            −{f1(procent ? g.pDef : g.def)}{jed}</text>}
-          {e > 3 && <text x={mid + e + 4} y={y + 12} fontSize="8" fill={PC.plan}>+{f1(procent ? g.pExc : g.exc)}{jed}</text>}
-        </g>);
-      })}
-      <text x={PL} y={H - 3} fontSize="7.5" fill={PC.mute}>niedobór</text>
-      <text x={W - 8} y={H - 3} fontSize="7.5" textAnchor="end" fill={PC.mute}>nadmiar</text>
-    </svg>
-  );
-}
-
-/* 4. Wykres śróddzienny — słupki pośrednia/bezpośrednia + linia obsady + nakładki */
-function Sroddzienny({ D, nakladka }) {
-  const W = 720, H = 210, PL = 26, PB = 20, PT = 8;
-  const cw = (W - PL - 8) / NS;
-  const mxY = Math.max(...D.dem, ...D.cover) + 1;
-  const Y = (v) => PT + (H - PT - PB) * (1 - v / mxY);
-  const sprz = new Array(NS).fill(0);
-  for (let h = 7; h <= 23; h++) { const v = ZLH[h] / 2; sprz[sl(h)] = v; sprz[sl(h) + 1] = v; }
-  const trans = sprz.map((v) => v / 44.38);
-  const nak = nakladka === "sprzedaz" ? sprz : nakladka === "transakcje" ? trans : null;
-  const mxN = nak ? Math.max(...nak) * 1.15 : 1;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 620 }}>
-      {[...Array(mxY + 1)].map((_, v) => v % 2 === 0 ? (<g key={v}>
-        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
-        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{v}</text></g>) : null)}
-      {D.dir.map((v, i) => v > 0 ? <rect key={`d${i}`} x={PL + i * cw + .5} y={Y(v)} width={cw - 1} height={Y(0) - Y(v)} fill={PC.dir} /> : null)}
-      {D.ind.map((v, i) => v > 0 ? <rect key={`i${i}`} x={PL + i * cw + .5} y={Y(v)} width={cw - 1} height={Y(0) - Y(v)} fill={PC.ind} opacity=".95" /> : null)}
-      <polyline points={D.cover.flatMap((v, i) => [`${PL + i * cw},${Y(v)}`, `${PL + (i + 1) * cw},${Y(v)}`]).join(" ")}
-        fill="none" stroke={PC.plan} strokeWidth="1.8" />
-      {D.cover.map((v, i) => i % 2 === 0 && v > 0 ? <circle key={i} cx={PL + i * cw + cw} cy={Y(v)} r="1.7" fill={PC.plan} /> : null)}
-      {nak && <polyline points={nak.map((v, i) => `${PL + i * cw + cw / 2},${PT + (H - PT - PB) * (1 - v / mxN)}`).join(" ")}
-        fill="none" stroke={PC.cel} strokeWidth="1.3" strokeDasharray="3 2" />}
-      {[...Array(NS)].map((_, i) => i % 4 === 0 ? <text key={i} x={PL + i * cw} y={H - 6} fontSize="7" fill={PC.mute}>{hmL(i)}</text> : null)}
-    </svg>
-  );
-}
-
-/* 5. Ranking z linią średniej */
-function Ranking({ dane, jednostka }) {
-  const W = 700, H = 170, PL = 30, PB = 26, PT = 8;
-  const mx = Math.max(...dane.map((d) => d.v)) * 1.1;
-  const bw = (W - PL - 10) / dane.length;
-  const sr = dane.reduce((a, d) => a + d.v, 0) / dane.length;
-  const Y = (v) => PT + (H - PT - PB) * (1 - v / mx);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }}>
-      {[0, mx / 2, mx].map((v, i) => (<g key={i}>
-        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
-        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{f0(v)}</text></g>))}
-      {dane.map((d, i) => (<g key={i}>
-        <rect x={PL + i * bw + bw * .18} y={Y(d.v)} width={bw * .64} height={Y(0) - Y(d.v)}
-          fill={d.v >= sr ? PC.plan : PC.mute} opacity={d.v >= sr ? .85 : .45} />
-        <text x={PL + i * bw + bw / 2} y={Y(d.v) - 3} fontSize="7.5" textAnchor="middle" fill={PC.ink}>{f0(d.v)}</text>
-        <text x={PL + i * bw + bw / 2} y={H - 12} fontSize="8" textAnchor="middle" fill={PC.mute}>{d.n}</text>
-      </g>))}
-      <line x1={PL} x2={W - 8} y1={Y(sr)} y2={Y(sr)} stroke={PC.bad} strokeWidth="1.4" strokeDasharray="4 3" />
-      <text x={W - 10} y={Y(sr) - 4} fontSize="7.5" textAnchor="end" fill={PC.bad}>średnia {f0(sr)} {jednostka}</text>
-    </svg>
-  );
-}
-
-/* 6. Pierścień — struktura wg pory dnia */
-function Piers({ czesci }) {
-  const W = 320, H = 170, cx = 85, cy = 85, R = 62, r = 36;
-  const tot = czesci.reduce((a, c) => a + c.v, 0);
-  let kat = -Math.PI / 2;
-  const luk = (a0, a1, rr) => [cx + rr * Math.cos(a0), cy + rr * Math.sin(a0), cx + rr * Math.cos(a1), cy + rr * Math.sin(a1)];
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxWidth: 340 }}>
-      {czesci.map((c, i) => {
-        const a0 = kat, a1 = kat + (c.v / tot) * Math.PI * 2; kat = a1;
-        const [x1, y1, x2, y2] = luk(a0, a1, R), [x3, y3, x4, y4] = luk(a1, a0, r);
-        const big = a1 - a0 > Math.PI ? 1 : 0;
-        const mid = (a0 + a1) / 2, lx = cx + (R + 10) * Math.cos(mid), ly = cy + (R + 10) * Math.sin(mid);
-        return (<g key={i}>
-          <path d={`M ${x1} ${y1} A ${R} ${R} 0 ${big} 1 ${x2} ${y2} L ${x3} ${y3} A ${r} ${r} 0 ${big} 0 ${x4} ${y4} Z`} fill={c.kol} />
-          {c.v / tot > 0.06 && <text x={lx} y={ly} fontSize="7.5" textAnchor={Math.cos(mid) > 0 ? "start" : "end"} fill={PC.mute}>
-            {Math.round(c.v / tot * 100)}%</text>}
-        </g>);
-      })}
-      <text x={cx} y={cy + 4} textAnchor="middle" fontSize="11" fill={PC.ink} fontFamily="ui-monospace,monospace">100%</text>
-      {czesci.map((c, i) => (<g key={i}>
-        <rect x={190} y={30 + i * 20} width={9} height={9} rx="2" fill={c.kol} />
-        <text x={204} y={38 + i * 20} fontSize="8.5" fill={PC.mute}>{c.n}</text>
-      </g>))}
-    </svg>
-  );
-}
-
-/* 7. Słupki + linia procentowa (Horas Teóricas vs Pagadas) */
-function SlupkiLinia({ dane }) {
-  const W = 720, H = 190, PL = 30, PR = 34, PB = 24, PT = 10;
-  const mx = Math.max(...dane.flatMap((d) => [d.a, d.b])) * 1.15;
-  const bw = (W - PL - PR) / dane.length;
-  const Y = (v) => PT + (H - PT - PB) * (1 - v / mx);
-  const YP = (p) => PT + (H - PT - PB) * (1 - (p - 60) / 80);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 560 }}>
-      {[0, mx / 2, mx].map((v, i) => (<g key={i}>
-        <line x1={PL} x2={W - PR} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
-        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{f0(v)}</text></g>))}
-      {[80, 100, 120].map((p) => (
-        <text key={p} x={W - PR + 4} y={YP(p) + 3} fontSize="7" fill={PC.cel}>{p}%</text>))}
-      {dane.map((d, i) => (<g key={i}>
-        <rect x={PL + i * bw + bw * .14} y={Y(d.a)} width={bw * .34} height={Y(0) - Y(d.a)} fill={PC.cel} opacity=".55" />
-        <rect x={PL + i * bw + bw * .5} y={Y(d.b)} width={bw * .34} height={Y(0) - Y(d.b)} fill={PC.plan} opacity=".8" />
-        <text x={PL + i * bw + bw / 2} y={H - 10} fontSize="8" textAnchor="middle" fill={PC.mute}>{d.n}</text>
-      </g>))}
-      <polyline points={dane.map((d, i) => `${PL + i * bw + bw / 2},${YP(d.b / d.a * 100)}`).join(" ")}
-        fill="none" stroke={PC.bad} strokeWidth="1.6" />
-      {dane.map((d, i) => <circle key={i} cx={PL + i * bw + bw / 2} cy={YP(d.b / d.a * 100)} r="2.4" fill={PC.bad} />)}
-    </svg>
-  );
-}
-
-/* 8. Histogram załogi wg przedziałów godzin */
-function Histogram({ kubelki }) {
-  const W = 700, H = 165, PL = 26, PB = 26, PT = 10;
-  const mx = Math.max(...kubelki.map((k) => k.n)) * 1.2;
-  const bw = (W - PL - 10) / kubelki.length;
-  const Y = (v) => PT + (H - PT - PB) * (1 - v / mx);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }}>
-      {[0, Math.round(mx / 2), Math.round(mx)].map((v, i) => (<g key={i}>
-        <line x1={PL} x2={W - 8} y1={Y(v)} y2={Y(v)} stroke={PC.line} />
-        <text x={PL - 4} y={Y(v) + 3} textAnchor="end" fontSize="7" fill={PC.mute}>{v}</text></g>))}
-      {kubelki.map((k, i) => (<g key={i}>
-        <rect x={PL + i * bw + bw * .2} y={Y(k.n)} width={bw * .6} height={Y(0) - Y(k.n)} fill={PC.plan} opacity=".75" />
-        <text x={PL + i * bw + bw / 2} y={Y(k.n) - 3} fontSize="8" textAnchor="middle" fill={PC.ink}>{k.n}</text>
-        <text x={PL + i * bw + bw / 2} y={H - 10} fontSize="7.5" textAnchor="middle" fill={PC.mute}>{k.l}</text>
-      </g>))}
-    </svg>
-  );
-}
-
-/* =================================================================== */
-function Karta({ tytul, podtytul, prawo, children }) {
-  return (<div className="rounded-lg p-3 mt-2" style={{ background: PC.card, border: `1px solid ${PC.line}`, borderLeft: `3px solid ${PC.bad}` }}>
-    <div className="flex flex-wrap items-baseline gap-2 mb-2">
-      <span className="text-sm font-medium">{tytul}</span>
-      {podtytul && <span className="text-xs" style={{ color: PC.mute }}>{podtytul}</span>}
-      {prawo && <span className="ml-auto text-xs">{prawo}</span>}
-    </div>
-    {children}
-  </div>);
-}
-
-
-// ===================== PLAN BUDŻETU (kalkulator COL) =====================
-const BP_POZ = ['RGM', 'ASM', 'SM', 'JSM', 'CREW'];
-const BP_NORMY = [160, 160, 176, 168, 160, 168, 184, 160, 176, 176, 160, 160];
-const bpMgr = (p) => p !== 'CREW';
-const bpKat = (e) => (e.pozycja === 'RGM' || e.pozycja === 'ASM') ? 'kier' : (e.pozycja === 'SM' || e.pozycja === 'JSM') ? 'mgr' : (e.instruktor ? 'instr' : 'prac');
-const BP_KAT = { prac: { label: 'Pracownicy', color: '#5A3542' }, instr: { label: 'Instruktorzy', color: '#B86D82' }, mgr: { label: 'Mgr (SM/JSM)', color: '#5A3542' }, kier: { label: 'Kierownictwo (RGM/ASM)', color: '#2B171E' } };
-const zl = (n) => (Math.round((n || 0) * 100) / 100).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const bpDefSettings = { zusRate: 0.1948, zusPPK: 0.2098, nocnyBonus: 0.2, minWage: 4806, normy: [...BP_NORMY] };
-
-const bpKoszt = (e, nom, s) => {
-  if (e.umowa === 'UZ') {
-    const base = (e.stawka || 0) * (e.godziny || 0);
-    const bhp = (e.godziny || 0) * (e.pozycja === 'RGM' ? 1.5 : 2);
-    const premia = e.premia || 0;
-    const zus = e.zusUZ ? base * s.zusRate : 0;
-    return { base, ppk: 0, bhp, urlop: 0, nocne: 0, chorobowe: 0, premia, zus, pfron: 0, total: base + bhp + premia + zus, worked: e.godziny || 0 };
-  }
-  const worked = Math.max(0, (e.godziny || 0) - (e.urlopH || 0) - (e.dniZLA || 0) * 8);
-  const base = (e.stawka || 0) * worked / nom;
-  const ppk = e.ppk ? (e.stawka || 0) * 0.015 : 0;
-  const bhp = e.bhp || 0;
-  const urlop = (e.urlopH || 0) * ((e.stawka || 0) / nom) * 1.05;
-  const nocne = (e.nocneH || 0) * (s.minWage / nom) * s.nocnyBonus;
-  const zlaRate = (e.stawka || 0) * (1 - 0.1371);
-  const chorobowe = (e.dniZLA || 0) ? (zlaRate / 30) * (e.dniZLA || 0) * 0.8 : 0;
-  const premia = e.premia || 0;
-  const zus = (base + premia + urlop + nocne) * (e.ppk ? s.zusPPK : s.zusRate);
-  const pfron = e.pfron || 0;
-  return { base, ppk, bhp, urlop, nocne, chorobowe, premia, zus, pfron, total: base + ppk + bhp + premia + urlop + nocne + chorobowe + zus + pfron, worked };
-};
-
-const BPLine = ({ series, labels, height = 200, unit = '' }) => {
-  const vals = series.flatMap((s) => s.data);
-  const max = Math.max(1, ...vals);
-  const W = 680, H = height, P = { l: 42, r: 12, t: 12, b: 26 };
-  const iw = W - P.l - P.r, ih = H - P.t - P.b;
-  const n = labels.length || 1;
-  const X = (i) => P.l + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
-  const Y = (v) => P.t + ih - (v / max) * ih;
-  const step = Math.max(1, Math.ceil(n / 12));
-  return (
-    <div>
-      <div className="flex gap-4 mb-1">{series.map((s, i) => <span key={i} className="flex items-center gap-1 text-[11px]" style={{ color: colors.primary.dark }}><span className="w-3 h-2 rounded" style={{ backgroundColor: s.color }} />{s.name}</span>)}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }}>
-        {Array.from({ length: 5 }).map((_, t) => { const v = max * t / 4; const y = Y(v); return (<g key={t}><line x1={P.l} y1={y} x2={W - P.r} y2={y} stroke="#EDE3E6" /><text x={P.l - 5} y={y + 3} textAnchor="end" fontSize="9" fill="#A38D95">{Math.round(v)}{unit}</text></g>); })}
-        {labels.map((l, i) => (i % step === 0) ? <text key={i} x={X(i)} y={H - 9} textAnchor="middle" fontSize="9" fill="#A38D95">{l}</text> : null)}
-        {series.map((s, si) => (<g key={si}>{s.fill && <polygon fill={s.color} fillOpacity="0.08" points={`${X(0)},${Y(0)} ` + s.data.map((v, i) => `${X(i)},${Y(v)}`).join(' ') + ` ${X(n - 1)},${Y(0)}`} />}<polyline fill="none" stroke={s.color} strokeWidth="2" points={s.data.map((v, i) => `${X(i)},${Y(v)}`).join(' ')} /></g>))}
-      </svg>
-    </div>
-  );
-};
-const BPBars = ({ items, unit = 'zł' }) => {
-  const max = Math.max(1, ...items.map((i) => i.value));
-  return (<div className="space-y-2">{items.map((it, i) => (<div key={i}><div className="flex justify-between text-xs mb-0.5"><span style={{ color: colors.primary.dark }}>{it.label} <span className="text-slate-400">· {it.n} os.</span></span><b style={{ color: colors.primary.darkest }}>{zl(it.value)} {unit}</b></div><div className="h-3 rounded" style={{ backgroundColor: colors.primary.bgLight }}><div className="h-3 rounded" style={{ width: `${it.value / max * 100}%`, backgroundColor: it.color }} /></div></div>))}</div>);
-};
-
-const BP_KOSZT_DOMYSLNE = { godziny: 160, premia: 0, bhp: 0, urlopH: 0, dniZLA: 0, nocneH: 0, ppk: false, pfron: 0, godzBy: {} };
-
-const BudgetPlan = ({ data, setPage }) => {
-  const b = data.budget;
-  const [tab, setTab] = useState('budzet');
-  const [koszParam, setKoszParam] = useState({});      // parametry kosztowe per id konta
-  const [settings, setSettings] = useState(bpDefSettings);
-  const [mIdx, setMIdx] = useState(new Date().getMonth());
-  const [sprzedaz, setSprzedaz] = useState({});
-  const [transakcje, setTransakcje] = useState({});
-  const [dniS, setDniS] = useState({});
-  const [openRow, setOpenRow] = useState(null);
-  const hydrated = useRef(false);
-  useEffect(() => {
-    if (hydrated.current || !b) return;
-    setKoszParam(b.koszParam || {});
-    if (b.settings) setSettings(b.settings);
-    setSprzedaz(b.sprzedaz || {}); setTransakcje(b.transakcje || {}); setDniS(b.dniS || {});
-    hydrated.current = true;
-  }, [b]);
-  useEffect(() => { if (!hydrated.current) return; data.saveBudget({ koszParam, settings, sprzedaz, transakcje, dniS }); }, [koszParam, settings, sprzedaz, transakcje, dniS]);
-
-  // Pracownicy pochodzą z modułu „Pracownicy" (konta). Tutaj dokładamy tylko parametry kosztowe.
-  const emps = useMemo(() => (data.accounts || []).map((a) => ({
-    ...BP_KOSZT_DOMYSLNE, ...(koszParam[a.id] || {}),
-    id: a.id, name: a.name, grafikName: a.grafikName, aliasy: a.aliasy || [], pozycja: a.funkcja, umowa: a.umowa, stawka: a.stawka,
-    zusUZ: !!a.zus, instruktor: !!a.instruktor,
-  })), [data.accounts, koszParam]);
-
-  const nom = settings.normy[mIdx] || 160;
-  const rokBud = useMemo(() => { const ys = data.shifts.map((x) => +String(x.date).slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
-  const mPre = `${rokBud}-${String(mIdx + 1).padStart(2, '0')}`;
-
-  // Godziny FAKTYCZNE — z grafiku danego miesiąca (bez wierszy instruktorskich, zgodnie z regułą liczenia)
-  // Godziny z grafiku — po IDENTYFIKATORZE KONTA (przypisanym przy imporcie), z zapasowym dopasowaniem po nazwie
-  const godzGrafik = useMemo(() => {
-    const m = { poId: {}, poNazwie: {} };
-    data.shifts.filter((x) => String(x.date || '').startsWith(mPre) && !jestInstruktor(x)).forEach((x) => {
-      if (x.accountId) m.poId[x.accountId] = (m.poId[x.accountId] || 0) + godzZ(x);
-      else { const k = String(x.name || '').toUpperCase().trim(); m.poNazwie[k] = (m.poNazwie[k] || 0) + godzZ(x); }
-    });
-    return m;
-  }, [data.shifts, mPre]);
-  const grafikJest = Object.keys(godzGrafik.poId).length > 0 || Object.keys(godzGrafik.poNazwie).length > 0;
-  const kluczeOsoby = (e) => [e.grafikName || String(e.name || '').trim().split(/\s+/).pop(), ...(e.aliasy || [])].filter(Boolean).map((x) => String(x).toUpperCase().trim());
-  const godzAktOf = (e) => (godzGrafik.poId[e.id] || 0) + kluczeOsoby(e).reduce((a, k) => a + (godzGrafik.poNazwie[k] || 0), 0);
-  // Godziny PLANOWANE — ręcznie ustawione w budżecie; bez ustawienia startują od grafiku (a gdy brak grafiku — od normy)
-  const getGodz = (e) => (e.godzBy && e.godzBy[mIdx] != null) ? e.godzBy[mIdx] : (grafikJest ? godzAktOf(e) : (e.godziny || 0));
-
-  const koszty = emps.map((e) => ({ e, k: bpKoszt({ ...e, godziny: getGodz(e) }, nom, settings) }));
-  const kosztyAkt = emps.map((e) => ({ e, k: bpKoszt({ ...e, godziny: godzAktOf(e) }, nom, settings) }));
-  const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
-  const col = sum(koszty, (x) => x.k.total);
-  const godzTotal = sum(koszty, (x) => x.k.worked);
-  const colAkt = sum(kosztyAkt, (x) => x.k.total);
-  const godzAktTotal = sum(kosztyAkt, (x) => x.k.worked);
-  const sale = sprzedaz[mIdx] || 0, tr = transakcje[mIdx] || 0, dni = dniS[mIdx] || 0;
-  const colPct = sale ? col / sale : 0;
-  const agc = tr ? sale / tr : 0, splh = godzTotal ? sale / godzTotal : 0, mpt = tr ? godzTotal * 60 / tr : 0;
-  const linia = (f) => sum(koszty, (x) => f(x.k));
-  const kats = ['prac', 'instr', 'mgr', 'kier'].map((key) => { const g = koszty.filter((x) => bpKat(x.e) === key); return { key, label: BP_KAT[key].label, color: BP_KAT[key].color, value: sum(g, (x) => x.k.total), n: g.length }; });
-
-  const setE = (id, patch) => setKoszParam((p) => ({ ...p, [id]: { ...BP_KOSZT_DOMYSLNE, ...(p[id] || {}), ...patch } }));
-  const setGodz = (e, v) => setE(e.id, { godzBy: { ...(e.godzBy || {}), [mIdx]: Number(v) || 0 } });
-  const setNorma = (i, v) => setSettings((s) => { const n = [...s.normy]; n[i] = Number(v) || 0; return { ...s, normy: n }; });
-
-  const year = useMemo(() => { const ys = data.shifts.map((s) => +s.date.slice(0, 4)).filter(Boolean); return ys.length ? Math.max(...ys) : new Date().getFullYear(); }, [data.shifts]);
-  const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
-  const planDaily = Array.from({ length: daysInMonth }, (_, i) => { const ds = `${year}-${String(mIdx + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`; return data.shifts.filter((s) => s.date === ds && !jestInstruktor(s)).reduce((a, s) => a + godzZ(s), 0); });
-  // P0-2 (audyt P4): wykonanie WYŁĄCZNIE z realnych danych ts:data (odbicia/korekty);
-  // dzień bez wykonania = 0 — żadnych wartości syntetycznych z planu.
-  const actualDaily = Array.from({ length: daysInMonth }, (_, i) => {
-    const ds = `${year}-${String(mIdx + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
-    let min = 0;
-    data.shifts.filter((x) => x.date === ds && !jestInstruktor(x)).forEach((x) => {
-      const a = wtAct(((data.ts || {}).actuals) || {}, x);
-      if (!a) return;
-      const przerwy = (a.breaks || []).filter((b) => b.platna === false).reduce((acc, b) => acc + wtDur(b.start != null ? b.start : b.od, b.end != null ? b.end : b.do), 0);
-      min += Math.max(wtDur(a.start, a.end) - przerwy, 0);
-    });
-    return +(min / 60).toFixed(1);
-  });
-  const avgHourly = godzTotal ? col / godzTotal : 0;
-  const colDaily = planDaily.map((h) => +(h * avgHourly).toFixed(0));
-  const dayLabels = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
-
-  // ── Wskaźniki w stylu GIRnet Workforce ──
-  const mKey = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
-  const sprzedazMies = (y, m) => { const sd = (data.salesData && data.salesData.sales) || {}; const pre = mKey(y, m); return Object.entries(sd).filter(([d]) => d.startsWith(pre)).reduce((a, [, v]) => a + v, 0); };
-  const godzinyMies = (y, m) => { const pre = mKey(y, m); return data.shifts.filter((x) => (x.date || '').startsWith(pre) && !jestInstruktor(x)).reduce((a, x) => a + godzZ(x), 0); };
-  const poprz = mIdx === 0 ? { y: year - 1, m: 11 } : { y: year, m: mIdx - 1 };
-  const sBiez = sprzedazMies(year, mIdx), sPoprz = sprzedazMies(poprz.y, poprz.m);
-  const hBiez = godzinyMies(year, mIdx), hPoprz = godzinyMies(poprz.y, poprz.m);
-  const splhBiez = hBiez ? sBiez / hBiez : 0, splhPoprz = hPoprz ? sPoprz / hPoprz : 0;
-  const varPct = splhPoprz ? ((splhBiez - splhPoprz) / splhPoprz) * 100 : 0;
-
-  // godziny kontraktowe: stałe (UOP) vs zmienne (UZ)
-  const hStale = koszty.filter((x) => x.e.umowa === 'UOP').reduce((a, x) => a + x.k.worked, 0);
-  const hZmienne = koszty.filter((x) => x.e.umowa === 'UZ').reduce((a, x) => a + x.k.worked, 0);
-  const hRazem = hStale + hZmienne;
-
-  // zgodność kontraktowa: teoretyczne vs zaplanowane + nadmiar/niedobór
-  const teorII = (e) => e.umowa === 'UOP' ? Math.max(0, nom - (e.urlopH || 0) - (e.dniZLA || 0) * 8) : getGodz(e);
-  const zgodnosc = emps.map((e) => { const teor = teorII(e); const plan = getGodz(e); const d = plan - teor; return { name: e.name, umowa: e.umowa, teor, plan, nadmiar: Math.max(0, d), niedobor: Math.max(0, -d) }; });
-  const sumNadmiar = zgodnosc.reduce((a, x) => a + x.nadmiar, 0);
-  const sumNiedobor = zgodnosc.reduce((a, x) => a + x.niedobor, 0);
-
-  // absencja (urlop + ZLA) w godzinach
-  const hUrlop = emps.reduce((a, e) => a + (e.urlopH || 0), 0);
-  const hZLA = emps.reduce((a, e) => a + (e.dniZLA || 0) * 8, 0);
-  const absPct = hRazem + hUrlop + hZLA ? ((hUrlop + hZLA) / (hRazem + hUrlop + hZLA)) * 100 : 0;
-
-  const Stat = ({ v, l, sub, dark }) => (<div className="rounded-xl p-3 text-center shadow-sm border" style={{ backgroundColor: dark ? colors.primary.darkest : 'white', borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: dark ? 'white' : colors.primary.darkest }}>{v}</p><p className="text-[11px]" style={{ color: dark ? 'rgba(255,255,255,.7)' : colors.primary.light }}>{l}</p>{sub && <p className="text-[10px]" style={{ color: dark ? 'rgba(255,255,255,.5)' : '#A38D95' }}>{sub}</p>}</div>);
-  // Kafelek z podwójną wartością: u góry faktyczne (z grafiku), pod spodem planowane (z budżetu)
-  const Dwa = ({ akt, plan, label, kolor }) => {
-    const roz = (parseFloat(String(akt).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0) - (parseFloat(String(plan).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0);
-    return (
-      <div className="rounded-xl p-3 shadow-sm border" style={{ backgroundColor: kolor || 'white', borderColor: colors.primary.bg }}>
-        <p className="text-[11px] mb-1" style={{ color: kolor ? 'rgba(255,255,255,.75)' : colors.primary.light }}>{label}</p>
-        <p className="text-xl font-bold leading-tight" style={{ color: kolor ? 'white' : colors.primary.darkest }}>{akt} <span className="text-[10px] font-medium opacity-70">aktualne</span></p>
-        <p className="text-sm font-semibold leading-tight mt-0.5" style={{ color: kolor ? 'rgba(255,255,255,.85)' : colors.primary.light }}>{plan} <span className="text-[10px] font-medium opacity-70">planowane</span></p>
-      </div>
-    );
-  };
-  const numIn = (val, on, w = 'w-full') => <input type="number" value={val} onChange={(e) => on(e.target.value)} className={`${w} px-2 py-1 rounded border text-sm`} style={{ borderColor: colors.primary.bg }} />;
-  const Fld = ({ label, children }) => (<div><label className="block text-[11px] mb-0.5" style={{ color: colors.primary.light }}>{label}</label>{children}</div>);
-
-  return (
-    <div className="flex-1 flex flex-col">
-      <Header title="Plan budżetu" subtitle="Kalkulator COL — pracownicy, składki ZUS, koszty, budżet i analityka miesiąca">
-        <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Miesiąc</span>
-        <select value={mIdx} onChange={(e) => setMIdx(Number(e.target.value))} className="px-3 py-2 rounded-lg border text-sm font-medium" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{months.map((m, i) => <option key={i} value={i}>{m} · norma {settings.normy[i]}h</option>)}</select>
-      </Header>
-      <div className="flex-1 p-8 space-y-5 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: 'white' }}>
-          {[['budzet', 'Budżet miesiąca'], ['prac', 'Pracownicy'], ['analiza', 'Analityka'], ['ust', 'Ustawienia ZUS']].map(([id, l]) => (
-            <button key={id} onClick={() => setTab(id)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: tab === id ? colors.primary.medium : 'transparent', color: tab === id ? 'white' : colors.primary.dark }}>{l}</button>
-          ))}
-        </div>
-
-        {tab === 'budzet' && (<>
-          <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl p-4 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
-            <Fld label="Sprzedaż (zł)">{numIn(sale, (v) => setSprzedaz((p) => ({ ...p, [mIdx]: Number(v) || 0 })), 'w-36')}</Fld>
-            <Fld label="Transakcje">{numIn(tr, (v) => setTransakcje((p) => ({ ...p, [mIdx]: Number(v) || 0 })), 'w-28')}</Fld>
-            <Fld label="Dni sprzedaży">{numIn(dni, (v) => setDniS((p) => ({ ...p, [mIdx]: Number(v) || 0 })), 'w-24')}</Fld>
-            <span className="text-xs text-slate-400 ml-auto self-center">Wskaźniki dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]}</b></span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Dwa label="COL — koszt pracy (total)" akt={`${zl(colAkt)} zł`} plan={`${zl(col)} zł`} kolor={colors.primary.darkest} />
-            <Dwa label="COL % (koszt / sprzedaż)" akt={`${(sale ? colAkt / sale * 100 : 0).toFixed(2)}%`} plan={`${(colPct * 100).toFixed(2)}%`} kolor={(sale ? colAkt / sale : 0) > 0.2 ? '#B94352' : '#741334'} />
-            <Dwa label="Godziny total" akt={`${godzAktTotal.toFixed(0)} h`} plan={`${godzTotal.toFixed(0)} h`} />
-            <Dwa label="Godziny na dzień" akt={`${dni ? (godzAktTotal / dni).toFixed(1) : 0} h`} plan={`${dni ? (godzTotal / dni).toFixed(1) : 0} h`} />
-          </div>
-          <p className="text-xs text-slate-400 -mt-2">„Aktualne" = godziny z grafiku {months[mIdx]} {rokBud}{grafikJest ? '' : ' (brak grafiku dla tego miesiąca)'}. „Planowane" = wartości ustawione w zakładce Pracownicy.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat v={zl(agc)} l="AGC" sub="sprzedaż / transakcje" />
-            <Stat v={zl(splh)} l="SPLH" sub="sprzedaż / godziny" />
-            <Stat v={mpt.toFixed(2)} l="MPT (min)" sub="godziny×60 / transakcje" />
-            <Stat v={`${nom} h`} l="Etat (norma m-ca)" />
-          </div>
-          <Sekcja kolor="#2B171E" tytul="COL wg kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
-          <Sekcja kolor="#5A3542" tytul="Podgląd kosztów (rozbicie P&amp;L)">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-              {[['Płace podstawowe', linia((k) => k.base)], ['Premie', linia((k) => k.premia)], ['Nadgodziny/nocne', linia((k) => k.nocne)], ['Wynagr. urlopowe', linia((k) => k.urlop)], ['Wynagr. chorobowe', linia((k) => k.chorobowe)], ['Ekwiwalent BHP', linia((k) => k.bhp)], ['Koszt PPK', linia((k) => k.ppk)], ['ZUS pracodawcy', linia((k) => k.zus)], ['PFRON', linia((k) => k.pfron)]].map(([l, v]) => (
-                <div key={l} className="flex justify-between rounded-lg px-3 py-2" style={{ backgroundColor: colors.primary.bgLight }}><span style={{ color: colors.primary.dark }}>{l}</span><b style={{ color: colors.primary.darkest }}>{zl(v)}</b></div>
-              ))}
-            </div>
-          </Sekcja>
-        </>)}
-
-        {tab === 'prac' && (<>
-          <div className="bg-white rounded-xl p-3 shadow-sm border text-xs flex flex-wrap gap-x-5 gap-y-1" style={{ borderColor: colors.primary.bg }}>
-            <span style={{ color: colors.primary.light }}>Legenda:</span><span><b>Stawka</b> — UOP: mies.; UZ: zł/h</span><span><b>Godziny</b> — w {months[mIdx]}</span><span><b>ZLA</b> — dni zwolnienia</span><span><b>PPK</b> — w PPK</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BP_KAT.prac.color }} />Prac.</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BP_KAT.instr.color }} />Instr.</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BP_KAT.mgr.color }} />Mgr</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BP_KAT.kier.color }} />Kier.</span>
-          </div>
-          <div className="space-y-2">
-            {koszty.map(({ e, k }) => { const open = openRow === e.id; const kat = bpKat(e); return (
-              <div key={e.id} className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.primary.bg }}>
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BP_KAT[kat].color }} title={BP_KAT[kat].label} />
-                  <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate" style={{ color: colors.primary.darkest }}>{e.name}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{e.pozycja} · {e.umowa} · grafik {godzAktOf(e).toFixed(0)} h / plan {Number(getGodz(e)).toFixed(0)} h{e.instruktor ? ' · instruktor' : ''}</p></div>
-                  <div className="text-right shrink-0"><p className="text-[10px]" style={{ color: colors.primary.light }}>Koszt {months[mIdx]}</p><p className="font-bold" style={{ color: colors.primary.darkest }}>{zl(bpKoszt({ ...e, godziny: godzAktOf(e) }, nom, settings).total)} zł</p><p className="text-[10px]" style={{ color: colors.primary.light }}>plan {zl(k.total)} zł</p></div>
-                  <button onClick={() => setOpenRow(open ? null : e.id)} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Szczegóły <ChevronRight size={13} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} /></button>
-
-                </div>
-                {open && (
-                  <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: colors.primary.bg, backgroundColor: '#fbfcfe' }}>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                      <Fld label="Stanowisko"><div className="px-2 py-1 rounded text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.pozycja}{e.instruktor ? ' · instruktor' : ''}</div></Fld>
-                      <Fld label="Typ umowy"><div className="px-2 py-1 rounded text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{e.umowa}</div></Fld>
-                      <Fld label={e.umowa === 'UOP' ? 'Wynagr. mies. (zł)' : 'Stawka (zł/h)'}><div className="px-2 py-1 rounded text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>{zl(e.stawka)}</div></Fld>
-                      <Fld label={`Godziny (${months[mIdx]})`}>{numIn(getGodz(e), (v) => setGodz(e, v))}</Fld>
-                      <Fld label="Premia (zł)">{numIn(e.premia, (v) => setE(e.id, { premia: Number(v) || 0 }))}</Fld>
-                      {e.umowa === 'UOP' && <Fld label="Ekwiwalent BHP (zł)">{numIn(e.bhp, (v) => setE(e.id, { bhp: Number(v) || 0 }))}</Fld>}
-                      {e.umowa === 'UOP' && <Fld label="Godziny urlopu">{numIn(e.urlopH, (v) => setE(e.id, { urlopH: Number(v) || 0 }))}</Fld>}
-                      {e.umowa === 'UOP' && <Fld label="Dni ZLA (chorobowe)">{numIn(e.dniZLA, (v) => setE(e.id, { dniZLA: Number(v) || 0 }))}</Fld>}
-                      {e.umowa === 'UOP' && <Fld label="Godziny nocne">{numIn(e.nocneH, (v) => setE(e.id, { nocneH: Number(v) || 0 }))}</Fld>}
-                      {e.umowa === 'UOP' && <Fld label="PFRON (zł)">{numIn(e.pfron, (v) => setE(e.id, { pfron: Number(v) || 0 }))}</Fld>}
-                    </div>
-                    <div className="flex flex-wrap gap-4 mt-3">
-                      {e.umowa === 'UOP' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={e.ppk} onChange={(ev) => setE(e.id, { ppk: ev.target.checked })} />PPK (+1,5%, ZUS 20,98%)</label>}
-                      {e.umowa === 'UZ' && <span className="text-sm" style={{ color: colors.primary.light }}>ZUS od zlecenia: <b style={{ color: colors.primary.dark }}>{e.zusUZ ? 'tak' : 'nie'}</b> <span className="text-xs">(ustawiane w module Pracownicy)</span></span>}
-                    </div>
-                    <div className="mt-3 rounded-lg p-3" style={{ backgroundColor: colors.primary.bgLight }}>
-                      <p className="text-[11px] font-semibold uppercase mb-2" style={{ color: colors.primary.light }}>Rozbicie kosztu pracodawcy</p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
-                        {[['Płaca podstawowa', k.base], ['Premia', k.premia], ['Wynagr. urlopowe', k.urlop], ['Dodatek nocny', k.nocne], ['Wynagr. chorobowe', k.chorobowe], ['Ekwiwalent BHP', k.bhp], ['Koszt PPK', k.ppk], ['ZUS pracodawcy', k.zus], ['PFRON', k.pfron]].filter(([, v]) => v).map(([l, v]) => <div key={l} className="flex justify-between"><span style={{ color: colors.primary.dark }}>{l}</span><span style={{ color: colors.primary.darkest }}>{zl(v)}</span></div>)}
-                        <div className="flex justify-between col-span-2 md:col-span-3 border-t pt-1 mt-1" style={{ borderColor: colors.primary.bg }}><b style={{ color: colors.primary.darkest }}>Koszt całkowity</b><b style={{ color: colors.primary.darkest }}>{zl(k.total)} zł</b></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ); })}
-          </div>
-          {emps.length === 0 && <div className="bg-white rounded-xl p-6 text-center border" style={{ borderColor: colors.primary.bg }}><p className="text-slate-500 mb-3">Brak pracowników. Konta zakładasz w module „Pracownicy" — trafiają tu automatycznie.</p><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Przejdź do modułu Pracownicy</Btn></div>}
-          <div className="flex items-center gap-3"><Btn variant="secondary" onClick={() => setPage && setPage('emps')}>Zarządzaj pracownikami</Btn><Btn variant="secondary" onClick={() => setPage && setPage('forecast')}>Optymalizacja i prognoza</Btn><span className="text-xs text-slate-400">Imię, stanowisko, umowa, stawka i ZUS pochodzą z modułu Pracownicy. Tutaj ustawiasz tylko dane kosztowe (godziny, premia, BHP, urlop, ZLA, nocne, PPK, PFRON).</span></div>
-        </>)}
-
-        {tab === 'analiza' && (<>
-          <p className="text-sm" style={{ color: colors.primary.light }}>Analityka dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]} {year}</b> — dane dzienne z grafiku.</p>
-          <Sekcja kolor={colors.primary.medium} tytul="Grafik: godziny plan vs wykonanie z odbić (dni miesiąca)"><BPLine labels={dayLabels} unit="h" series={[{ name: 'Plan', color: colors.primary.bg, data: planDaily, fill: true }, { name: 'Wykonanie', color: colors.primary.medium, data: actualDaily }]} /></Sekcja>
-          <Sekcja kolor="#2B171E" tytul="Cost of Labour — dzienny koszt pracy (plan)"><BPLine labels={dayLabels} unit="" series={[{ name: 'Koszt dzienny (zł)', color: '#2B171E', data: colDaily, fill: true }]} /><p className="text-xs text-slate-400 mt-2">Szacunek: godziny planowane danego dnia × średni koszt godziny ({zl(avgHourly)} zł/h).</p></Sekcja>
-          <Sekcja kolor="#5A3542" tytul="Cost of Labour — udział kategorii"><BPBars items={kats.map((k) => ({ label: k.label, value: k.value, n: k.n, color: k.color }))} /></Sekcja>
-
-          <Sekcja kolor="#5A3542" tytul="Produktywność (SPLH) — okres vs poprzedni">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Stat v={`${f0(splhBiez)}`} l={`SPLH — ${months[mIdx]}`} sub={`${f0(sBiez)} zł / ${f0(hBiez)} h`} />
-              <Stat v={`${f0(splhPoprz)}`} l={`SPLH — ${months[poprz.m]}`} sub={`${f0(sPoprz)} zł / ${f0(hPoprz)} h`} />
-              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: varPct >= 0 ? '#5A3542' : '#B94352' }}><p className="text-xl font-bold text-white">{varPct >= 0 ? '+' : ''}{varPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Zmiana r/r okresu</p></div>
-              <Stat v={`${f0(hRazem ? sBiez / hRazem : 0)}`} l="SPLH wg planu budżetu" sub={`${f0(hRazem)} h w planie`} />
-            </div>
-            {!sBiez && <p className="text-xs text-slate-400 mt-2">Brak danych sprzedaży dla tego miesiąca — zaimportuj raport w module Optymalizacja.</p>}
-          </Sekcja>
-
-          <Sekcja kolor="#5A3542" tytul="Godziny kontraktowe — stałe vs zmienne">
-            <BPBars unit="h" items={[
-              { label: 'Stałe (UOP)', value: hStale, n: koszty.filter((x) => x.e.umowa === 'UOP').length, color: '#5A3542' },
-              { label: 'Zmienne (UZ)', value: hZmienne, n: koszty.filter((x) => x.e.umowa === 'UZ').length, color: '#A7465F' },
-            ]} />
-            <p className="text-xs text-slate-400 mt-2">Udział godzin stałych: <b style={{ color: colors.primary.dark }}>{hRazem ? (hStale / hRazem * 100).toFixed(1).replace('.', ',') : 0}%</b> — wyższy udział to mniejsza elastyczność obsady, ale i niższy koszt krańcowy godziny.</p>
-          </Sekcja>
-
-          <Sekcja kolor="#A7465F" tytul="Zgodność kontraktowa — godziny teoretyczne vs zaplanowane">
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              <Stat v={`${f0(zgodnosc.reduce((a, x) => a + x.teor, 0))} h`} l="Teoretyczne (z umów)" />
-              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#A7465F' }}>{f0(sumNadmiar)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Nadmiar (Exceso)</p></div>
-              <div className="rounded-xl p-3 text-center shadow-sm border" style={{ borderColor: colors.primary.bg }}><p className="text-xl font-bold" style={{ color: '#B94352' }}>{f0(sumNiedobor)} h</p><p className="text-[11px]" style={{ color: colors.primary.light }}>Niedobór (Defecto)</p></div>
-            </div>
-            <div className="overflow-x-auto"><div className="min-w-[560px]">
-              <div className="grid grid-cols-[1.6fr_70px_1fr_1fr_1fr_1fr] gap-2 px-2 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Pracownik</span><span>Umowa</span><span className="text-right">Teoret.</span><span className="text-right">Plan</span><span className="text-right">Nadmiar</span><span className="text-right">Niedobór</span></div>
-              {zgodnosc.map((z, i) => (
-                <div key={i} className="grid grid-cols-[1.6fr_70px_1fr_1fr_1fr_1fr] gap-2 px-2 py-1.5 text-sm border-b" style={{ borderColor: '#EDE3E6' }}>
-                  <span className="truncate" style={{ color: colors.primary.dark }}>{z.name}</span>
-                  <span className="text-xs" style={{ color: colors.primary.light }}>{z.umowa}</span>
-                  <span className="text-right">{z.teor.toFixed(0)}</span>
-                  <span className="text-right">{z.plan.toFixed(0)}</span>
-                  <span className="text-right font-medium" style={{ color: z.nadmiar ? '#A7465F' : '#C7B4BB' }}>{z.nadmiar ? z.nadmiar.toFixed(0) : '—'}</span>
-                  <span className="text-right font-medium" style={{ color: z.niedobor ? '#B94352' : '#C7B4BB' }}>{z.niedobor ? z.niedobor.toFixed(0) : '—'}</span>
-                </div>
-              ))}
-            </div></div>
-          </Sekcja>
-
-          <Sekcja kolor="#5A3542" tytul="Absencja">
-            <div className="grid grid-cols-3 gap-3">
-              <Stat v={`${f0(hUrlop)} h`} l="Urlopy" />
-              <Stat v={`${f0(hZLA)} h`} l="Chorobowe (ZLA)" sub={`${emps.reduce((a, e) => a + (e.dniZLA || 0), 0)} dni`} />
-              <div className="rounded-xl p-3 text-center shadow-sm" style={{ backgroundColor: absPct > 8 ? '#B94352' : '#5A3542' }}><p className="text-xl font-bold text-white">{absPct.toFixed(1).replace('.', ',')}%</p><p className="text-[11px] text-white/80">Wskaźnik absencji</p></div>
-            </div>
-          </Sekcja>
-        </>)}
-
-        {tab === 'ust' && (
-          <div className="grid md:grid-cols-2 gap-4">
-            <Sekcja kolor="#2B171E" tytul="Składki i stawki">
-              <div className="space-y-3">
-                {[['ZUS pracodawcy (%)', settings.zusRate * 100, (v) => setSettings((s) => ({ ...s, zusRate: (Number(v) || 0) / 100 }))], ['ZUS z PPK (%)', settings.zusPPK * 100, (v) => setSettings((s) => ({ ...s, zusPPK: (Number(v) || 0) / 100 }))], ['Dodatek nocny (%)', settings.nocnyBonus * 100, (v) => setSettings((s) => ({ ...s, nocnyBonus: (Number(v) || 0) / 100 }))], ['Płaca minimalna (zł)', settings.minWage, (v) => setSettings((s) => ({ ...s, minWage: Number(v) || 0 }))]].map(([l, val, on]) => (
-                  <div key={l} className="flex items-center justify-between gap-3"><span className="text-sm" style={{ color: colors.primary.dark }}>{l}</span>{numIn(val, on, 'w-32')}</div>
-                ))}
-              </div>
-              <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Domyślnie ZUS 19,48%; z PPK 20,98%.</p>
-            </Sekcja>
-            <Sekcja kolor={colors.primary.medium} tytul="Normy godzin (etat) w miesiącach">
-              <div className="grid grid-cols-2 gap-2">{months.map((m, i) => (<div key={i} className="flex items-center justify-between gap-2"><span className="text-sm" style={{ color: colors.primary.dark }}>{m}</span>{numIn(settings.normy[i], (v) => setNorma(i, v), 'w-20')}</div>))}</div>
-            </Sekcja>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 // ===================== PRACOWNICY (konta użytkowników) =====================
-const FUNKCJE = [
-  { id: 'CREW', label: 'Pracownik restauracji' },
-  { id: 'REST', label: 'Konto restauracji (login + PIN, bez umowy)' },
-  { id: 'JSM', label: 'Młodszy kierownik zmiany' },
-  { id: 'SM', label: 'Kierownik zmiany' },
-  { id: 'ASM', label: 'Zastępca kierownika' },
-  { id: 'RGM', label: 'Kierownik restauracji' },
-];
-const funkcjaLabel = (id) => (FUNKCJE.find((f) => f.id === id) || {}).label || id;
 const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false, grafikName: '', aliasy: '', wymiarTygH: '', maxDobaH: '', stanowiska: '' };
 
 const CopyField = ({ label, value }) => {
@@ -3606,107 +1883,6 @@ const AdminEmployees = ({ data }) => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-const PlanPage = ({ data }) => {
-  const domyslnyYm = (data.months && data.months[0]?.key) || (data.meta.firstDate || '').slice(0, 7) || ymd(new Date()).slice(0, 7);
-  const [ym, setYm] = useState(domyslnyYm);
-  const dni = dniMiesiaca(ym);
-  const [mgrH, setMgrH] = useState(8);
-  const [mgrDate, setMgrDate] = useState(dni[0] || '');
-  const [funkH, setFunkH] = useState(8);
-  const [funkDate, setFunkDate] = useState(dni[0] || '');
-  const [wd, setWd] = useState([]);
-  const [planLocal, setPlanLocal] = useState('');
-  useEffect(() => { const d = dniMiesiaca(ym); setMgrDate(d[0] || ''); setFunkDate(d[0] || ''); }, [ym]);
-
-  const p = podsumowanieMiesiaca(data.shifts, data.planowanie, ym);
-  useEffect(() => { setPlanLocal(p.planTotal ? String(p.planTotal) : ''); }, [ym, p.planTotal]);
-  const nadmiar = p.planTotal > 0 ? p.total - p.planTotal : 0;
-  const pct = p.planTotal > 0 ? Math.min(100, (p.total / p.planTotal) * 100) : 0;
-  const kolorStanu = p.planTotal === 0 ? colors.primary.light : nadmiar > 0 ? '#B94352' : (p.total >= p.planTotal * 0.95 ? '#B86D82' : '#741334');
-  const topDni = (() => {
-    const g = {};
-    p.mShifts.forEach(s => { g[s.date] = (g[s.date] || 0) + godzZ(s); });
-    return Object.entries(g).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  })();
-  const [y, m] = ym.split('-').map(Number);
-  const label = `${months[m - 1]} ${y}`;
-  const dniTyg = [['Pn', 1], ['Wt', 2], ['Śr', 3], ['Cz', 4], ['Pt', 5], ['So', 6], ['Nd', 0]];
-
-  return (
-    <div className="flex-1 flex flex-col">
-      <Header title="Plan godzin" subtitle="Plan miesiąca, ręczne godziny MGR i monitoring przekroczeń" />
-      <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium" style={{ color: colors.primary.dark }}>Miesiąc:</span>
-          <select value={ym} onChange={e => setYm(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>
-            {(data.months && data.months.length ? data.months : [{ key: ym, label }]).map(mm => <option key={mm.key} value={mm.key}>{mm.label || mm.key}</option>)}
-          </select>
-        </div>
-
-        <Sekcja kolor={kolorStanu} tytul={`Plan total — ${label}`} ikona={LayoutGrid}>
-          <div className="flex flex-wrap items-end gap-4 mb-4">
-            <div>
-              <label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Plan total godzin (miesiąc)</label>
-              <input type="number" value={planLocal} onChange={e => setPlanLocal(e.target.value)} onBlur={() => data.setPlanTotal(ym, planLocal)} placeholder="np. 1800" className="w-40 px-3 py-2 rounded-lg border text-lg font-semibold" style={{ borderColor: colors.primary.bg }} />
-            </div>
-            <div className="flex-1 min-w-[220px]">
-              <div className="flex justify-between text-sm mb-1"><span style={{ color: colors.primary.dark }}>Zaplanowano: <b>{p.total.toFixed(1)} h</b></span><span style={{ color: colors.primary.light }}>{p.planTotal ? `z ${p.planTotal} h` : 'brak planu'}</span></div>
-              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: colors.primary.bg }}>
-                <div style={{ width: `${pct}%`, height: '100%', backgroundColor: kolorStanu, transition: 'width .3s' }} />
-              </div>
-            </div>
-          </div>
-          {p.planTotal > 0 && (nadmiar > 0
-            ? <div className="rounded-xl p-4" style={{ backgroundColor: '#F5E3E8' }}>
-                <p className="font-semibold mb-1" style={{ color: '#B94352' }}>Przekroczenie planu o {nadmiar.toFixed(1)} h</p>
-                <p className="text-sm mb-2" style={{ color: colors.primary.dark }}>Sugerowane ścięcie: <b>{nadmiar.toFixed(1)} h</b>. Dni z największą liczbą godzin (kandydaci do redukcji):</p>
-                <div className="flex flex-wrap gap-2">{topDni.map(([d, h]) => <span key={d} className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: 'white', color: colors.primary.dark }}>{d.slice(5)} — {h.toFixed(1)} h</span>)}</div>
-              </div>
-            : <div className="rounded-xl p-3 text-sm" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>W ramach planu — pozostało {(p.planTotal - p.total).toFixed(1)} h.</div>)}
-          <div className="grid grid-cols-4 gap-3 mt-4 text-center text-sm">
-            <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bg }}><b>{p.crew.toFixed(1)}</b><br />CREW</div>
-            <div className="rounded-lg p-2" style={{ backgroundColor: '#F1E4E8' }}><b>{p.szkol.toFixed(1)}</b><br />Szkoleniowe</div>
-            <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bgLight }}><b>{p.mgr.toFixed(1)}</b><br />MGR{p.mgrManual ? ` (+${p.mgrManual})` : ''}</div>
-            <div className="rounded-lg p-2" style={{ backgroundColor: colors.primary.bgLight }}><b>{p.funk.toFixed(1)}</b><br />MGR funkc.{p.funkManual ? ` (+${p.funkManual})` : ''}</div>
-          </div>
-        </Sekcja>
-
-        <Sekcja kolor="#2B171E" tytul="Godziny MGR (ręcznie)" ikona={Clock}>
-          <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Dodaj godziny managera do sumy RAZEM — w wybrany dzień albo w każdy dzień miesiąca. Ręcznie dodane: <b>{p.mgrManual.toFixed(1)} h</b> ({Object.keys((data.planowanie[ym] || {}).mgr || {}).length} dni).</p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Godziny</label><input type="number" value={mgrH} onChange={e => setMgrH(e.target.value)} className="w-24 px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
-            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dzień</label><select value={mgrDate} onChange={e => setMgrDate(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{dni.map(d => <option key={d} value={d}>{d.slice(5)}</option>)}</select></div>
-            <Btn variant="secondary" onClick={() => data.applyGodziny(ym, 'mgr', 'day', mgrH, mgrDate)}>Zastosuj w ten dzień</Btn>
-            <Btn onClick={() => data.applyGodziny(ym, 'mgr', 'month', mgrH)}>Przenieś na cały miesiąc</Btn>
-            <Btn variant="secondary" onClick={() => data.clearGodziny(ym, 'mgr')}>Wyczyść</Btn>
-          </div>
-        </Sekcja>
-
-        <Sekcja kolor="#5A3542" tytul="Godziny MGR funkcyjne (ręcznie)" ikona={Clock}>
-          <p className="text-sm mb-3" style={{ color: colors.primary.light }}>Jak wyżej, dodatkowo „wg schematu" — np. 8 h w każdy poniedziałek. Ręcznie dodane: <b>{p.funkManual.toFixed(1)} h</b> ({Object.keys((data.planowanie[ym] || {}).mgrFunk || {}).length} dni).</p>
-          <div className="flex flex-wrap items-end gap-3 mb-3">
-            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Godziny</label><input type="number" value={funkH} onChange={e => setFunkH(e.target.value)} className="w-24 px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
-            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dzień</label><select value={funkDate} onChange={e => setFunkDate(e.target.value)} className="px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{dni.map(d => <option key={d} value={d}>{d.slice(5)}</option>)}</select></div>
-            <Btn variant="secondary" onClick={() => data.applyGodziny(ym, 'mgrFunk', 'day', funkH, funkDate)}>Ten dzień</Btn>
-            <Btn onClick={() => data.applyGodziny(ym, 'mgrFunk', 'month', funkH)}>Cały miesiąc</Btn>
-            <Btn variant="secondary" onClick={() => data.clearGodziny(ym, 'mgrFunk')}>Wyczyść</Btn>
-          </div>
-          <div className="rounded-xl p-3" style={{ backgroundColor: colors.primary.bgLight }}>
-            <p className="text-xs mb-2" style={{ color: colors.primary.dark }}>Schemat — wybierz dni tygodnia, potem „Wg schematu":</p>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {dniTyg.map(([lbl, val]) => {
-                const on = wd.includes(val);
-                return <button key={val} onClick={() => setWd(w => on ? w.filter(x => x !== val) : [...w, val])} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ backgroundColor: on ? colors.primary.medium : 'white', color: on ? 'white' : colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>{lbl}</button>;
-              })}
-            </div>
-            <Btn onClick={() => { if (!wd.length) { data.show('Zaznacz dni tygodnia', 'error'); return; } data.applyGodziny(ym, 'mgrFunk', 'schemat', funkH, null, wd); }}>Wg schematu ({wd.length} dni tyg.)</Btn>
-          </div>
-        </Sekcja>
-      </div>
     </div>
   );
 };
@@ -3897,7 +2073,7 @@ const RotacjeWzor = ({ data, naGrafik }) => {
     if (!det || !startTyg) return;
     const przypisania = {};
     det.sloty.forEach((sl) => { if (sl.hint) { const konto = (data.accounts || []).find((a) => sl.hintAccountId ? a.id === sl.hintAccountId : [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(sl.hint).toUpperCase().trim())); przypisania[sl.id] = { name: sl.hint, accountId: konto ? konto.id : undefined }; } });
-    if (!Object.keys(przypisania).length) return data.show('Szablon nie ma podpowiedzi osób — użyj Blueprints i przypisz ręcznie', 'error');
+    if (!Object.keys(przypisania).length) return data.show('Szablon nie ma podpowiedzi osób — użyj Szablonów i przypisz ręcznie', 'error');
     if (!confirm(`Aktywować rotację: ${ileCykli} cykli od ${startTyg}? Zmiany trafią do grafiku (duplikaty pomijane przy publikacji ręcznie).`)) return;
     setRobi(true); let ok = 0;
     for (const c of cykle) { const r = await data.applyTemplate(det.id, c.start, przypisania); if (r) ok++; }
@@ -3910,7 +2086,7 @@ const RotacjeWzor = ({ data, naGrafik }) => {
       <div className="module-heading">
         <div>
           <span>WORKFORCE • CYKLE ZMIAN</span>
-          <h1>ShiftCycles</h1>
+          <h1>Cykle i rotacje</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Powtarzalne wzorce zmian zespołów z kontrolą pokrycia i regeneracji.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -4032,7 +2208,7 @@ const ShiftCycles = ({ data }) => {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs" style={{ color: colors.primary.light }}>ShiftCycles — powtarzalny rytm pracy: wybierz Blueprint, osoby i liczbę tygodni, a system ułoży cykl na kolejne tygodnie (grafik + wykonanie, z przypisaniem do kont).</p>
+      <p className="text-xs" style={{ color: colors.primary.light }}>Cykle i rotacje — powtarzalny rytm pracy: wybierz szablon, osoby i liczbę tygodni, a system ułoży cykl na kolejne tygodnie (grafik + wykonanie, z przypisaniem do kont).</p>
       <div className="bg-white rounded-xl shadow-sm border p-5 space-y-4" style={{ borderColor: colors.primary.bg }}>
         <div className="grid md:grid-cols-3 gap-4">
           <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Blueprint (wzorcowy tydzień)</label>
@@ -4143,7 +2319,7 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
       <div className="module-heading">
         <div>
           <span>WORKFORCE • MATRYCE ZMIAN</span>
-          <h1>Blueprints</h1>
+          <h1>Szablony</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Gotowe układy zmian, godzin i obsady do wielokrotnego użycia.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -4255,669 +2431,6 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-const WTTemplates = ({ data, weeks }) => {
-  const [saveFor, setSaveFor] = useState(weeks.length ? weeks[weeks.length - 1].start : '');
-  const [tplName, setTplName] = useState('');
-  const [tplNotes, setTplNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [applyT, setApplyT] = useState(null);       // pełny szablon do przypisania
-  const [applyWeek, setApplyWeek] = useState('');
-  const [przyp, setPrzyp] = useState({});           // slotId -> nazwa
-  const [applying, setApplying] = useState(false);
-
-  const nastepnyPon = () => { const d = new Date(); const off = (8 - d.getDay()) % 7 || 7; d.setDate(d.getDate() + off); return ymd(d); };
-  const otworzApply = async (t) => {
-    const det = await data.templateDetail(t.id);
-    if (!det) return;
-    setApplyT(det); setApplyWeek(nastepnyPon());
-    const p = {}; det.sloty.forEach((sl) => { p[sl.id] = sl.hint || ''; }); setPrzyp(p);
-  };
-  const wyslij = async () => {
-    if (!applyT) return;
-    const przypisania = {};
-    Object.entries(przyp).forEach(([k, v]) => { if (String(v).trim()) { const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === String(v).trim().toUpperCase())); przypisania[k] = { name: String(v).trim(), accountId: konto ? konto.id : undefined }; } });
-    setApplying(true);
-    const ok = await data.applyTemplate(applyT.id, applyWeek, przypisania);
-    setApplying(false);
-    if (ok) setApplyT(null);
-  };
-
-  return (
-    <div className="mt-3 bg-white rounded-xl shadow-sm border" style={{ borderColor: colors.primary.bg }}>
-      <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: colors.primary.darkest }}>
-        <span className="text-sm font-semibold text-white">Szablony tygodniowe (Plantillas)</span>
-        <span className="text-xs text-white/70">zapisz wzorcowy tydzień i nakładaj go na kolejne</span>
-      </div>
-      <div className="p-4 space-y-4">
-        {(data.templates || []).length > 0 && (
-          <div className="space-y-1.5">
-            {data.templates.map((t) => (
-              <div key={t.id} className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
-                <span className="font-semibold text-sm" style={{ color: colors.primary.darkest }}>{t.name}</span>
-                {t.notes && <span className="text-xs" style={{ color: colors.primary.light }}>{t.notes}</span>}
-                <span className="text-xs" style={{ color: colors.primary.light }}>{t.sloty} slotów · {t.zmian} zmian · {Number(t.godzin).toFixed(0)} h/tydz.</span>
-                <span className="ml-auto flex gap-2">
-                  <button onClick={() => otworzApply(t)} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zastosuj</button>
-                  <button onClick={() => window.confirm(`Usunąć szablon „${t.name}"?`) && data.deleteTemplate(t.id)} className="text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>Usuń</button>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-end gap-3 pt-1 border-t" style={{ borderColor: '#EDE3E6' }}>
-          <div><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Tydzień źródłowy</label>
-            <select value={saveFor} onChange={(e) => setSaveFor(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
-              {weeks.map((w) => { const e2 = new Date(w.start); e2.setDate(e2.getDate() + 6); return <option key={w.start} value={w.start}>{w.start.slice(8)}.{w.start.slice(5, 7)} – {ymd(e2).slice(8)}.{ymd(e2).slice(5, 7)}</option>; })}
-            </select></div>
-          <div className="flex-1 min-w-[160px]"><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Nazwa szablonu</label>
-            <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="np. Tydzień standardowy" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-          <div className="flex-1 min-w-[160px]"><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Uwagi (opcjonalnie)</label>
-            <input value={tplNotes} onChange={(e) => setTplNotes(e.target.value)} placeholder="np. obsada wakacyjna" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-          <button disabled={saving || !tplName.trim() || !saveFor} onClick={async () => { setSaving(true); const ok = await data.saveTemplate(saveFor, tplName.trim(), tplNotes.trim()); setSaving(false); if (ok) { setTplName(''); setTplNotes(''); } }}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{saving ? 'Zapisuję…' : 'Zapisz tydzień jako szablon'}</button>
-        </div>
-      </div>
-
-      {applyT && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,.45)' }} onClick={() => !applying && setApplyT(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="font-bold" style={{ color: colors.primary.darkest }}>Zastosuj szablon — {applyT.name}</h3>
-              <button onClick={() => setApplyT(null)} className="text-slate-400"><X size={18} /></button>
-            </div>
-            <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Przypisz osoby do slotów (puste pole = slot pominięty). Zmiany trafią do grafiku i wykonania.</p>
-            <div className="mb-4"><label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Tydzień docelowy (poniedziałek)</label>
-              <input type="date" value={applyWeek} onChange={(e) => { const d = new Date(e.target.value); const pon = new Date(d); pon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); setApplyWeek(ymd(pon)); }} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
-            <div className="space-y-2">
-              {applyT.sloty.map((sl) => (
-                <div key={sl.id} className="grid grid-cols-[1fr_1fr] gap-3 items-center px-3 py-2 rounded-lg" style={{ backgroundColor: colors.primary.bgLight }}>
-                  <div>
-                    <p className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{sl.label}</p>
-                    <p className="text-[11px]" style={{ color: colors.primary.light }}>{sl.shifts.length} zmian · {sl.shifts.reduce((a, x) => a + x.hours, 0).toFixed(0)} h · {sl.shifts.map((x) => `${D3[(x.dow + 6) % 7]} ${x.start}`).join(', ')}</p>
-                  </div>
-                  <input list="tpl-lista-kont" value={przyp[sl.id] || ''} onChange={(e) => setPrzyp((p) => ({ ...p, [sl.id]: e.target.value }))} placeholder={`ostatnio: ${sl.hint || '—'}`} className="px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: colors.primary.bg }} />
-                </div>
-              ))}
-              <datalist id="tpl-lista-kont">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist>
-            </div>
-            <div className="flex justify-end gap-2 mt-5">
-              <button disabled={applying} onClick={() => setApplyT(null)} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
-              <button disabled={applying} onClick={wyslij} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{applying ? 'Stosuję…' : 'Zastosuj szablon'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-
-// Wspólne scalanie par praca+instruktor (doba operacyjna 06→06)
-const scalParyPlan = (arr) => {
-  const zwykle = [], instr = [];
-  arr.forEach((x) => (jestInstruktor(x) ? instr : zwykle).push(x));
-  const out = zwykle.map((x) => ({ ...x }));
-  instr.forEach((i) => {
-    // FIX: wiersz instruktorski łączy się wyłącznie ze zmianą TEJ SAMEJ osoby
-    // (wcześniej: tylko data+nakładanie godzin — przy dwóch szkoleniach dnia pary się mieszały)
-    const taOsoba = (x) => (i.accountId && x.accountId) ? x.accountId === i.accountId : String(x.name).toUpperCase().trim() === String(i.name).toUpperCase().trim();
-    const para = out.find((x) => taOsoba(x) && x.date === i.date && plnMin(x.start) < plnMin(i.end) + (plnMin(i.end) <= plnMin(i.start) ? 1440 : 0) && plnMin(i.start) < plnMin(x.end) + (plnMin(x.end) <= plnMin(x.start) ? 1440 : 0));
-    if (para) { para.szkoli = true; para.partnerSzk = i.partner || i.uczen || null; para.paraInstr = { date: i.date, name: i.name, start: i.start, end: i.end }; }
-    else out.push({ ...i, szkoli: true });
-  });
-  return out;
-};
-// Szacunkowy koszt godzin wg konta (UZ: stawka/h; UOP: wynagrodzenie mies. / 160 h)
-const kosztGodzin = (konto, h) => !konto ? 0 : (konto.umowa === 'UOP' ? (konto.stawka / 160) * h : konto.stawka * h);
-
-
-// ===================== PLANOWANIE: OPTYMALIZACJA + BUDŻET w jednym module =====================
-// ═════════ Planowanie obsady — integracja: prognoza (/forecast) → popyt 15 min (silnik 48/96)
-// → obsada z grafiku → KPI/koszty kont → heatmapa i Gantt → Smart Scheduler → publikacja ═════════
-const POB_MIN = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
-const pobOp = (t) => { let x = POB_MIN(t) - 360; if (x < 0) x += 1440; return x; };
-const pobHH = (min) => { const m = ((min + 360) % 1440 + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
-const pobH1 = (v) => `${(Math.round(v * 10) / 10).toFixed(1).replace('.', ',')} h`;
-const pobTydzien = (d) => { const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dn = (x.getUTCDay() + 6) % 7; x.setUTCDate(x.getUTCDate() - dn + 3); const p1 = new Date(Date.UTC(x.getUTCFullYear(), 0, 4)); return 1 + Math.round(((x - p1) / 86400000 - 3 + ((p1.getUTCDay() + 6) % 7)) / 7); };
-
-const PlanObsada = ({ data, setPage }) => {
-  const dzisIso = ymd(new Date());
-  const [weekStart, setWeekStart] = useState(wtMonday(dzisIso));
-  const [day, setDay] = useState(dzisIso);
-  const [scenariusz, setScenariusz] = useState('bazowy');
-  const [fcDni, setFcDni] = useState({});
-  const [pubInfo, setPubInfo] = useState({});
-  const [porownaj, setPorownaj] = useState(false);
-  const [slotSel, setSlotSel] = useState(null);
-  const [rekomOn, setRekomOn] = useState(true);
-  const [propozycje, setPropozycje] = useState(null);
-  const [modal, setModal] = useState(null);          // { date, start, end, station, osoba }
-  const [dyspo, setDyspo] = useState([]);
-  const [busy, setBusy] = useState(false);
-
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return ymd(d); }), [weekStart]);
-  useEffect(() => { if (!days.includes(day)) setDay(days.includes(dzisIso) ? dzisIso : days[0]); }, [weekStart]);
-
-  // dane zewnętrzne modułu: prognoza sprzedaży, stan publikacji, zatwierdzone dyspozycje
-  useEffect(() => {
-    api(`/forecast?from=${weekStart}&days=7`).then((r) => { if (r && r.success) { const m = {}; (r.days || []).forEach((x) => { m[x.date] = x.forecast; }); setFcDni(m); } }).catch(() => {});
-    api('/availability?reqs=1').then((r) => { if (r && r.success) setDyspo((r.requests || []).filter((x) => x.status === 'approved')); }).catch(() => {});
-  }, [weekStart]);
-  const mieszki = useMemo(() => [...new Set(days.map((d) => d.slice(0, 7)))], [days]);
-  const zaladujPub = useCallback(() => { mieszki.forEach((ym) => { api(`/schedule?action=pubinfo&pubmonth=${ym}`).then((r) => { if (r && r.success) setPubInfo((x) => ({ ...x, [ym]: r })); }).catch(() => {}); }); }, [mieszki]);
-  useEffect(zaladujPub, [zaladujPub]);
-
-  const params = (data.salesData && data.salesData.params) || {};
-  const splh = params.splh || 420, podloga = params.podloga || 3;
-  const mnoznik = scenariusz === 'oszczedny' ? 0.9 : scenariusz === 'bezpieczny' ? 1.1 : 1;
-
-  // silnik dnia: wymagane (48→96) i zaplanowane (96) + podsumowanie slotowe
-  const silnikDnia = useCallback((d) => {
-    const dow = new Date(d + 'T12:00:00').getDay();
-    const sprzedaz = fcDni[d] || 0;
-    const tryb = sprzedaz > 0 ? 'silnik' : 'krzywa';
-    const { dir, ind } = optRozbicie(sprzedaz, splh, podloga, tryb, dow);
-    const req48 = dir.map((v, i) => Math.max(v, ind[i]) * mnoznik);
-    const req96 = v4Up96(req48);
-    const sch96 = new Float64Array(V4_NSLOT);
-    const zmiany = data.shifts.filter((x) => x.date === d && !jestInstruktor(x));
-    zmiany.forEach((x) => v4AddCoverage(sch96, x.start, x.end));
-    return { req48, req96, sch96, zmiany, pods: v4Coverage(req96, sch96), tryb };
-  }, [data.shifts, fcDni, splh, podloga, mnoznik]);
-
-  const dniS = useMemo(() => { const m = {}; days.forEach((d) => { m[d] = silnikDnia(d); }); return m; }, [days, silnikDnia]);
-  const D = dniS[day] || silnikDnia(day);
-
-  // KPI tygodnia
-  const kontoZm = (x) => (x.accountId && (data.accounts || []).find((a) => a.id === x.accountId)) || null;
-  const kpi = useMemo(() => {
-    let plan = 0, req = 0, exc = 0, def = 0, koszt = 0, sprzedaz = 0;
-    days.forEach((d) => { const S = dniS[d]; if (!S) return; plan += S.zmiany.reduce((a, x) => a + godzZ(x), 0); req += S.pods.requiredH; exc += S.pods.excessH; def += S.pods.deficitH; S.zmiany.forEach((x) => { koszt += kosztGodzin(kontoZm(x), godzZ(x)); }); sprzedaz += fcDni[d] || 0; });
-    const score = Math.max(5, Math.min(100, Math.round(100 - Math.min(45, def * 4) - Math.min(30, exc * 1.5))));
-    return { plan, req, exc, def, koszt, sprzedaz, splhP: plan ? sprzedaz / plan : 0, colP: sprzedaz ? koszt / sprzedaz * 100 : 0, score };
-  }, [days, dniS, fcDni, data.accounts]);
-
-  // konflikty zmian z absencjami / dyspozycjami (zatwierdzonymi)
-  const dyObow = (r, d) => r.date === d || (r.recurrence === 'weekly' && r.date <= d && (!r.repeatUntil || r.repeatUntil >= d) && new Date(r.date + 'T12:00:00').getDay() === new Date(d + 'T12:00:00').getDay());
-  const konfliktZmiany = (x) => {
-    if (!x.accountId) return null;
-    const ab = (data.absences || []).find((a) => a.accountId === x.accountId && a.status === 'approved' && a.from <= x.date && x.date <= a.to);
-    if (ab) return `absencja (${ab.type}) ${ab.from}–${ab.to}`;
-    const dy = dyspo.find((r) => r.accountId === x.accountId && dyObow(r, x.date));
-    if (dy) {
-      if (dy.type === 'unavailable') return 'dyspozycja: nie może pracować';
-      if (dy.type === 'from_time' && POB_MIN(x.start) < POB_MIN(dy.startTime)) return `dyspozycja: może od ${dy.startTime}`;
-      if (dy.type === 'until_time' && POB_MIN(x.end) > POB_MIN(dy.endTime)) return `dyspozycja: może do ${dy.endTime}`;
-      if (dy.type === 'specific_shift' && (POB_MIN(x.start) < POB_MIN(dy.startTime) || POB_MIN(x.end) > POB_MIN(dy.endTime))) return `dyspozycja: preferuje ${dy.startTime}–${dy.endTime}`;
-    }
-    return null;
-  };
-
-  // zakresy niedoboru/nadmiaru (na siatce 96)
-  const zakresy = (warunek) => {
-    const out = []; let a = -1;
-    for (let i = 0; i < V4_NSLOT; i++) {
-      const ok = warunek(D.pods.perSlot[i]);
-      if (ok && a < 0) a = i;
-      if ((!ok || i === V4_NSLOT - 1) && a >= 0) { const b = ok ? i + 1 : i; if (b - a >= 2) out.push({ od: a, do: b, h: D.pods.perSlot.slice(a, b).reduce((x, y) => x + (warunek === undefined ? 0 : Math.abs(y.req - y.sch)), 0) / 4 }); a = -1; }
-    }
-    return out;
-  };
-  const niedobory = useMemo(() => zakresy((sl2) => sl2.def > 0.4).sort((a, b) => b.h - a.h), [D]);
-  const nadmiary = useMemo(() => zakresy((sl2) => sl2.req > 0 && sl2.exc > 0.6).sort((a, b) => b.h - a.h), [D]);
-  const konflikty = useMemo(() => D.zmiany.map((x) => ({ x, k: konfliktZmiany(x) })).filter((z) => z.k), [D, dyspo, data.absences]);
-
-  // optymalizator: dokładanie szablonów na rezydualny niedobór (istniejący silnik optKsztaltuj)
-  const uruchomOptymalizator = () => {
-    const rez = D.req48.map((v, i) => Math.max(0, v - (D.sch96[i * 2] + D.sch96[i * 2 + 1]) / 2));
-    const wl = Object.fromEntries(SZAB.map((t) => [t.n, true]));
-    const { out } = optKsztaltuj(rez, wl);
-    setPropozycje(out.map((c) => ({ n: c.t.n, od: `${String(c.t.od % 24).padStart(2, '0')}:00`, do: `${String(c.t.do % 24).padStart(2, '0')}:00`, h: c.t.do - c.t.od })));
-  };
-
-  // publikacja + status
-  const wszystkieOpublikowane = mieszki.every((ym) => pubInfo[ym] && pubInfo[ym].opublikowany && pubInfo[ym].roznice && pubInfo[ym].roznice.razem === 0);
-  const opublikuj = async () => {
-    if (!confirm(`Opublikować grafik (${mieszki.join(', ')})? Pracownicy zobaczą nową wersję, potwierdzenia wyzerują się.`)) return;
-    setBusy(true);
-    for (const ym of mieszki) { const r = await publikujMiesiac(ym); if (r.success) data.show(`Opublikowano ${ym} — wersja ${r.wersjaPub}`); else if (!String(r.error || '').includes('żadnych zmian')) data.show(r.error || 'Błąd publikacji', 'error'); }
-    setBusy(false); zaladujPub();
-  };
-
-  // gantt: wiersze per osoba
-  const wiersze = useMemo(() => {
-    const m = new Map();
-    D.zmiany.forEach((x) => { const k = kontoZm(x); const id = x.accountId || `n:${x.name}`; if (!m.has(id)) m.set(id, { id, name: (k && k.name) || x.name, rola: (k && k.funkcja) || '—', zm: [] }); m.get(id).zm.push(x); });
-    return [...m.values()].sort((a, b) => POB_MIN(a.zm[0].start) - POB_MIN(b.zm[0].start) || a.name.localeCompare(b.name, 'pl'));
-  }, [D]);
-  const otwarte = niedobory.slice(0, 3).map((z) => ({ od: pobHH(z.od * 15), do: pobHH(z.do * 15), h: (z.do - z.od) / 4 }));
-
-  const zapiszModal = async () => {
-    if (!modal || !modal.osoba || !modal.osoba.trim()) return data.show('Podaj pracownika', 'error');
-    const konto = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === modal.osoba.trim().toUpperCase()));
-    setBusy(true);
-    const ok = await data.addShiftManual({ date: modal.date, name: modal.osoba.trim(), station: modal.station, start: modal.start, end: modal.end, accountId: konto ? konto.id : undefined });
-    setBusy(false); if (ok) setModal(null);
-  };
-  const skroc = async (z) => {
-    const nowyKoniec = pobHH(z.zakres.od * 15);
-    if (!confirm(`Skrócić zmianę ${z.osoba} do ${nowyKoniec}? (nadmiar ${pobH1(z.zakres.h)})`)) return;
-    await data.updateShiftManual({ sid: z.x.sid, date: z.x.date, name: z.x.name, start: z.x.start, end: z.x.end }, { end: nowyKoniec });
-  };
-  // dopasuj zmianę do skrócenia: kończy się wewnątrz największego nadmiaru
-  const doSkrocenia = useMemo(() => {
-    for (const zak of nadmiary) {
-      const kand = D.zmiany.filter((x) => { const e = pobOp(x.end) / 15; return e > zak.od && e <= zak.do + 1 && (pobOp(x.end) - pobOp(x.start)) / 60 - (zak.do - zak.od) / 4 >= 3; })
-        .sort((a, b) => pobOp(b.end) - pobOp(a.end))[0];
-      if (kand) { const k = kontoZm(kand); return { x: kand, osoba: (k && k.name) || kand.name, zakres: zak }; }
-    }
-    return null;
-  }, [nadmiary, D]);
-
-  const stacje = useMemo(() => [...new Set(['MANAGER', 'MGR FUNKCYJNE', ...data.shifts.map((x) => x.station)])].filter(Boolean), [data.shifts]);
-  const maxY = Math.max(4, ...D.req96, ...D.sch96);
-  const dayLabel = (d) => { const dt = new Date(d + 'T12:00:00'); return { dn: ['Nd', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'][dt.getDay()], nr: `${dt.getDate()} ${['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'][dt.getMonth()]}` }; };
-  const KPI_KARTA = ({ label, val, sub, kol }) => (
-    <div className="bg-white rounded-2xl border p-4 min-w-0" style={{ borderColor: '#E3DCDD' }}>
-      <p className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>{label}</p>
-      <p className="text-[22px] font-bold mt-1 leading-none" style={{ color: kol || colors.primary.darkest }}>{val}</p>
-      <p className="text-[10.5px] mt-1.5 truncate" style={{ color: '#71656A' }}>{sub}</p>
-    </div>
-  );
-  const tydzienLabel = `${days[0].slice(8)}–${days[6].slice(8)} ${['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'][new Date(days[6] + 'T12:00:00').getMonth()]} ${days[6].slice(0, 4)}`;
-
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-8" style={{ backgroundColor: '#F7F5F5' }}>
-      {/* nagłówek */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-        <div>
-          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#741334' }}>WORKRHYTHM PLANNING · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
-          <h1 className="text-[30px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Planowanie obsady</h1>
-          <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Układaj grafik w oparciu o popyt, kompetencje i koszt pracy.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setPage('import')} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}><Upload size={15} /> Importuj</button>
-          <button onClick={() => setPorownaj((v) => !v)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}><RefreshCw size={15} /> Porównaj</button>
-          <button onClick={opublikuj} disabled={busy} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><CheckCircle2 size={15} /> Opublikuj grafik</button>
-        </div>
-      </div>
-
-      {/* pasek tygodnia + scenariusz */}
-      <div className="bg-white rounded-2xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: '#E3DCDD' }}>
-        <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(ymd(d)); }} className="w-9 h-9 rounded-full border flex items-center justify-center" style={{ borderColor: '#E3DCDD' }}><ChevronLeft size={16} /></button>
-        <span className="flex items-center gap-2 text-[15px] font-bold" style={{ color: colors.primary.darkest }}><Calendar size={16} style={{ color: colors.primary.medium }} /> {tydzienLabel}</span>
-        <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(ymd(d)); }} className="w-9 h-9 rounded-full border flex items-center justify-center" style={{ borderColor: '#E3DCDD' }}><ChevronRight size={16} /></button>
-        <button onClick={() => { setWeekStart(wtMonday(dzisIso)); setDay(dzisIso); }} className="px-3 h-9 rounded-xl border text-sm font-semibold" style={{ borderColor: '#E3DCDD', color: colors.primary.dark }}>Dzisiaj</button>
-        <span className="ml-auto flex items-center gap-2 text-xs" style={{ color: colors.primary.light }}>
-          Scenariusz
-          <select value={scenariusz} onChange={(e) => setScenariusz(e.target.value)} className="px-3 h-9 rounded-xl border text-sm font-semibold" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}>
-            <option value="bazowy">Bazowy · zbalansowany</option>
-            <option value="oszczedny">Oszczędny · −10% popytu</option>
-            <option value="bezpieczny">Bezpieczny · +10% popytu</option>
-          </select>
-          <span className="px-3 h-9 rounded-xl border text-xs font-bold flex items-center gap-1.5" style={{ borderColor: '#E3DCDD', color: wszystkieOpublikowane ? '#741334' : '#A7465F', backgroundColor: wszystkieOpublikowane ? '#F1E4E8' : '#fff6e4' }}>
-            <i className="w-2 h-2 rounded-full" style={{ backgroundColor: wszystkieOpublikowane ? '#741334' : '#B86D82' }} />{wszystkieOpublikowane ? 'Published' : 'Preliminary'}
-          </span>
-        </span>
-      </div>
-      {porownaj && (
-        <div className="bg-white rounded-2xl border px-4 py-3 mb-4 text-sm flex flex-wrap gap-x-6 gap-y-1" style={{ borderColor: '#E3DCDD', color: colors.primary.dark }}>
-          {mieszki.map((ym) => { const pi = pubInfo[ym]; return <span key={ym}><b>{ym}</b>: {pi ? (pi.opublikowany ? `v${pi.wersjaPub} · potwierdzenia ${(pi.potwierdzenia || []).length}/${pi.osobOczekiwane}${pi.roznice ? ` · zmiany od publikacji +${pi.roznice.dodane}/±${pi.roznice.zmienione}/−${pi.roznice.usuniete}` : ''}` : 'nieopublikowany') : '…'}</span>; })}
-        </div>
-      )}
-
-      {/* KPI */}
-      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-        <KPI_KARTA label="Plan Hours" val={pobH1(kpi.plan)} sub={`${kpi.plan - kpi.req >= 0 ? '+' : ''}${pobH1(kpi.plan - kpi.req)} vs Required`} />
-        <KPI_KARTA label="Required Hours" val={pobH1(kpi.req)} sub="prognoza slotowa" />
-        <KPI_KARTA label="Excess" val={pobH1(kpi.exc)} sub={`${kpi.plan ? (kpi.exc / kpi.plan * 100).toFixed(1).replace('.', ',') : 0}% godzin`} kol="#A7465F" />
-        <KPI_KARTA label="Deficit" val={pobH1(kpi.def)} sub={`${niedobory.length} krytyczne sloty (dzień)`} kol="#B94352" />
-        <KPI_KARTA label="SPLH" val={kpi.splhP ? Math.round(kpi.splhP).toLocaleString('pl-PL') : '—'} sub={`cel ${splh}`} />
-        <KPI_KARTA label="COL" val={kpi.colP ? `${kpi.colP.toFixed(1).replace('.', ',')}%` : '—'} sub="target ≤ 20%" kol={kpi.colP > 20 ? '#B94352' : '#741334'} />
-        <KPI_KARTA label="Labor Cost" val={`${Math.round(kpi.koszt).toLocaleString('pl-PL')} zł`} sub="wg stawek kont" />
-        <KPI_KARTA label="Schedule Score" val={kpi.score} sub={kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Do poprawy' : 'Wymaga zmian'} kol={kpi.score >= 85 ? '#741334' : kpi.score >= 70 ? '#A7465F' : '#B94352'} />
-      </div>
-
-      <div className="grid gap-4" style={{ gridTemplateColumns: rekomOn ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr)' }}>
-        <div className="min-w-0 space-y-4">
-          {/* wykres Demand vs Coverage */}
-          <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#E3DCDD' }}>
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-              <div><p className="text-[15px] font-bold" style={{ color: colors.primary.darkest }}>Demand vs Coverage</p><p className="text-[11px]" style={{ color: colors.primary.light }}>wymagana i zaplanowana obsada · interwał 15 min · {day} {D.tryb === 'krzywa' ? '· krzywa (brak prognozy sprzedaży)' : ''}</p></div>
-              <span className="flex items-center gap-4 text-[11px]" style={{ color: colors.primary.dark }}>
-                <span className="flex items-center gap-1.5"><i className="w-4 h-0.5" style={{ backgroundColor: '#5A3542' }} /> Required</span>
-                <span className="flex items-center gap-1.5"><i className="w-4 border-t-2 border-dashed" style={{ borderColor: '#A7465F' }} /> Scheduled</span>
-                <button onClick={() => setPage('optymalizacja')} className="px-3 h-8 rounded-lg border text-xs font-bold" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}>Parametry popytu</button>
-              </span>
-            </div>
-            <svg viewBox="0 0 970 190" className="w-full" style={{ height: 180 }}>
-              {[0, 0.5, 1].map((f) => <line key={f} x1="30" x2="960" y1={165 - f * 150} y2={165 - f * 150} stroke="#EDE3E6" />)}
-              {[0, 0.5, 1].map((f) => <text key={f} x="24" y={168 - f * 150} fontSize="9" fill="#A38D95" textAnchor="end">{Math.round(maxY * f)}</text>)}
-              <polygon points={`30,165 ${[...D.req96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} 960,165`} fill="rgba(116,19,52,.12)" />
-              <polyline points={[...D.req96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} fill="none" stroke="#5A3542" strokeWidth="2" />
-              <polyline points={[...D.sch96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} fill="none" stroke="#A7465F" strokeWidth="2" strokeDasharray="5 4" />
-              {[0, 12, 24, 36, 48, 60, 72, 84, 95].map((i) => <text key={i} x={30 + i * 9.7} y="182" fontSize="9" fill="#A38D95" textAnchor="middle">{pobHH(i * 15)}</text>)}
-            </svg>
-            {/* heatmapa pokrycia */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[12px] font-bold" style={{ color: colors.primary.darkest }}>Coverage heatmap <span className="font-normal text-[10.5px]" style={{ color: colors.primary.light }}>· kliknij slot, aby zobaczyć szczegóły</span></p>
-                <span className="flex items-center gap-3 text-[10.5px]" style={{ color: colors.primary.dark }}><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#A7465F' }} /> Pokrycie</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#B86D82' }} /> Nadmiar</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#B94352' }} /> Niedobór</span></span>
-              </div>
-              <div className="flex gap-1">
-                {Array.from({ length: 24 }, (_, h) => {
-                  let req = 0, sch = 0; for (let i = h * 4; i < h * 4 + 4; i++) { req += D.pods.perSlot[i].req; sch += D.pods.perSlot[i].sch; }
-                  const st2 = req - sch > 1 ? '#B94352' : sch - req > 2 && req > 0 ? '#B86D82' : '#A7465F';
-                  return <button key={h} onClick={() => setSlotSel({ h, req: req / 4, sch: sch / 4 })} className="flex-1 h-5 rounded" title={`${pobHH(h * 60)}–${pobHH(h * 60 + 60)}`} style={{ backgroundColor: st2, outline: slotSel && slotSel.h === h ? `2px solid ${colors.primary.darkest}` : 'none' }} />;
-                })}
-              </div>
-              {slotSel && <p className="text-[11.5px] mt-1.5" style={{ color: colors.primary.dark }}>Slot <b>{pobHH(slotSel.h * 60)}–{pobHH(slotSel.h * 60 + 60)}</b>: wymagane <b>{slotSel.req.toFixed(1).replace('.', ',')}</b> · plan <b>{slotSel.sch.toFixed(1).replace('.', ',')}</b> · {slotSel.req > slotSel.sch ? <span style={{ color: '#B94352' }}>niedobór {(slotSel.req - slotSel.sch).toFixed(1).replace('.', ',')}</span> : <span style={{ color: '#741334' }}>OK</span>} · na zmianie: {D.zmiany.filter((x) => { const a = pobOp(x.start), b = pobOp(x.end) <= a ? pobOp(x.end) + 1440 : pobOp(x.end); return a < (slotSel.h + 1) * 60 && b > slotSel.h * 60; }).map((x) => (kontoZm(x) || { name: x.name }).name.split(' ')[0]).join(', ') || '—'}</p>}
-            </div>
-          </div>
-
-          {/* zakładki dni */}
-          <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: '#E3DCDD' }}>
-            <div className="flex items-center border-b" style={{ borderColor: '#EDE3E6' }}>
-              {days.map((d) => { const L = dayLabel(d); const S = dniS[d]; const zle = S && S.pods.deficitH > 0.5; return (
-                <button key={d} onClick={() => { setDay(d); setSlotSel(null); setPropozycje(null); }} className="relative flex-1 px-2 py-2.5 text-center border-r last:border-0" style={{ borderColor: '#EDE3E6', backgroundColor: day === d ? '#F7F5F5' : 'white', borderBottom: day === d ? `3px solid ${colors.primary.darkest}` : '3px solid transparent' }}>
-                  {zle && <i className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#B94352' }} />}
-                  <p className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>{L.dn}</p>
-                  <p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{L.nr}</p>
-                </button>
-              ); })}
-              <div className="px-4 text-[11.5px] whitespace-nowrap hidden xl:block" style={{ color: colors.primary.light }}>
-                Required <b style={{ color: colors.primary.darkest }}>{pobH1(D.pods.requiredH)}</b> · Plan <b style={{ color: colors.primary.darkest }}>{pobH1(D.pods.scheduledH)}</b> · Coverage <b style={{ color: D.pods.coveragePct >= 95 ? '#741334' : '#A7465F' }}>{Math.round(D.pods.coveragePct)}%</b>
-              </div>
-            </div>
-            <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: '#EDE3E6' }}>
-              <button onClick={() => setModal({ date: day, start: '08:00', end: '16:00', station: stacje[0], osoba: '' })} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.darkest }}><Plus size={15} /> Dodaj zmianę</button>
-              <button onClick={() => { setPage('wt'); }} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}><FileSpreadsheet size={15} /> Szablon dnia</button>
-              <button onClick={() => setRekomOn((v) => !v)} className="ml-auto px-4 h-10 rounded-xl text-sm font-bold flex items-center gap-2" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>{rekomOn ? 'Ukryj rekomendacje' : 'Pokaż rekomendacje'}</button>
-            </div>
-            {/* gantt */}
-            <div className="overflow-x-auto">
-              <div style={{ minWidth: 860 }}>
-                <div className="flex border-b" style={{ borderColor: '#EDE3E6' }}>
-                  <div className="w-56 shrink-0 px-4 py-2 text-[10.5px] font-extrabold tracking-wide" style={{ color: colors.primary.light }}>PRACOWNIK / ROLA</div>
-                  <div className="relative flex-1 h-7">{Array.from({ length: 12 }, (_, i) => <span key={i} className="absolute top-1.5 text-[9.5px]" style={{ left: `${i * 2 / 24 * 100}%`, color: '#A38D95' }}>{pobHH(i * 120)}</span>)}</div>
-                </div>
-                {wiersze.map((w) => (
-                  <div key={w.id} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F5F5' }}>
-                    <div className="w-56 shrink-0 px-4 py-3 flex items-center gap-2.5">
-                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>{w.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
-                      <div className="min-w-0"><p className="text-[13px] font-bold truncate" style={{ color: colors.primary.darkest }}>{w.name}</p><p className="text-[10.5px] truncate" style={{ color: colors.primary.light }}>{w.rola}{w.zm[0] ? ` · ${w.zm[0].station}` : ''}</p></div>
-                      {w.zm.some((x) => konfliktZmiany(x)) && <AlertTriangle size={14} className="shrink-0" style={{ color: '#B94352' }} title={w.zm.map((x) => konfliktZmiany(x)).filter(Boolean).join('; ')} />}
-                    </div>
-                    <div className="relative flex-1 py-3" style={{ backgroundImage: 'repeating-#F7F5F5' }}>
-                      {w.zm.map((x, i) => { const a = pobOp(x.start); let b = pobOp(x.end); if (b <= a) b += 1440; const kfl = konfliktZmiany(x); return (
-                        <div key={i} title={`${x.start}–${x.end} · ${x.station}${kfl ? ` · ⚠ ${kfl}` : ''}`} className="absolute h-8 rounded-lg border flex items-center px-2 text-[11px] font-semibold truncate cursor-default" style={{ left: `${a / 1440 * 100}%`, width: `${Math.min(b - a, 1440 - a) / 1440 * 100}%`, top: 8, backgroundColor: kfl ? '#F5E3E8' : stationColor(x.station) + '22', borderColor: kfl ? '#E0B9C4' : stationColor(x.station) + '55', color: kfl ? '#B94352' : colors.primary.darkest, borderLeft: `3px solid ${kfl ? '#B94352' : stationColor(x.station)}` }}>{x.start}–{x.end} · {x.station}{kfl && <AlertTriangle size={11} className="ml-1 shrink-0" />}</div>
-                      ); })}
-                    </div>
-                  </div>
-                ))}
-                {otwarte.map((o, i) => (
-                  <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F5F5' }}>
-                    <div className="w-56 shrink-0 px-4 py-3 flex items-center gap-2.5">
-                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#C7B4BB', color: '#71656A' }}><Plus size={15} /></button>
-                      <div><p className="text-[13px] font-bold" style={{ color: colors.primary.dark }}>Otwarta zmiana</p><p className="text-[10.5px]" style={{ color: '#B94352' }}>niedobór {pobH1(o.h)}</p></div>
-                      <AlertTriangle size={14} style={{ color: '#B94352' }} />
-                    </div>
-                    <div className="relative flex-1 py-3">
-                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="absolute h-8 rounded-lg border-2 border-dashed flex items-center px-2 text-[11px] font-semibold" style={{ left: `${pobOp(o.od) / 1440 * 100}%`, width: `${((pobOp(o.do) <= pobOp(o.od) ? pobOp(o.do) + 1440 : pobOp(o.do)) - pobOp(o.od)) / 1440 * 100}%`, top: 8, borderColor: '#C7A9B3', color: '#A7465F', backgroundImage: 'repeating-#F5ECEF' }}>{o.od}–{o.do} · Nieprzypisana</button>
-                    </div>
-                  </div>
-                ))}
-                {!wiersze.length && !otwarte.length && <p className="text-center py-8 text-sm" style={{ color: colors.primary.light }}>Brak zmian i niedoborów w tym dniu.</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Smart Scheduler */}
-        {rekomOn && (
-          <aside className="space-y-3">
-            <div className="bg-white rounded-2xl border p-4" style={{ borderColor: '#E3DCDD' }}>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] font-extrabold tracking-[0.12em]" style={{ color: '#741334' }}>⚡ SMART SCHEDULER</p>
-                <button onClick={() => setRekomOn(false)} className="w-7 h-7 rounded-lg border flex items-center justify-center" style={{ borderColor: '#E3DCDD' }}><X size={13} /></button>
-              </div>
-              <p className="text-[16px] font-bold mb-3" style={{ color: colors.primary.darkest }}>Rekomendacje zmian</p>
-              <div className="rounded-xl p-3 flex items-center gap-3 mb-3" style={{ backgroundColor: '#F7F5F5' }}>
-                <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" fill="none" stroke="#E3DCDD" strokeWidth="5" /><circle cx="23" cy="23" r="19" fill="none" stroke={kpi.score >= 85 ? '#741334' : kpi.score >= 70 ? '#B86D82' : '#B94352'} strokeWidth="5" strokeDasharray={`${kpi.score / 100 * 119} 119`} strokeLinecap="round" transform="rotate(-90 23 23)" /><text x="23" y="27" fontSize="12" fontWeight="800" textAnchor="middle" fill="#2B171E">{kpi.score}</text></svg>
-                <div><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Plan do poprawy' : 'Plan wymaga zmian'}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{(niedobory.length ? 1 : 0) + (doSkrocenia ? 1 : 0) + konflikty.length} sugestie mogą poprawić wynik</p></div>
-              </div>
-              <div className="space-y-3">
-                {niedobory.slice(0, 2).map((z, i) => (
-                  <div key={i} className="border rounded-xl p-3" style={{ borderColor: '#E9D6DC' }}>
-                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>{pobHH(z.od * 15)}–{pobHH(z.do * 15)}</span>
-                    <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Uzupełnij niedobór obsady</p>
-                    <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>Dodaj zmianę pokrywającą ten zakres albo wydłuż sąsiednią.</p>
-                    <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Deficit −{pobH1((z.do - z.od) / 4)}</span></div>
-                    <button onClick={() => setModal({ date: day, start: pobHH(z.od * 15), end: pobHH(z.do * 15), station: stacje[0], osoba: '' })} className="text-[12px] font-bold mt-2" style={{ color: '#741334' }}>Dodaj zmianę →</button>
-                  </div>
-                ))}
-                {doSkrocenia && (
-                  <div className="border rounded-xl p-3" style={{ borderColor: '#E3DCDD' }}>
-                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F1E4E8', color: '#A7465F' }}>{pobHH(doSkrocenia.zakres.od * 15)}–{pobHH(doSkrocenia.zakres.do * 15)}</span>
-                    <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Usuń nadmiar obsady</p>
-                    <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>Skróć zmianę {doSkrocenia.osoba} do {pobHH(doSkrocenia.zakres.od * 15)} — pokrycie pozostanie pełne.</p>
-                    <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Koszt −{Math.round(kosztGodzin(kontoZm(doSkrocenia.x), doSkrocenia.zakres.h))} zł</span><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Excess −{pobH1(doSkrocenia.zakres.h)}</span></div>
-                    <button onClick={() => skroc(doSkrocenia)} className="text-[12px] font-bold mt-2" style={{ color: '#741334' }}>Zastosuj →</button>
-                  </div>
-                )}
-                {konflikty.slice(0, 2).map((z, i) => (
-                  <div key={`k${i}`} className="border rounded-xl p-3" style={{ borderColor: '#E9D6DC' }}>
-                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>{z.x.start}–{z.x.end}</span>
-                    <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Konflikt: {(kontoZm(z.x) || { name: z.x.name }).name}</p>
-                    <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>{z.k}.</p>
-                    <button onClick={() => setPage('dyspo')} className="text-[12px] font-bold mt-2" style={{ color: '#741334' }}>Otwórz dyspozycje →</button>
-                  </div>
-                ))}
-                {!niedobory.length && !doSkrocenia && !konflikty.length && <p className="text-[12px] text-center py-2" style={{ color: colors.primary.light }}>Brak sugestii — plan wygląda dobrze. ✓</p>}
-              </div>
-              <button onClick={uruchomOptymalizator} className="w-full mt-3 h-11 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2" style={{ backgroundColor: colors.primary.darkest }}><LayoutGrid size={15} /> Uruchom optymalizator</button>
-              {propozycje && (
-                <div className="mt-3 border-t pt-3" style={{ borderColor: '#EDE3E6' }}>
-                  <p className="text-[12px] font-bold mb-2" style={{ color: colors.primary.darkest }}>Propozycje ({propozycje.length}) · {pobH1(propozycje.reduce((a, x) => a + x.h, 0))}</p>
-                  {propozycje.length === 0 && <p className="text-[11.5px]" style={{ color: colors.primary.light }}>Popyt jest pokryty — nic nie trzeba dokładać.</p>}
-                  {propozycje.map((pr, i) => (
-                    <div key={i} className="flex items-center gap-2 py-1.5 border-b last:border-0" style={{ borderColor: '#F7F5F5' }}>
-                      <span className="text-[11.5px] flex-1" style={{ color: colors.primary.dark }}><b>{pr.od}–{pr.do}</b> · {pr.n}</span>
-                      <button onClick={() => setModal({ date: day, start: pr.od, end: pr.do, station: stacje[0], osoba: '' })} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>Użyj</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </aside>
-        )}
-      </div>
-
-      {/* modal Dodaj zmianę */}
-      {modal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setModal(null)} />
-          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold" style={{ color: colors.primary.darkest }}>Dodaj zmianę · {modal.date}</h3><button onClick={() => setModal(null)}><X size={20} className="text-slate-400" /></button></div>
-            <div className="space-y-3">
-              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Pracownik</label>
-                <input list="pob-konta" value={modal.osoba} onChange={(e) => setModal((m) => ({ ...m, osoba: e.target.value }))} placeholder="wpisz nazwisko…" className="w-full px-3 py-2.5 rounded-lg border" style={{ borderColor: colors.primary.bg }} autoFocus />
-                <datalist id="pob-konta">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist></div>
-              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Stanowisko</label>
-                <select value={modal.station} onChange={(e) => setModal((m) => ({ ...m, station: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border" style={{ borderColor: colors.primary.bg }}>{stacje.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Od</label><input type="time" value={modal.start} onChange={(e) => setModal((m) => ({ ...m, start: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
-                <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Do</label><input type="time" value={modal.end} onChange={(e) => setModal((m) => ({ ...m, end: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
-              </div>
-              <p className="text-[11px]" style={{ color: colors.primary.light }}>Planer sprawdzi absencje, dyspozycje, nakładanie i reguły umów (blokady/ostrzeżenia).</p>
-            </div>
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setModal(null)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
-              <button disabled={busy} onClick={zapiszModal} className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}>Dodaj do grafiku</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ═════════ AOP AUTOPLAN — układanie grafiku z planu miesięcznego, dyspozycji i historii ═════════
-const AutoplanAOP = ({ data, setPage }) => {
-  const dzisA = new Date();
-  const nastMc = new Date(dzisA.getFullYear(), dzisA.getMonth() + 1, 1);
-  const ymdL = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const [from, setFrom] = useState(ymdL(nastMc));
-  const [to, setTo] = useState(ymdL(new Date(nastMc.getFullYear(), nastMc.getMonth() + 1, 0)));
-  const [aop, setAop] = useState({ crewHoursMax: '', totalHours: '', sales: '', transactions: '' });
-  const [splh, setSplh] = useState(420);
-  const [wym, setWym] = useState([{ station: 'KANAPKI / WRAPY', start: '06:00', end: '14:00', dni: [] }, { station: 'FRYTKI', start: '10:00', end: '18:00', dni: [] }]);
-  const [busy, setBusy] = useState(false);
-  const [prop, setProp] = useState(null);
-  const [modelInfo, setModelInfo] = useState(null);
-  const [historia, setHistoria] = useState([]);
-  const [widok, setWidok] = useState('dni');
-  const stacje = [...new Set(['MANAGER', 'KANAPKI / WRAPY', 'FRYTKI', 'PANIEROWANIE', 'SMAŻENIE', 'KONTROLER', 'DISPATCHER', 'PHU', 'DESERY / NAPOJE', 'ZMYWAK', ...(data.shifts || []).map((x) => x.station)])].filter(Boolean);
-  const DNI = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
-  const zaladuj = () => { api('/autoplan?action=model').then((r) => { if (r && r.success) setModelInfo(r); }).catch(() => {}); api('/autoplan').then((r) => { if (r && r.success) setHistoria(r.proposals || []); }).catch(() => {}); };
-  useEffect(zaladuj, []);
-  const generuj = async () => {
-    if (!aop.crewHoursMax || !aop.sales) return data.show('Podaj przynajmniej górną granicę godzin CREW i estymowaną sprzedaż AOP', 'error');
-    setBusy(true);
-    const r = await api('/autoplan?action=generate', 'POST', { from, to, aop: { crewHoursMax: Number(aop.crewHoursMax), totalHours: Number(aop.totalHours) || 0, sales: Number(aop.sales), transactions: Number(aop.transactions) || 0 }, wymagania: wym.filter((w) => w.station && w.start && w.end), splh: Number(splh) || 420, seed: Date.now() % 100000 });
-    setBusy(false);
-    if (r && r.success) { setProp(r.proposal); setWidok('dni'); data.show(`Propozycja gotowa: ${r.proposal.podsumowanie.obsadzone}/${r.proposal.podsumowanie.zmian} zmian obsadzonych`); zaladuj(); }
-    else data.show((r && r.error) || 'Błąd generowania', 'error');
-  };
-  const zastosuj = async () => {
-    if (!prop) return;
-    if (!confirm(`Dopisać ${prop.podsumowanie.obsadzone} zmian do grafiku ${prop.okres.from} – ${prop.okres.to} jako wersję roboczą? Istniejące zmiany (np. MGR) zostają, duplikaty są pomijane.`)) return;
-    setBusy(true);
-    const r = await api('/autoplan?action=apply', 'POST', { id: prop.id });
-    if (r && r.success) { const ok = await data.addHoursBulk(r.shifts); if (ok) { data.show(`Grafik roboczy uzupełniony (${r.zmian} zmian). Sprawdź go w Schedule i opublikuj.`); setProp({ ...prop, applied: true }); } }
-    else data.show((r && r.error) || 'Błąd zastosowania', 'error');
-    setBusy(false); zaladuj();
-  };
-  const fmt = (n) => Math.round(n || 0).toLocaleString('pl-PL');
-  const ps = prop && prop.podsumowanie;
-  const pole = (k, label, suffix, ph) => <label className="input-label">{label}<div className="number-input"><input type="number" value={aop[k]} placeholder={ph} onChange={(e) => setAop((a) => ({ ...a, [k]: e.target.value }))} /><span>{suffix}</span></div></label>;
-  const modelRows = modelInfo ? Object.entries(modelInfo.model).map(([id, m]) => ({ id, ...m, name: ((data.accounts || []).find((a) => a.id === id) || {}).name || id })).filter((m) => m.grupa === 'crew').sort((a, b) => b.n - a.n) : [];
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto"><div className="page-wrap module-view forecast-view" style={{ width: '100%' }}>
-      <MHead kicker="PLANOWANIE • AOP AUTOPLAN" title="Ułóż grafik z planu AOP" copy="Podaj miesięczne założenia AOP i wymagane zmiany dnia — silnik rozłoży godziny CREW na dni według sprzedaży, obsadzi je zgodnie z dyspozycjami, prawem pracy i historią stanowisk (kto częściej pracował na stanowisku, ten ma większą szansę je dostać).">
-        <button className="secondary-action" onClick={() => setPage('wt')}><Calendar size={16} /> Schedule</button>
-        <button className="primary-action" disabled={busy} onClick={generuj}><Sparkles size={16} /> {busy ? 'Liczę…' : 'Wygeneruj propozycję'}</button>
-      </MHead>
-      <section className="forecast-layout">
-        <aside className="forecast-controls panel">
-          <div className="panel-title"><div><span>ZAŁOŻENIA AOP</span><h2>Plan miesięczny</h2></div><SlidersHorizontalIcon /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label className="input-label">Od<div className="number-input"><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div></label>
-            <label className="input-label">Do<div className="number-input"><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div></label>
-          </div>
-          {pole('crewHoursMax', 'Górna granica godzin CREW', 'h', 'np. 1450')}
-          {pole('totalHours', 'Godziny total (informacyjnie; MGR układa kierownik)', 'h', 'np. 1900')}
-          {pole('sales', 'Estymowana sprzedaż AOP', 'PLN', 'np. 1420000')}
-          {pole('transactions', 'Estymowane transakcje AOP', 'trx', 'np. 29800')}
-          <label className="input-label">SPLH docelowe (sprzedaż / roboczogodzina)<div className="number-input"><input type="number" value={splh} onChange={(e) => setSplh(e.target.value)} /><span>zł/h</span></div></label>
-          <div className="control-divider" />
-          <label className="input-label">Wymagane zmiany w dobie (szablon)</label>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {wym.map((w, i) => (
-              <div key={i} className="panel" style={{ padding: 8, display: 'grid', gridTemplateColumns: '1fr 64px 64px 24px', gap: 6, alignItems: 'center' }}>
-                <select value={w.station} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, station: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #E3DCDD', borderRadius: 8, padding: '6px 6px' }}>{stacje.map((st) => <option key={st}>{st}</option>)}</select>
-                <input type="time" value={w.start} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, start: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #E3DCDD', borderRadius: 8, padding: '4px' }} />
-                <input type="time" value={w.end} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, end: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #E3DCDD', borderRadius: 8, padding: '4px' }} />
-                <button onClick={() => setWym((l) => l.filter((_, j) => j !== i))} title="Usuń" style={{ border: 0, background: 'transparent', color: '#B94352', cursor: 'pointer' }}><X size={14} /></button>
-                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 3 }}>{[1, 2, 3, 4, 5, 6, 0].map((dw) => <button key={dw} onClick={() => setWym((l) => l.map((x, j) => j === i ? { ...x, dni: x.dni.includes(dw) ? x.dni.filter((y) => y !== dw) : [...x.dni, dw] } : x))} style={{ flex: 1, fontSize: 9, fontWeight: 800, padding: '3px 0', borderRadius: 6, border: '1px solid #E3DCDD', background: !w.dni.length || w.dni.includes(dw) ? '#E9E4F4' : '#fff', color: !w.dni.length || w.dni.includes(dw) ? '#3E3760' : '#A38D95', cursor: 'pointer' }} title={w.dni.length ? '' : 'codziennie'}>{DNI[dw]}</button>)}</div>
-              </div>
-            ))}
-            <button className="secondary-action" onClick={() => setWym((l) => [...l, { station: stacje[0], start: '14:00', end: '22:00', dni: [] }])}><Plus size={14} /> Dodaj wymaganą zmianę</button>
-          </div>
-          <div className="model-note"><Sparkles size={16} /><div><strong>Model statystyczny</strong><span>afiniczność stanowisk (Dirichlet, półokres 2 mies.), nawyk pory startu i dnia tygodnia, rozkład sprzedaży na dni, krzywa doby ÷ SPLH, twarde reguły KP i dyspozycji{modelInfo ? ` • ${modelInfo.historiaZmian} zmian w historii` : ''}</span></div></div>
-          <button className="generate-button" disabled={busy} onClick={generuj}><Sparkles size={17} /> {busy ? 'Liczę…' : 'Przelicz i wygeneruj propozycję'}</button>
-        </aside>
-
-        <div className="forecast-main">
-          <section className="forecast-kpis">
-            <MMetric icon={Users} label="Obsadzone zmiany" value={ps ? `${ps.obsadzone} / ${ps.zmian}` : '—'} helper={ps ? (ps.nieobsadzone ? `${ps.nieobsadzone} bez osoby — patrz powody` : 'komplet') : 'wygeneruj propozycję'} tone={ps && ps.nieobsadzone ? 'coral' : 'mint'} />
-            <MMetric icon={Clock3} label="Godziny CREW" value={ps ? `${fmt(ps.godzinyCrew)} h` : '—'} helper={ps && ps.limitCrew ? `limit AOP ${fmt(ps.limitCrew)} h • MGR w grafiku ${fmt(ps.godzinyMgrIstniejace)} h` : '—'} tone="violet" />
-            <MMetric icon={CircleDollarSign} label="Koszt / COL szac." value={ps ? `${fmt(ps.kosztSzac)} zł` : '—'} helper={ps && ps.colSzac != null ? `${ps.colSzac.toFixed(1).replace('.', ',')}% sprzedaży AOP` : '—'} tone="blue" />
-            <MMetric icon={ShieldCheck} label="Zgodność" value={ps ? `${ps.naruszenia.block} blok. • ${ps.naruszenia.warn} uwag` : '—'} helper={ps ? `wymagane zmiany: ${ps.pokrycieWymagan}% • śr. afiniczność ${ps.sredniaAfinicznosc}` : '—'} tone={ps && ps.naruszenia.block ? 'coral' : 'mint'} />
-          </section>
-
-          {!prop ? (
-            <article className="panel" style={{ padding: 24 }}>
-              <div className="panel-title"><div><span>JAK TO DZIAŁA</span><h2>Od AOP do gotowego grafiku roboczego</h2></div></div>
-              <ol style={{ margin: '8px 0 0 18px', color: '#71656A', fontSize: 12.5, lineHeight: 1.7 }}>
-                <li>Sprzedaż AOP rozkładamy na dni według udziału dnia tygodnia z Twojej historii (bez historii: profil QSR).</li>
-                <li>Budżet godzin CREW dnia ∝ sprzedaż dnia, z podłogą wynikającą z wymaganych zmian.</li>
-                <li>Krzywa doby (profil godzinowy z importu POS lub standardowy) ÷ SPLH daje obsadę co 30 min; wymagane zmiany wchodzą jako twarde, reszta dopełnia popyt blokami 8/6/4 h.</li>
-                <li>Osoby: twarde filtry (absencja, dyspozycja, 11 h odpoczynku, 12 h w dobie, 7. dzień, nominał UOP), potem punktacja: 3,0·afiniczność + 1,2·nawyk startu + 0,6·dzień tygodnia + 1,5·fairness godzin + 0,8·jawna dostępność − ciągłość.</li>
-                <li>Reperacja lokalna (zamiany stanowisk tej samej pory) i kontrola silnikiem prawa pracy. Wynik to wersja robocza — zastosowanie dopisuje zmiany do Schedule, publikacja pozostaje Twoja.</li>
-              </ol>
-              {modelRows.length > 0 && <div style={{ marginTop: 16 }}>
-                <div className="panel-title"><div><span>MODEL OSÓB (CREW)</span><h2>Skąd silnik wie, kto gdzie pracuje</h2></div></div>
-                <div className="data-table forecast-table" style={{ marginTop: 8 }}>
-                  <div className="table-header"><span>Osoba</span><span>Waga historii</span><span>Top stanowiska (P)</span><span>Śr. h / mies.</span><span>Ostatnio</span></div>
-                  {modelRows.slice(0, 40).map((m) => <div className="table-row" key={m.id}><span><b>{m.name}</b></span><span>{m.n}</span><span>{(m.top || []).map((t) => `${t.st} ${Math.round(t.p * 100)}%`).join(' • ') || '— (prior grupy)'}</span><span>{m.srGodzinMies != null ? `${m.srGodzinMies} h` : '—'}</span><span>{m.ostatniaZmiana || '—'}</span></div>)}
-                </div>
-              </div>}
-            </article>
-          ) : (
-            <article className="panel" style={{ padding: 18 }}>
-              <div className="panel-title"><div><span>PROPOZYCJA {prop.id.toUpperCase()} • {prop.okres.from} – {prop.okres.to}</span><h2>Wynik silnika</h2></div>
-                <div className="filter-tabs"><button className={widok === 'dni' ? 'active' : ''} onClick={() => setWidok('dni')}>Dni</button><button className={widok === 'zmiany' ? 'active' : ''} onClick={() => setWidok('zmiany')}>Zmiany</button><button className={widok === 'osoby' ? 'active' : ''} onClick={() => setWidok('osoby')}>Osoby</button><button className={widok === 'kp' ? 'active' : ''} onClick={() => setWidok('kp')}>Zgodność</button></div>
-              </div>
-              {widok === 'dni' && <div className="data-table forecast-table" style={{ marginTop: 8 }}>
-                <div className="table-header"><span>Dzień</span><span>Sprzedaż</span><span>Trx</span><span>Budżet h</span><span>Użyte h</span><span>Deficyt popytu</span><span>Zmian</span><span>Wymagane</span></div>
-                {prop.perDzien.map((d) => <div className="table-row" key={d.date}><span><b>{DNI[d.dow]}, {d.date.slice(8)}.{d.date.slice(5, 7)}</b></span><span><strong>{fmt(d.sales)} zł</strong></span><span>{d.trx}</span><span>{d.budzetH} h</span><span>{d.uzyteH} h</span><span className={d.deficytH > 4 ? 'table-danger' : 'table-good'}>{d.deficytH} h</span><span>{d.zmian}</span><span>{d.wymagane}</span></div>)}
-              </div>}
-              {widok === 'zmiany' && <div className="data-table forecast-table" style={{ marginTop: 8 }}>
-                <div className="table-header"><span>Dzień</span><span>Godziny</span><span>Stanowisko</span><span>Osoba</span><span>Źródło</span><span>Afiniczność</span><span>Score</span><span>Status</span></div>
-                {prop.przypisania.map((z, i) => <div className="table-row" key={i}><span><b>{DNI[new Date(z.date + 'T12:00:00').getDay()]} {z.date.slice(8)}.{z.date.slice(5, 7)}</b></span><span>{z.start}–{z.end}</span><span>{z.station}</span><span><strong>{z.display || '—'}</strong></span><span>{z.zrodlo}{z.wymagana ? ' • wymagana' : ''}</span><span>{z.afinicznosc != null ? `${Math.round(z.afinicznosc * 100)}%` : '—'}</span><span>{z.score != null ? z.score : '—'}</span><span><em className={z.nieobsadzona ? 'status-warning' : 'status-ready'}>{z.nieobsadzona ? `brak osoby: ${Object.entries(z.powody || {}).map(([k, v]) => `${k} (${v})`).join(', ')}` : 'obsadzona'}</em></span></div>)}
-              </div>}
-              {widok === 'osoby' && <div className="data-table forecast-table" style={{ marginTop: 8 }}>
-                <div className="table-header"><span>Osoba</span><span>Godziny w propozycji</span><span>Nominał (UOP)</span><span>Dni pracy</span><span>Wypełnienie</span></div>
-                {Object.entries(prop.godzOsob).sort((a, b) => b[1].godz - a[1].godz).map(([id, o]) => <div className="table-row" key={id}><span><b>{o.name}</b></span><span>{o.godz} h</span><span>{o.nominal != null ? `${o.nominal} h` : '—'}</span><span>{o.dni}</span><span><i className="coverage-bar"><b style={{ width: `${o.nominal ? Math.min(100, o.godz / o.nominal * 100) : (o.godz ? 60 : 0)}%` }} /></i>{o.nominal ? `${Math.round(o.godz / o.nominal * 100)}%` : '—'}</span></div>)}
-              </div>}
-              {widok === 'kp' && (prop.naruszenia.length ? <div className="dialog-list" style={{ marginTop: 8 }}>{prop.naruszenia.map((v, i) => <div key={i}><i style={v.level === 'block' ? { color: '#fff', background: '#B94352' } : undefined}>{v.level === 'block' ? '!' : 'i'}</i><span><strong>{v.name} • {v.date}</strong><small>{v.rule}: {v.message}</small></span><em>{v.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div> : <div className="dialog-empty" style={{ padding: 20 }}>Brak naruszeń prawa pracy w propozycji.</div>)}
-              <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#71656A', marginRight: 'auto' }}>Nie podoba się układ? Zmień założenia lub wygeneruj ponownie — każde przeliczenie losuje inny porządek remisów.</span>
-                <button className="secondary-action" disabled={busy} onClick={generuj}><RefreshCw size={15} /> Przelicz ponownie</button>
-                <button className="primary-action" disabled={busy || prop.applied} onClick={zastosuj}><Check size={15} /> {prop.applied ? 'Zastosowano' : 'Zastosuj do grafiku roboczego'}</button>
-              </div>
-            </article>
-          )}
-        </div>
-      </section>
-      {historia.length > 0 && <article className="panel" style={{ marginTop: 14, padding: 16 }}>
-        <div className="panel-title"><div><span>HISTORIA</span><h2>Ostatnie propozycje</h2></div></div>
-        <div className="data-table forecast-table" style={{ marginTop: 8 }}><div className="table-header"><span>ID</span><span>Okres</span><span>Autor</span><span>Obsadzone</span><span>Godziny CREW</span><span>Status</span></div>
-          {historia.map((h) => <div className="table-row" key={h.id} style={{ cursor: 'pointer' }} onClick={() => api(`/autoplan?id=${h.id}`).then((r) => { if (r && r.proposal) setProp(r.proposal); })}><span><b>{h.id}</b></span><span>{h.okres.from} – {h.okres.to}</span><span>{h.by}</span><span>{h.podsumowanie.obsadzone}/{h.podsumowanie.zmian}</span><span>{fmt(h.podsumowanie.godzinyCrew)} h</span><span><em className={h.applied ? 'status-ready' : 'status-active'}>{h.applied ? 'zastosowana' : 'robocza'}</em></span></div>)}
-        </div>
-      </article>}
-    </div></div>
-  );
-};
-const SlidersHorizontalIcon = () => <Sparkles size={19} />;
-
-const PlanFinanse = ({ data, setPage }) => {
-  const [sek, setSek] = useState('forecast-col');
-  const nav = (id) => { if (id === 'plan') setSek('budzet'); else if (id === 'forecast') setSek('forecast-col'); else if (id === 'optymalizacja') setSek('opty'); else setPage(id); };
-  return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="px-8 pt-5 flex gap-1 bg-white border-b" style={{ borderColor: colors.primary.bg }}>
-        {[['forecast-col', 'Forecast miesiąca / COL'], ['autoplan', 'Autoplan (AOP)'], ['obsada', 'Planowanie obsady'], ['opty', 'Optymalizacja dzienna'], ['budzet', 'Rozliczenie kosztów']].map(([k, l]) => (
-          <button key={k} onClick={() => setSek(k)} className="px-5 py-2.5 rounded-t-xl text-sm font-semibold" style={{ backgroundColor: sek === k ? colors.primary.bgLight : 'transparent', color: sek === k ? colors.primary.darkest : colors.primary.light, borderBottom: sek === k ? `3px solid ${colors.primary.medium}` : '3px solid transparent' }}>{l}</button>
-        ))}
-      </div>
-      {sek === 'forecast-col' ? <MonthlyForecast api={api} data={data} /> : sek === 'autoplan' ? <AutoplanAOP data={data} setPage={setPage} /> : sek === 'obsada' ? <PlanObsada data={data} setPage={nav} /> : sek === 'opty' ? <ForecastPlan data={data} setPage={nav} /> : <BudgetPlan data={data} setPage={nav} />}
     </div>
   );
 };
@@ -5111,7 +2624,7 @@ const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
                       <label className="block text-[11px] mb-1" style={{ color: colors.primary.light }}>Uczeń (osoba szkolona)</label>
                       <select value={modal.uczenSel || ''} onChange={(e) => setModal({ ...modal, uczenSel: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}>
                         <option value="">— wybierz ucznia —</option>
-                        {[...new Set(data.shifts.filter((x) => x.date === (modal.ident ? modal.ident.date : day) && !jestInstruktor(x) && String(x.name).toUpperCase() !== String(modal.osoba).toUpperCase()).map((x) => x.name))].sort().map((n) => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((al) => String(al).toUpperCase() === String(n).toUpperCase())); return <option key={n} value={n}>{(k && k.name) || n}</option>; })}
+                        {[...new Set(data.shifts.filter((x) => x.date === (modal.ident ? modal.ident.date : modal.date) && !jestInstruktor(x) && String(x.name).toUpperCase() !== String(modal.osoba).toUpperCase()).map((x) => x.name))].sort().map((n) => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((al) => String(al).toUpperCase() === String(n).toUpperCase())); return <option key={n} value={n}>{(k && k.name) || n}</option>; })}
                       </select>
                       <p className="text-[10px] mt-1" style={{ color: colors.primary.light }}>Uczeń dostanie oznaczenie szkolenia, a instruktor równoległy wiersz INSTRUKTOR na godziny ucznia.</p>
                     </div>
@@ -5701,8 +3214,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             return (<>
             <div className="module-heading" style={{ marginTop: 4 }}>
               <div>
-                <span>WORKFORCE • {wrTab === 'schedule' ? 'SCHEDULING • WEEKLY ROTAS' : wrTab === 'actual' ? 'WORKING TIME • ACTUAL' : 'TIME & ATTENDANCE'}</span>
-                <h1>{wrTab === 'schedule' ? 'Schedule' : wrTab === 'actual' ? 'Actual' : 'Time & Attendance'}</h1>
+                <span>WORKFORCE • {wrTab === 'schedule' ? 'PLANOWANIE • TYGODNIE GRAFIKU' : wrTab === 'actual' ? 'REALIZACJA • WYKONANIE' : 'REALIZACJA • OBECNOŚĆ'}</span>
+                <h1>{wrTab === 'schedule' ? 'Grafik' : wrTab === 'actual' ? 'Wykonanie i karty czasu' : 'Rejestr obecności'}</h1>
                 <p>{wrTab === 'schedule' ? 'Wybierz tydzień, sprawdź etap akceptacji i przejdź do grafiku tygodniowego lub dziennej siatki.' : wrTab === 'actual' ? 'Wykonanie zmian: odbicia z Employee Hub i terminala, przerwy oraz korekty kierownika.' : 'Karty czasu, wyjątki i zamknięcie tygodnia (Closed blokowane na serwerze).'}</p>
               </div>
               <div className="module-actions">
@@ -6049,8 +3562,8 @@ const useData = () => {
       const rb = await api('/budget');
       if (rb.success) setBudget(rb.data || { employees: [], settings: null, sprzedaz: {}, transakcje: {}, dniS: {} });
       const rsl = await api('/sales');
-      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0 }); PROF_DOW = rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null; }
-      try { const rorg = await api('/org'); if (rorg && rorg.success && rorg.unit) UNIT = { ...UNIT, ...rorg.unit }; } catch {}
+      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0 }); setProfDow(rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null); }
+      try { const rorg = await api('/org'); if (rorg && rorg.success && rorg.unit) setUnit(rorg.unit); } catch {}
       const rtpl = await api('/templates');
       if (rtpl.success) setTemplates(rtpl.templates || []);
       const rab = await api('/absences');
@@ -6276,52 +3789,76 @@ export default function App() {
   const [authed, setAuthed] = useState(() => !!sesja);
   const [role, setRole] = useState(() => (sesja && sesja.role) || 'kierownik');
   const [userName, setUserName] = useState(() => (sesja && sesja.userName) || '');
-  const [page, setPage] = useState('dashboard');
-  const [wrTab, setWrTab] = useState('schedule');
+  // Wszystkie hooki przed warunkowym ekranem logowania — zmiana stanu zalogowania nie zmienia ich kolejności
+  const [moduleId, setModuleId] = useState(() => parseHash(typeof location !== 'undefined' ? location.hash : '') || DEFAULT_MODULE);
   const [wrNonce, setWrNonce] = useState(0);
+  const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
+  const [navOpen, setNavOpen] = useState(false);
   const data = useData();
-  const logout = () => { store.del('admin_session'); store.del('admin_token'); setAuthed(false); setRole('kierownik'); setUserName(''); setPage('dashboard'); };
-  const onLogin = (r, un) => { setRole(r); setUserName(un || ''); setAuthed(true); setPage('dashboard'); };
+  const widok = clampToRole(moduleId, role);
+  const mod = getModule(widok);
+
+  // adres #/obszar/modul ↔ stan; historia przeglądarki (wstecz / dalej / odświeżenie)
+  useEffect(() => {
+    const zHash = () => { const id = parseHash(location.hash); if (id) setModuleId(id); };
+    window.addEventListener('popstate', zHash); window.addEventListener('hashchange', zHash);
+    return () => { window.removeEventListener('popstate', zHash); window.removeEventListener('hashchange', zHash); };
+  }, []);
+  useEffect(() => {
+    if (!authed) return;
+    const cel = hashFor(widok);
+    if (location.hash === cel) return;
+    try { if (parseHash(location.hash) === widok) history.replaceState(null, '', cel); else history.pushState(null, '', cel); } catch { location.hash = cel; }
+  }, [widok, authed]);
+
+  const go = useCallback((id) => { const m = getModule(id) ? id : resolveLegacy(id); if (!m) return; const nowy = clampToRole(m, role); const nm = getModule(nowy); if (nm && nm.view === 'wt') setWrNonce((n) => n + 1); setModuleId(nowy); setNavOpen(false); }, [role]);
+  const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
+  const logout = () => { store.del('admin_session'); store.del('admin_token'); setAuthed(false); setRole('kierownik'); setUserName(''); setModuleId(DEFAULT_MODULE); };
+  const onLogin = (r, un) => { setRole(r); setUserName(un || ''); setAuthed(true); setModuleId(clampToRole(parseHash(location.hash) || DEFAULT_MODULE, r)); };
 
   if (!authed) return <Login onLogin={onLogin} />;
 
-  const pages = {
-    dashboard: <Dashboard data={data} setPage={setPage} userName={userName} />,
-    import: <ImportPage data={data} setPage={setPage} />,
-    wt: <WorkingTime data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
-    print: <PrintPage data={data} />,
-    forecast: <PlanFinanse data={data} setPage={setPage} />,
-    live: <ObsadaLive data={data} setPage={setPage} />,
-    plan: <PlanFinanse data={data} setPage={setPage} />,
-    dyspo: <RequestsAdmin data={data} setPage={setPage} />,
-    emps: <AdminEmployees data={data} />,
-    analytics: <AnalyticsPage data={data} setPage={setPage} />,
-    swaps: <AdminSwaps data={data} />,
-    settings: <SettingsPage data={data} />
+  const pending = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length + (data.absences || []).filter(a => a.status === 'open').length + (data.availPending || 0);
+  const badges = { pending };
+  const wrTab = mod && mod.view === 'wt' ? mod.wr : 'schedule';
+  const setWrTab = (t) => go(moduleForWrTab(t));
+  const setPage = go;                                  // starsze widoki wołają setPage('forecast'|'wt'|'swaps'|…) — katalog tłumaczy skróty
+  const views = {
+    'dashboard': () => <Dashboard data={data} setPage={setPage} userName={userName} />,
+    'monthly-forecast': () => <MonthlyForecast api={api} data={data} />,
+    'demand-model': () => <ForecastPlan data={data} setPage={setPage} />,
+    'budget': () => <BudgetPlan data={data} setPage={setPage} />,
+    'wt': () => <WorkingTime key="wt" data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
+    'staffing': () => <PlanObsada data={data} setPage={setPage} />,
+    'autoplan': () => <AutoplanAOP data={data} setPage={setPage} />,
+    'limits': () => <PlanPage data={data} />,
+    'live': () => <ObsadaLive data={data} setPage={setPage} />,
+    'analytics': () => <AnalyticsPage data={data} setPage={setPage} />,
+    'forecast-quality': () => <ForecastQualityPage data={data} setPage={setPage} />,
+    'print': () => <PrintPage data={data} />,
+    'employees': () => <AdminEmployees data={data} />,
+    'availability': () => <RequestsAdmin data={data} setPage={setPage} />,
+    'swaps': () => <AdminSwaps data={data} />,
+    'import': () => <ImportPage data={data} setPage={setPage} />,
+    'settings': () => <SettingsPage data={data} />,
   };
-  // Kierownik zmiany: strona domowa, grafik i wydruk. ASM: wszystko.
-  const dozwolone = role === 'asm' ? Object.keys(pages) : ['dashboard', 'wt'];
-  const widok = dozwolone.includes(page) ? page : 'dashboard';
-  const pendingSwaps = data.swaps.filter(s => s.status === 'open' && s.volunteers.length > 0).length + (data.absences || []).filter(a => a.status === 'open').length + (data.availPending || 0);
-
-  const [navMini, setNavMini] = useState(() => { try { return localStorage.getItem('ordoNavMini') === '1'; } catch { return false; } });
-  const setMini = (v) => { setNavMini(v); try { localStorage.setItem('ordoNavMini', v ? '1' : '0'); } catch {} };
-  const [navOpen, setNavOpen] = useState(false);
-  const TYTULY = { dashboard: 'Dashboard', live: 'Obsada LIVE', forecast: 'Planowanie i popyt', plan: 'Planowanie i popyt', wt: 'WorkRhythm', dyspo: 'Dyspozycyjność', emps: 'Pracownicy i konta', analytics: 'Analityka', swaps: 'Zamiany i wnioski', import: 'Import / eksport godzin', print: 'Wydruk', settings: 'Ustawienia' };
+  const render = views[mod ? mod.view : 'dashboard'] || views.dashboard;
+  const pelnyEkran = mod && mod.view === 'wt';
   return (
     <main className="app-shell">
-      <Sidebar page={widok} setPage={setPage} logout={logout} role={role} pendingSwaps={pendingSwaps} wrTab={wrTab} setWrTab={setWrTab} bumpWr={() => setWrNonce((n) => n + 1)} userName={userName} mini={navMini} setMini={setMini} open={navOpen} onClose={() => setNavOpen(false)} />
+      <Sidebar moduleId={widok} go={go} logout={logout} role={role} badges={badges} userName={userName} mini={navMini} setMini={setMini} open={navOpen} onClose={() => setNavOpen(false)} />
       <section className={'workspace' + (navMini ? ' mini' : '')} style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <header className="topbar" style={{ flexShrink: 0 }}>
           <button className="menu-button" aria-label="Otwórz menu" onClick={() => setNavOpen(true)}><Menu size={18} /></button>
-          <div className="search"><Search size={18} /><input aria-label="Szukaj" placeholder="Szukaj pracownika, zmiany lub raportu…" onKeyDown={(e) => { if (e.key !== 'Enter') return; const q = e.target.value.toLowerCase().trim(); if (!q) return; const cele = { dashboard: 'dashboard', plan: 'forecast', popyt: 'forecast', live: 'live', obsad: 'live', prognoza: 'forecast', grafik: 'wt', schedule: 'wt', actual: 'wt', dyspo: 'dyspo', pracown: 'emps', konta: 'emps', zamian: 'swaps', wnios: 'swaps', import: 'import', analit: 'analytics', raport: 'analytics', ustaw: 'settings', audyt: 'settings' }; const hit = Object.keys(cele).find((k) => q.includes(k)); if (hit) setPage(cele[hit]); e.target.value = ''; }} /><kbd>Enter</kbd></div>
+          <ModuleSearch role={role} go={go} />
           <div className="top-actions">
-            <button className="icon-button" title="Zamiany i wnioski" onClick={() => setPage('swaps')}><MessageSquare size={18} /></button>
-            <button className="icon-button notification" title="Oczekujące decyzje" onClick={() => setPage('swaps')}><Bell size={18} />{pendingSwaps > 0 && <i />}</button>
+            {role === 'asm' && <button className="icon-button" title="Zamiany i nieobecności" onClick={() => go('zamiany')}><MessageSquare size={18} /></button>}
+            {role === 'asm' && <button className="icon-button notification" title="Oczekujące decyzje" onClick={() => go('zamiany')}><Bell size={18} />{pending > 0 && <i />}</button>}
             <div className="top-avatar">{(userName || 'ORDO').split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</div>
           </div>
         </header>
-        <div className={widok === 'wt' ? 'flex-1 min-h-0 flex flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>{pages[widok] || pages.print}</div>
+        <ModuleBar moduleId={widok} go={go} role={role} badges={badges} />
+        <div className={pelnyEkran ? 'flex-1 min-h-0 flex flex-col overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>{render()}</div>
       </section>
       {navOpen && <button className="scrim" aria-label="Zamknij menu" onClick={() => setNavOpen(false)} />}
       <ComplianceGate />
