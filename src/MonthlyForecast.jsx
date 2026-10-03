@@ -221,7 +221,7 @@ export default function MonthlyForecast({ api, data }) {
                 ))}
               </div>
             ) : <div className="dialog-empty" style={{ padding: 30 }}>Ustaw założenia po lewej i kliknij „Generuj plan" — rozkład dni powstanie z historii POS.</div>}
-            {plan && <div className="forecast-explain"><Sparkles size={17} /><span>Rozkład historyczny ({plan.historyQuality.confidence === 'LOW' ? 'niska pewność' : 'dobra pewność'}: {plan.historyQuality.salesDays} dni sprzedaży, {plan.historyQuality.transactionDays} dni ruchu). Minima UOP {plan.valid ? 'zapewnione' : 'niezapewnione'}.</span><button onClick={() => setAdvanced((x) => !x)}>Parametry</button></div>}
+            {plan && <div className="forecast-explain"><Sparkles size={17} /><span>Rozkład historyczny ({plan.historyQuality.confidence === 'LOW' ? 'niska pewność' : 'dobra pewność'}: {plan.historyQuality.salesDays} dni sprzedaży, {plan.historyQuality.transactionDays} dni ruchu). Minima UOP {plan.valid ? 'zapewnione' : 'niezapewnione'}. Profil 15 min: <b>{plan.intraday && plan.intraday.source === 'measured' ? `zmierzony z POS${plan.intraday.from ? ` (${plan.intraday.from} – ${plan.intraday.to})` : ''}` : 'standardowe założenie QSR'}</b>.</span><button onClick={() => setAdvanced((x) => !x)}>Parametry</button></div>}
           </article>
 
           <div className="forecast-bottom-grid">

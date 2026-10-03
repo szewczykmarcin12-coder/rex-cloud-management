@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { parseSalesDayByDay } from '../import/posReports.js';
 import { D3, NS, OC, PIK, S0, SZAB, ZLH, f0, fH1, hmS, optKsztaltuj, optRozbicie, optZapotrzebowanie, sl, toISOdate } from '../lib/demandEngine.js';
 import { colors, funkcjaLabel, godzZ, jestInstruktor, kosztGodzin, months, wtDur, wtRel, ymd } from '../lib/domain.js';
 import { Header, Sekcja } from '../ui/primitives.jsx';
@@ -94,35 +94,14 @@ export const ForecastPlan = ({ data, setPage }) => {
   const onImport = async (file) => {
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-      const sales = {}, checks = {};
-      let secFrom = null, secTo = null;
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i] || [];
-        if (!r.some((c) => String(c).trim().toLowerCase() === "business date")) continue;
-        const hdr = r.map((c) => String(c || "").toLowerCase());
-        const cDate = hdr.findIndex((h) => h.includes("business date"));
-        const cGross = hdr.findIndex((h) => h.includes("gross sales"));
-        const cChecks = hdr.findIndex((h) => h.includes("checks count"));
-        for (let j = i + 1; j < rows.length; j++) {
-          const q = rows[j]; if (!q) continue;
-          if (String(q[cDate]).trim().toLowerCase() === "business date") break;
-          const ds = toISOdate(q[cDate]); if (!ds) continue;
-          if (cGross >= 0 && !isNaN(Number(q[cGross]))) sales[ds] = Number(q[cGross]);
-          if (cChecks >= 0 && !isNaN(Number(q[cChecks]))) checks[ds] = Number(q[cChecks]);
-          if (!secFrom || ds < secFrom) secFrom = ds;
-          if (!secTo || ds > secTo) secTo = ds;
-        }
-      }
-      const keys = Object.keys(sales);
-      if (!keys.length) { data.show("Nie znaleziono danych sprzedaży w pliku", "error"); return; }
+      const rap = parseSalesDayByDay(buf);                       // wspólny parser POS: netto (Sales Net VAT) + brutto + paragony
+      const sales = rap.sales, checks = rap.checks;
+      const keys = Object.keys(sales).sort();
+      if (!keys.length) { data.show("Raport nie zawiera sprzedaży netto — użyj Administracja → Import i eksport (raporty POS)", "error"); return; }
       setRealSales((p) => ({ ...p, ...sales })); setRealChecks((p) => ({ ...p, ...checks }));
-      keys.sort(); const last = new Date(keys[keys.length - 1]);
-      setImportInfo({ n: keys.length, from: secFrom, to: secTo, checks: Object.keys(checks).length });
-      data.saveSales({ sales, checks });
-      data.show(`Zaimportowano ${keys.length} dni sprzedaży${Object.keys(checks).length ? " + paragony" : ""}`);
+      setImportInfo({ n: keys.length, from: rap.from, to: rap.to, checks: Object.keys(checks).length, basis: 'net' });
+      data.saveSales({ sales, checks, salesGross: rap.salesGross, basis: 'net', source: 'pos-sales-day-by-day' });
+      data.show(`Zaimportowano ${keys.length} dni sprzedaży netto${Object.keys(checks).length ? " + paragony" : ""}${rap.warnings.length ? ` • ${rap.warnings[0]}` : ''}`);
     } catch (e) { data.show("Błąd importu: " + e.message, "error"); }
   };
 
@@ -250,7 +229,7 @@ export const ForecastPlan = ({ data, setPage }) => {
         <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#F7F5F5", color: colors.primary.dark }}>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => e.target.files[0] && onImport(e.target.files[0])} />
           <button onClick={() => fileRef.current && fileRef.current.click()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.medium }}><Upload size={15} />Importuj sprzedaż (Excel)</button>
-          {importInfo ? <span className="text-sm">Wczytano <b>{importInfo.n}</b> dni ({importInfo.from} → {importInfo.to}){importInfo.checks ? `, paragony: ${importInfo.checks} dni` : ""}.</span> : <span className="text-sm">Wgraj raport „Sales Day by Day". Bez importu silnik używa średnich dni tygodnia.</span>}
+          {importInfo ? <span className="text-sm">Wczytano <b>{importInfo.n}</b> dni ({importInfo.from} → {importInfo.to}){importInfo.checks ? `, paragony: ${importInfo.checks} dni` : ""} • podstawa: <b>{(data.salesData && data.salesData.meta && data.salesData.meta.basis === 'gross') ? 'brutto' : 'netto'}</b>{data.salesData && data.salesData.intraday ? ` • profil dnia z POS ${data.salesData.intraday.from}–${data.salesData.intraday.to}` : ' • profil dnia: założenie QSR'}.</span> : <span className="text-sm">Wgraj raport „Sales Day by Day". Bez importu silnik używa średnich dni tygodnia.</span>}
           {hasReal && <button onClick={() => { setRealSales({}); setRealChecks({}); setImportInfo(null); data.clearSales(); }} className="ml-auto text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: "white", color: colors.primary.dark }}>Wyczyść</button>}
         </div>
 

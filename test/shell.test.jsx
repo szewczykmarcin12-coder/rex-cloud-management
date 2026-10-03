@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 import App from '../src/App.jsx';
 import { MODULES, hashFor, visibleModules } from '../src/navigation.js';
+import fs from 'fs';
+import path from 'path';
 
 const DANE = {
   '/schedule': { success: true, shifts: [{ sid: 's1', date: '2026-09-07', name: 'ALA TEST', accountId: 'a1', station: 'FRYTKI', start: '10:00', end: '18:00', hours: 8 }, { sid: 's2', date: '2026-09-08', name: 'ALA TEST', accountId: 'a1', station: 'FRYTKI', start: '10:00', end: '18:00', hours: 8 }], roster: [], meta: { firstDate: '2026-09-01', lastDate: '2026-09-30' }, months: [{ key: '2026-09', label: 'Wrzesień 2026', shifts: 2 }] },
@@ -106,6 +108,30 @@ describe('powłoka Studio', () => {
     expect(document.querySelector('aside.sidebar.open')).toBeTruthy();
     fireEvent.click(document.querySelector('.scrim'));
     await waitFor(() => expect(document.querySelector('aside.sidebar.open')).toBeNull());
+  });
+
+  it('8. Import POS: Sales Day by Day → podgląd (61 dni, netto) → PUT /sales z basis=net; Daily Operations → profil śróddzienny', async () => {
+    zaloguj('asm'); location.hash = '#/administracja/import-eksport';
+    render(<App />);
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Import i eksport'));
+    const input = document.querySelector('input[type="file"][accept=".xlsx,.xlsm,.xls"]');
+    const plik = (n) => { const buf = fs.readFileSync(path.join(__dirname, 'fixtures', n)); const f = new File([buf], n, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }); f.arrayBuffer = async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength); return f; };
+    await act(async () => { fireEvent.change(input, { target: { files: [plik('sales-day-by-day.xlsx')] } }); });
+    await screen.findByText('Import sprzedaży dziennej z POS');
+    expect(screen.getByText('61 / 0')).toBeTruthy();
+    expect(screen.getByText(/1 943 138 zł/)).toBeTruthy();
+    zapytania.length = 0; const ciala = [];
+    const fetchOrig = global.fetch; global.fetch = vi.fn(async (url, opts) => { if (String(url).includes('/sales') && opts && opts.method === 'PUT') ciala.push(JSON.parse(opts.body)); return fetchOrig(url, opts); });
+    fireEvent.click(screen.getByText('Importuj 61 dni'));
+    await waitFor(() => expect(ciala.length).toBe(1));
+    expect(ciala[0].basis).toBe('net'); expect(Object.keys(ciala[0].sales).length).toBe(61); expect(Math.round(ciala[0].sales['2026-08-01'])).toBe(37833); expect(ciala[0].salesGross['2026-08-01']).toBe(41075.17); expect(ciala[0].checks['2026-09-30']).toBe(760);
+    await waitFor(() => expect(screen.queryByText('Import sprzedaży dziennej z POS')).toBeNull());
+    await act(async () => { fireEvent.change(input, { target: { files: [plik('daily-operations.xlsx')] } }); });
+    await screen.findByText('Import profilu śróddziennego z POS');
+    expect(screen.getByText('14:30 • 20:00')).toBeTruthy();
+    fireEvent.click(screen.getByText('Importuj profil'));
+    await waitFor(() => expect(ciala.length).toBe(2));
+    expect(ciala[1].intraday.slots['14:30'].sales).toBeGreaterThan(40000); expect(ciala[1].intraday.from).toBe('2026-08-01');
   });
 
   it('7. Analizy: KPI i CSV z tego samego okresu; awaria KPI dziennych i prognozy pokazuje błąd z ponowieniem', async () => {

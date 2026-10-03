@@ -5,6 +5,8 @@ import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCovera
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
 import { exportGO } from './goExport.js';
+import { parsePosReport } from './import/posReports.js';
+import { PosImportDialog } from './views/PosImport.jsx';
 import { parseExportCSV } from './parseExport.js';
 import { generateDayPDF, generateRangePDF } from './generatePDF.js';
 import { DailyRosterPrint } from './DailyRosterPrint.jsx';
@@ -944,6 +946,14 @@ const ImportPage = ({ data, setPage }) => {
     if (r && r.success) { data.show(`Zaimportowano ${r.dni} deklaracji dyspozycji${dyspoAuto ? ' (zatwierdzone)' : ' (do decyzji)'}`); setDyspoPrev(null); data.sync(); }
     else data.show((r && r.error) || 'Błąd importu dyspozycji', 'error');
   };
+  const posRef = useRef();
+  const [posPrev, setPosPrev] = useState(null);
+  const importPosPlik = async (file) => {
+    if (!file) return;
+    try { const buf = await file.arrayBuffer(); setPosPrev({ ...parsePosReport(buf), plik: file.name }); }
+    catch (e) { data.show(e.message || 'Błąd odczytu raportu POS', 'error'); }
+    if (posRef.current) posRef.current.value = '';
+  };
   const importHourly = async (file) => {
     if (!file) return;
     try {
@@ -1014,12 +1024,15 @@ const ImportPage = ({ data, setPage }) => {
         <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={planSzkolen}><i><CalendarCheck2 size={21} /></i><span><small>ROZWÓJ</small><strong>Plan szkoleń</strong><em>Instruktor, uczestnik, stanowisko i godziny szkoleniowe.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={() => setPage && setPage('settings')}><i><Clock size={21} /></i><span><small>ZGODNOŚĆ</small><strong>Dziennik audytu</strong><em>Publikacje, korekty, decyzje i operacje wrażliwe.</em></span><ChevronRight size={18} /></button>
+        <button className="panel report-card" onClick={() => posRef.current && posRef.current.click()}><i><CircleDollarSign size={21} /></i><span><small>POS • RAPORTY R&A</small><strong>Sprzedaż dzienna i profil dnia (XLSX)</strong><em>„Sales Day by Day” → netto, brutto, paragony dzień po dniu (prognoza, COL, MPT). „Daily Operations” → zmierzony rozkład sprzedaży na 15 min (sloty P5, obsada, autoplan).{(data.salesData || {}).meta && (data.salesData || {}).meta.basis ? ` • podstawa: ${(data.salesData || {}).meta.basis === 'net' ? 'netto' : 'brutto'}` : ''}{(data.salesData || {}).intraday ? ` • profil ${(data.salesData || {}).intraday.from}–${(data.salesData || {}).intraday.to}` : ''}</em></span><Upload size={18} /></button>
+        <input ref={posRef} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" onChange={(e) => importPosPlik(e.target.files[0])} />
         <button className="panel report-card" onClick={() => hourlyRef.current && hourlyRef.current.click()}><i><TrendingUp size={21} /></i><span><small>POS • 15 MIN / GODZINY</small><strong>Sprzedaż godzinowa (CSV)</strong><em>data;godzina;sprzedaż;transakcje — zasila realny profil popytu{(data.salesData || {}).hourlyDays ? ` • ${(data.salesData || {}).hourlyDays} dni w bazie` : ''}.</em></span><Upload size={18} /></button>
         <input ref={hourlyRef} type="file" accept=".csv,.txt" className="hidden" onChange={(e) => importHourly(e.target.files[0])} />
         <button className="panel report-card" onClick={() => dyspoRef.current && dyspoRef.current.click()}><i><CalendarCheck2 size={21} /></i><span><small>DYSPOZYCYJNOŚĆ</small><strong>Import dyspozycji (XLSX poziomy)</strong><em>Ten sam układ co grafik: A1 rok, DD/MM, wiersz = osoba, para godzin = pracuję od–do; T = dostępny, N = niedostępny.</em></span><Upload size={18} /></button>
         <input ref={dyspoRef} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" onChange={(e) => importDyspoPlik(e.target.files[0])} />
         <button className="panel report-card" onClick={() => setPage && setPage('dyspo')}><i><Download size={21} /></i><span><small>DYSPOZYCYJNOŚĆ</small><strong>Eksport dyspozycji (XLSX poziomy)</strong><em>Przyciski „Eksport dyspozycji" w module Dyspozycyjność — zatwierdzone lub z oczekującymi.</em></span><ChevronRight size={18} /></button>
       </section>
+      {posPrev && <PosImportDialog raport={posPrev} onClose={() => setPosPrev(null)} onDone={() => { setPosPrev(null); data.sync(); }} api={api} show={data.show} />}
       {dyspoPrev && (
         <DialogS title="Import dyspozycji" kicker={`${dyspoPrev.plik} • ${dyspoPrev.firstDate} – ${dyspoPrev.lastDate}`} description={`${dyspoPrev.items.length} deklaracji dla ${dyspoPrev.osoby.length} osób. Każda data zastępuje wcześniejszą deklarację tej osoby.`} onClose={() => setDyspoPrev(null)}
           actions={<><button onClick={() => setDyspoPrev(null)}>Anuluj</button><button className="dialog-primary" disabled={dyspoBusy} onClick={wyslijDyspoImport}><Check size={15} /> {dyspoBusy ? 'Importuję…' : `Importuj ${dyspoPrev.items.filter((x) => x.accountId).length} deklaracji`}</button></>}>
@@ -3562,7 +3575,7 @@ const useData = () => {
       const rb = await api('/budget');
       if (rb.success) setBudget(rb.data || { employees: [], settings: null, sprzedaz: {}, transakcje: {}, dniS: {} });
       const rsl = await api('/sales');
-      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0 }); setProfDow(rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null); }
+      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, salesGross: rsl.salesGross || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0, hourlyProfileSource: rsl.hourlyProfileSource || null, intraday: rsl.intraday || null, intradayProfile: rsl.intradayProfile || null }); setProfDow(rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null); }
       try { const rorg = await api('/org'); if (rorg && rorg.success && rorg.unit) setUnit(rorg.unit); } catch {}
       const rtpl = await api('/templates');
       if (rtpl.success) setTemplates(rtpl.templates || []);
@@ -3771,7 +3784,7 @@ const useData = () => {
   const saveSales = useCallback(async (patch) => {
     setSalesData((cur) => {
       const base = cur || { sales: {}, checks: {}, params: null };
-      return { sales: { ...base.sales, ...(patch.sales || {}) }, checks: { ...base.checks, ...(patch.checks || {}) }, params: patch.params != null ? patch.params : base.params };
+      return { ...base, sales: { ...base.sales, ...(patch.sales || {}) }, checks: { ...base.checks, ...(patch.checks || {}) }, salesGross: { ...(base.salesGross || {}), ...(patch.salesGross || {}) }, params: patch.params != null ? patch.params : base.params };
     });
     try { await api('/sales', 'PUT', patch); } catch { show('Błąd zapisu danych sprzedaży', 'error'); }
   }, []);
