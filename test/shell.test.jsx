@@ -17,7 +17,7 @@ const DANE = {
   '/sales': { success: true, sales: { '2026-09-07': 12000, '2026-09-08': 9000 }, checks: {}, params: null, meta: null, braki: [], hourly: {}, hourlyProfile: null, hourlyDays: 0 },
   '/org': { success: true, unit: { code: 'PLK 201043', name: 'Galeria Krakowska' } }, '/templates': { success: true, templates: [] }, '/absences': { success: true, absences: [] },
   '/availability': { success: true, pending: 0, requests: [], window: null }, '/audit': { success: true, entries: [] }, '/kpi': { success: true, snapshots: [], cronSkonfigurowany: false },
-  '/forecast': { success: true, days: [], backtest: { dni: 0 } }, '/autoplan': { success: true, proposals: [], model: null }, '/compliance': { success: true, violations: [], summary: {} },
+  '/forecast': { success: true, days: [], backtest: { dni: 28, mape: 8.5, wape: 8.6, model: 'hybryda' }, modele: { wybrany: 'hybryda', mediana: { dni: 28, mape: 12.8, wape: 12.7 }, hybryda: { dni: 28, mape: 8.5, wape: 8.6 } }, dane: { ostatniDzien: '2026-09-30', dniOdOstatniego: 13, nastepnyImport: '2026-10-20', przeterminowane: true, rytm: 'wtorek, ostatnie 8 tygodni' } }, '/autoplan': { success: true, proposals: [], model: null }, '/compliance': { success: true, violations: [], summary: {} },
   '/monthly-forecast': { success: true, plan: null, months: [] }, '/terminals': { success: true, terminals: [] }, '/health': { success: true },
 };
 let awarie = new Set();     // ścieżki, które mają zwrócić błąd
@@ -132,6 +132,21 @@ describe('powłoka Studio', () => {
     fireEvent.click(screen.getByText('Importuj profil'));
     await waitFor(() => expect(ciala.length).toBe(2));
     expect(ciala[1].intraday.slots['14:30'].sales).toBeGreaterThan(40000); expect(ciala[1].intraday.from).toBe('2026-08-01');
+  });
+
+  it('9. Rytm wtorkowy: zaległe dane POS widoczne na Pulpicie z przyciskiem importu; Trafność prognozy pokazuje wybrany model i oba MAPE', async () => {
+    DANE['/sales'].swiezosc = { ostatniDzien: '2026-09-30', dniOdOstatniego: 13, nastepnyImport: '2026-10-20', przeterminowane: true, basis: 'net' };
+    zaloguj('asm'); location.hash = '#/centrum/pulpit';
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Import wtorkowy zaległy/)).toBeTruthy());
+    fireEvent.click(screen.getByText('Import POS'));
+    await waitFor(() => expect(location.hash).toBe('#/administracja/import-eksport'));
+    expect(screen.getByText('ZALEGŁY')).toBeTruthy();
+    await act(async () => { location.hash = '#/analizy/trafnosc-prognozy'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await waitFor(() => expect(screen.getByText(/hybryda \(poziom 7 dni × udział dnia\)/)).toBeTruthy());
+    expect(screen.getByText(/hybryda 8,5% vs mediana 12,8%/)).toBeTruthy();
+    expect(screen.getByText(/ZALEGŁY — prognoza opiera się na starym poziomie/)).toBeTruthy();
+    delete DANE['/sales'].swiezosc;
   });
 
   it('7. Analizy: KPI i CSV z tego samego okresu; awaria KPI dziennych i prognozy pokazuje błąd z ponowieniem', async () => {

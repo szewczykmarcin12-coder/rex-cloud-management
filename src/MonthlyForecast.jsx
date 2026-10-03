@@ -269,6 +269,7 @@ export default function MonthlyForecast({ api, data }) {
       {plan && <>
         {(plan.errors || []).map((x, i) => <div key={`e${i}`} style={{ marginTop: 10 }}><Notice type="bad">{x}</Notice></div>)}
         {(plan.warnings || []).map((x, i) => <div key={`w${i}`} style={{ marginTop: 10 }}><Notice>{x}</Notice></div>)}
+        {!locked && data && data.salesData && data.salesData.meta && data.salesData.meta.importedAt && plan.updatedAt && data.salesData.meta.importedAt > plan.updatedAt && <div style={{ marginTop: 10 }}><Notice>Historia POS (import {data.salesData.meta.importedAt.slice(0, 10)}) jest nowsza niż ten plan ({String(plan.updatedAt).slice(0, 10)}) — kliknij „Przelicz”, aby rozkład dni i sloty użyły świeżych danych. Suma miesiąca nie zmieni się.</Notice></div>}
 
         <article className="panel day-plan-panel" style={{ marginTop: 14 }}>
           <div className="panel-title"><div><span>PLAN DZIEŃ PO DNIU</span><h2>{mcLabel.charAt(0).toUpperCase() + mcLabel.slice(1)}</h2></div><span className="table-filter" style={{ cursor: 'default' }}>klik = profil 96 slotów • Koryguj = przypięcie dnia</span></div>

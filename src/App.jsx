@@ -642,6 +642,22 @@ const MetricCard = ({ icon: Icon, label, value, helper, tone, progress }) => (
 );
 
 // Dashboard 1:1 ze wzorca ORDO: popyt kontra zespół, ryzyka, na zmianie teraz, puls operacyjny
+// ── Rytm danych POS: import we wtorek z ostatnich 8 tygodni; prognoza dzienna liczy się od razu, plan miesiąca trzeba przeliczyć ──
+const PosFreshness = ({ sw, onImport, compact = false }) => {
+  if (!sw) return null;
+  const fmtD = (d) => d ? `${d.slice(8)}.${d.slice(5, 7)}` : '—';
+  const stale = sw.przeterminowane;
+  const tekst = !sw.ostatniDzien ? 'Brak historii sprzedaży z POS — wgraj „Sales Day by Day” (ostatnie 8 tygodni) i „Daily Operations”.'
+    : `Dane POS do ${fmtD(sw.ostatniDzien)} (${sw.dniOdOstatniego} dni temu)${sw.basis ? `, podstawa ${sw.basis === 'net' ? 'netto' : 'brutto'}` : ''} • następny import: wtorek ${fmtD(sw.nastepnyImport)} (ostatnie 8 tygodni, dni nakładające się nadpiszą się)`;
+  if (compact) return <span className={stale ? 'status-warning' : 'status-ready'} title={tekst}>{stale ? 'dane POS zaległe' : `POS do ${fmtD(sw.ostatniDzien)}`}</span>;
+  return (
+    <div className={'dialog-notice' + (stale ? '' : ' ok')} style={{ marginBottom: 12, background: stale ? undefined : '#f3f7f4', borderColor: stale ? undefined : '#cfe3d6' }}>
+      {stale ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}<span>{stale ? 'Import wtorkowy zaległy. ' : ''}{tekst}</span>
+      {onImport && <button className="secondary-action" style={{ marginLeft: 'auto' }} onClick={onImport}><Upload size={14} /> Import POS</button>}
+    </div>
+  );
+};
+
 const Dashboard = ({ data, setPage, userName }) => {
   const dzis = ymd(new Date());
   const [clockDzis, setClockDzis] = useState(null);
@@ -717,6 +733,7 @@ const Dashboard = ({ data, setPage, userName }) => {
         <button className="primary-button" onClick={() => setPage('wt')}><Calendar size={15} /> Otwórz grafik</button>
       </Header>
       <div className="page-wrap" style={{ paddingTop: 10 }}>
+        <PosFreshness sw={(data.salesData || {}).swiezosc} onImport={() => setPage('import-eksport')} />
         <section className="metrics-grid">
           <MetricCard icon={TrendingUp} label="SPRZEDAŻ · PROGNOZA DZIŚ" value={sprzedazDzis ? `${Math.round(sprzedazDzis).toLocaleString('pl-PL')} zł` : '—'} helper={fcDzis ? 'prognoza ORDO Forecast' : 'brak danych prognozy'} tone="blue" progress={72} />
           <MetricCard icon={Clock} label="PLAN GODZIN DZIŚ" value={`${planH.toFixed(1).replace('.', ',')} h`} helper={`${dzienne.length} zmian · ${new Set(dzienne.map((x) => x.name)).size} osób`} tone="mint" progress={Math.min(100, planH / 1.6)} />
@@ -1024,7 +1041,7 @@ const ImportPage = ({ data, setPage }) => {
         <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={planSzkolen}><i><CalendarCheck2 size={21} /></i><span><small>ROZWÓJ</small><strong>Plan szkoleń</strong><em>Instruktor, uczestnik, stanowisko i godziny szkoleniowe.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={() => setPage && setPage('settings')}><i><Clock size={21} /></i><span><small>ZGODNOŚĆ</small><strong>Dziennik audytu</strong><em>Publikacje, korekty, decyzje i operacje wrażliwe.</em></span><ChevronRight size={18} /></button>
-        <button className="panel report-card" onClick={() => posRef.current && posRef.current.click()}><i><CircleDollarSign size={21} /></i><span><small>POS • RAPORTY R&A</small><strong>Sprzedaż dzienna i profil dnia (XLSX)</strong><em>„Sales Day by Day” → netto, brutto, paragony dzień po dniu (prognoza, COL, MPT). „Daily Operations” → zmierzony rozkład sprzedaży na 15 min (sloty P5, obsada, autoplan).{(data.salesData || {}).meta && (data.salesData || {}).meta.basis ? ` • podstawa: ${(data.salesData || {}).meta.basis === 'net' ? 'netto' : 'brutto'}` : ''}{(data.salesData || {}).intraday ? ` • profil ${(data.salesData || {}).intraday.from}–${(data.salesData || {}).intraday.to}` : ''}</em></span><Upload size={18} /></button>
+        <button className="panel report-card" onClick={() => posRef.current && posRef.current.click()}><i><CircleDollarSign size={21} /></i><span><small>POS • RAPORTY R&A</small><strong>Sprzedaż dzienna i profil dnia (XLSX)</strong><em>„Sales Day by Day” → netto, brutto, paragony dzień po dniu (prognoza, COL, MPT). „Daily Operations” → zmierzony rozkład sprzedaży na 15 min (sloty P5, obsada, autoplan).{(data.salesData || {}).meta && (data.salesData || {}).meta.basis ? ` • podstawa: ${(data.salesData || {}).meta.basis === 'net' ? 'netto' : 'brutto'}` : ''}{(data.salesData || {}).intraday ? ` • profil ${(data.salesData || {}).intraday.from}–${(data.salesData || {}).intraday.to}` : ''}{(data.salesData || {}).swiezosc && (data.salesData || {}).swiezosc.ostatniDzien ? ` • dane do ${(data.salesData || {}).swiezosc.ostatniDzien}, następny import wt. ${(data.salesData || {}).swiezosc.nastepnyImport}` : ''}</em></span>{(data.salesData || {}).swiezosc && (data.salesData || {}).swiezosc.przeterminowane ? <b className="status-warning" style={{ marginRight: 8, fontSize: 10 }}>ZALEGŁY</b> : null}<Upload size={18} /></button>
         <input ref={posRef} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" onChange={(e) => importPosPlik(e.target.files[0])} />
         <button className="panel report-card" onClick={() => hourlyRef.current && hourlyRef.current.click()}><i><TrendingUp size={21} /></i><span><small>POS • 15 MIN / GODZINY</small><strong>Sprzedaż godzinowa (CSV)</strong><em>data;godzina;sprzedaż;transakcje — zasila realny profil popytu{(data.salesData || {}).hourlyDays ? ` • ${(data.salesData || {}).hourlyDays} dni w bazie` : ''}.</em></span><Upload size={18} /></button>
         <input ref={hourlyRef} type="file" accept=".csv,.txt" className="hidden" onChange={(e) => importHourly(e.target.files[0])} />
@@ -3575,7 +3592,7 @@ const useData = () => {
       const rb = await api('/budget');
       if (rb.success) setBudget(rb.data || { employees: [], settings: null, sprzedaz: {}, transakcje: {}, dniS: {} });
       const rsl = await api('/sales');
-      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, salesGross: rsl.salesGross || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0, hourlyProfileSource: rsl.hourlyProfileSource || null, intraday: rsl.intraday || null, intradayProfile: rsl.intradayProfile || null }); setProfDow(rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null); }
+      if (rsl.success) { setSalesData({ sales: rsl.sales || {}, checks: rsl.checks || {}, salesGross: rsl.salesGross || {}, params: rsl.params || null, meta: rsl.meta || null, braki: rsl.braki || [], hourly: rsl.hourly || {}, hourlyProfile: rsl.hourlyProfile || null, hourlyDays: rsl.hourlyDays || 0, hourlyProfileSource: rsl.hourlyProfileSource || null, intraday: rsl.intraday || null, intradayProfile: rsl.intradayProfile || null, swiezosc: rsl.swiezosc || null }); setProfDow(rsl.hourlyProfile && Object.keys(rsl.hourlyProfile).length ? rsl.hourlyProfile : null); }
       try { const rorg = await api('/org'); if (rorg && rorg.success && rorg.unit) setUnit(rorg.unit); } catch {}
       const rtpl = await api('/templates');
       if (rtpl.success) setTemplates(rtpl.templates || []);

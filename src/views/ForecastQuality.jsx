@@ -26,8 +26,14 @@ export const ForecastQuality = ({ data }) => {
           <span className="text-xs" style={{ color: colors.primary.medium }}>MAPE <b style={{ color: bt.mape > 15 ? '#B94352' : '#741334' }}>{String(bt.mape).replace('.', ',')}%</b></span>
           <span className="text-xs" style={{ color: colors.primary.medium }}>WAPE <b style={{ color: bt.wape > 12 ? '#B94352' : '#741334' }}>{String(bt.wape).replace('.', ',')}%</b></span>
           <span className="text-xs text-slate-400">backtest: {bt.dni} zakończonych dni · prognoza liczona tylko z danych sprzed dnia</span>
+          {dane.modele && <span className="text-xs" style={{ color: colors.primary.dark }} title="Silnik liczy oba modele na ostatnich 28 zamkniętych dniach i używa tego z niższym MAPE. Hybryda: poziom z ostatnich 7 dni × udział dnia tygodnia (szybko łapie zmianę sezonu). Mediana: mediana 8 tygodni tego samego dnia tygodnia × trend (odporna na pojedyncze promocje).">model: <b>{dane.modele.wybrany === 'hybryda' ? 'hybryda (poziom 7 dni × udział dnia)' : 'mediana dnia tygodnia × trend'}</b> · hybryda {dane.modele.hybryda.mape != null ? `${String(dane.modele.hybryda.mape).replace('.', ',')}%` : '—'} vs mediana {dane.modele.mediana.mape != null ? `${String(dane.modele.mediana.mape).replace('.', ',')}%` : '—'}</span>}
         </>) : blad ? <span className="text-xs" style={{ color: '#B94352' }}>nie udało się pobrać prognozy: {blad} <button type="button" className="underline font-semibold" onClick={zaladuj}>ponów</button></span> : <span className="text-xs" style={{ color: '#A7465F' }}>za mało historii sprzedaży do pomiaru błędu — importuj dane dzienne</span>}
       </div>
+      {dane && dane.dane && (
+        <p className="text-xs mb-2" style={{ color: dane.dane.przeterminowane ? '#B94352' : '#6e5a62' }}>
+          {dane.dane.ostatniDzien ? `Historia POS do ${dane.dane.ostatniDzien} (${dane.dane.dniOdOstatniego} dni temu) • rytm: import we wtorek z ostatnich 8 tygodni • następny: ${dane.dane.nastepnyImport}` : 'Brak historii POS — prognoza dzienna nie ma na czym się oprzeć.'}{dane.dane.przeterminowane ? ' • ZALEGŁY — prognoza opiera się na starym poziomie sprzedaży.' : ''}
+        </p>
+      )}
       {dane && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {dane.days.map((d) => (
