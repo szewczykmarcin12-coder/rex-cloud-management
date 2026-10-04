@@ -10,7 +10,9 @@ describe('katalog nawigacji', () => {
   });
 
   it('starsze skróty prowadzą do właściwych modułów (plan ≠ forecast, actual ≠ grafik)', () => {
-    expect(resolveLegacy('plan')).toBe('budzet');
+    expect(resolveLegacy('plan')).toBe('koszty-pracy');
+    expect(resolveLegacy('limity')).toBe('plan-miesiaca');            // relikt „Limity godzin” → godziny AOP w Planie miesiąca
+    expect(resolveLegacy('trafnosc-prognozy')).toBe('prognoza-dzienna');
     expect(resolveLegacy('forecast')).toBe('prognoza-miesiaca');
     expect(resolveLegacy('forecast-col')).toBe('prognoza-miesiaca');
     expect(resolveLegacy('optymalizacja')).toBe('model-popytu');
@@ -28,7 +30,7 @@ describe('katalog nawigacji', () => {
     expect(resolveLegacy('nie-ma-takiego')).toBeNull();
     // adresy: nowe, stare i odświeżenie
     expect(parseHash('#/planowanie/grafik')).toBe('grafik');
-    expect(parseHash('#/plan')).toBe('budzet');
+    expect(parseHash('#/plan')).toBe('koszty-pracy');
     expect(parseHash('#/wt')).toBe('grafik');
     expect(parseHash('')).toBeNull();
     expect(hashFor('wykonanie')).toBe('#/realizacja/wykonanie');
@@ -39,8 +41,10 @@ describe('katalog nawigacji', () => {
 
   it('wyszukiwanie znajduje konkretne narzędzie, także bez polskich znaków', () => {
     expect(searchModules('actual', 'asm')[0].module.id).toBe('wykonanie');
-    expect(searchModules('budżet', 'asm')[0].module.id).toBe('budzet');
-    expect(searchModules('budzet', 'asm')[0].module.id).toBe('budzet');
+    expect(searchModules('budżet', 'asm')[0].module.id).toBe('koszty-pracy');
+    expect(searchModules('budzet', 'asm')[0].module.id).toBe('koszty-pracy');
+    expect(searchModules('godziny AOP', 'asm')[0].module.id).toBe('plan-miesiaca');
+    expect(searchModules('plan miesiąca', 'asm')[0].module.id).toBe('plan-miesiaca');
     expect(searchModules('dyspozycyjnosc', 'asm')[0].module.id).toBe('dyspozycje');
     expect(searchModules('Time & Attendance', 'asm')[0].module.id).toBe('obecnosc');
     expect(searchModules('grafik', 'asm')[0].module.id).toBe('grafik');
@@ -54,8 +58,11 @@ describe('katalog nawigacji', () => {
     expect(k).toEqual(['pulpit', 'grafik', 'wykonanie', 'obecnosc']);
     expect(visibleAreas('kierownik').map((a) => a.id)).toEqual(['centrum', 'planowanie', 'realizacja']);
     expect(modulesOfArea('planowanie', 'kierownik').map((m) => m.id)).toEqual(['grafik']);
-    expect(clampToRole('budzet', 'kierownik')).toBe('pulpit');
-    expect(clampToRole('budzet', 'asm')).toBe('budzet');
+    expect(clampToRole('koszty-pracy', 'kierownik')).toBe('pulpit');
+    expect(clampToRole('koszty-pracy', 'asm')).toBe('koszty-pracy');
+    expect(modulesOfArea('prognozy', 'asm').map((m) => m.id)).toEqual(['plan-miesiaca', 'prognoza-miesiaca', 'prognoza-dzienna', 'model-popytu', 'koszty-pracy']);
+    expect(MODULES.some((m) => m.id === 'limity' || m.id === 'trafnosc-prognozy')).toBe(false);
+    expect(MODULES.some((m) => m.id === 'wydruki')).toBe(true);        // wydruki dnia z grafikiem i PDF zostają
     expect(searchModules('budżet', 'kierownik')).toEqual([]);
     expect(visibleModules('asm').length).toBe(MODULES.length);
   });

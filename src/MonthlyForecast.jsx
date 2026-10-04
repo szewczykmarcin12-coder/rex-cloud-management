@@ -90,6 +90,8 @@ export default function MonthlyForecast({ api, data }) {
   const [advanced, setAdvanced] = useState(false);
   const [edit, setEdit] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [mplan, setMplan] = useState(null);          // Plan miesiąca (jedno źródło sprzedaży/transakcji/limitu godzin)
+  const zPlanu = !!(mplan && mplan.status === 'APPROVED');
 
   // Konta są dociągane asynchronicznie razem z resztą panelu. Dla nowego miesiąca
   // uzupełniamy domyślne godziny MGR dopiero, gdy lista pracowników jest gotowa.
@@ -114,7 +116,13 @@ export default function MonthlyForecast({ api, data }) {
 
   const load = async (target = month) => {
     setBusy(true); setError('');
-    try { const r = await api(`/monthly-forecast?month=${target}`); if (!r.success) throw new Error(r.error || 'Nie udało się pobrać Forecast.'); if (r.exists) hydrate(r.plan); else { setPlan(null); setForm(defaultsFor(accounts, target)); setSelectedDay(null); } }
+    try {
+      const mp = await api(`/month-plan?month=${target}`).catch(() => null);
+      const zatw = mp && mp.success && mp.plan && mp.plan.status === 'APPROVED' ? mp.plan : null;
+      setMplan(mp && mp.success ? mp.plan : null);
+      const r = await api(`/monthly-forecast?month=${target}`); if (!r.success) throw new Error(r.error || 'Nie udało się pobrać Forecast.');
+      if (r.exists) hydrate(r.plan); else { setPlan(null); const d = defaultsFor(accounts, target); if (zatw) { d.monthlySales = zatw.sales; d.monthlyTransactions = zatw.transactions; } if (mp && mp.success && mp.params) d.settings = { ...d.settings, targetSplh: mp.params.splh, targetMpt: mp.params.mpt, indirectPct: mp.params.indirectPct, colTargetPct: mp.params.colTargetPct }; setForm(d); setSelectedDay(null); }
+    }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   useEffect(() => { load(month); }, [month]);
@@ -123,7 +131,8 @@ export default function MonthlyForecast({ api, data }) {
     setBusy(true); setError('');
     try {
       const [fS, fT] = SCEN_F[form.scenario] || SCEN_F.BASE;
-      const r = await api('/monthly-forecast?action=generate', 'POST', { month, monthlySales: Math.round(Number(form.monthlySales) * fS), monthlyTransactions: Math.round(Number(form.monthlyTransactions) * fT), scenario: form.scenario, settings: form.settings, employeeHours: form.employeeHours || {}, expectedVersion: plan ? plan.version : 0, keepOverrides: true });
+      // zatwierdzony Plan miesiąca → nie wysyłamy własnych liczb (backend bierze plan i zapisuje źródło); scenariusze skalują tylko przy ręcznych liczbach
+      const r = await api('/monthly-forecast?action=generate', 'POST', { month, monthlySales: zPlanu && form.scenario === 'BASE' ? 0 : Math.round(Number(form.monthlySales) * fS), monthlyTransactions: zPlanu && form.scenario === 'BASE' ? 0 : Math.round(Number(form.monthlyTransactions) * fT), scenario: form.scenario, settings: form.settings, employeeHours: form.employeeHours || {}, expectedVersion: plan ? plan.version : 0, keepOverrides: true });
       if (!r.success) throw new Error((r.errors || [r.error]).join(' ')); hydrate(r.plan); data.show('Forecast miesiąca przeliczony i zapisany.');
     } catch (e) { setError(e.message); data.show(e.message, 'error'); } finally { setBusy(false); }
   };
@@ -186,8 +195,10 @@ export default function MonthlyForecast({ api, data }) {
       <section className="forecast-layout">
         <aside className="forecast-controls panel">
           <div className="panel-title"><div><span>ZAŁOŻENIA</span><h2>Budżet wejściowy</h2></div><SlidersHorizontal size={19} /></div>
-          <label className="input-label">Planowana sprzedaż netto<div className="number-input"><input type="number" value={form.monthlySales} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, monthlySales: e.target.value }))} /><span>PLN</span></div></label>
-          <label className="input-label">Planowane transakcje<div className="number-input"><input type="number" value={form.monthlyTransactions} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, monthlyTransactions: e.target.value }))} /><span>trx</span></div></label>
+          {zPlanu ? <div className="model-note" style={{ marginBottom: 8 }}><CheckCircle2 size={16} /><div><strong>Z Planu miesiąca v{mplan.version}</strong><span>{Math.round(mplan.sales).toLocaleString('pl-PL')} zł • {Math.round(mplan.transactions).toLocaleString('pl-PL')} trx{mplan.hoursAop != null ? ` • limit ${mplan.hoursAop} h AOP` : ''}. Zmieniasz liczby w Planie miesiąca, nie tutaj.</span></div></div>
+            : <div className="model-note" style={{ marginBottom: 8 }}><AlertTriangle size={16} /><div><strong>Brak zatwierdzonego Planu miesiąca</strong><span>Liczby poniżej są tymczasowe. Zatwierdź plan w „Plan miesiąca”, żeby P5, autoplan i obsada liczyły to samo.</span></div></div>}
+          <label className="input-label">Planowana sprzedaż netto<div className="number-input"><input type="number" value={form.monthlySales} disabled={locked || zPlanu} onChange={(e) => setForm((f) => ({ ...f, monthlySales: e.target.value }))} /><span>PLN</span></div></label>
+          <label className="input-label">Planowane transakcje<div className="number-input"><input type="number" value={form.monthlyTransactions} disabled={locked || zPlanu} onChange={(e) => setForm((f) => ({ ...f, monthlyTransactions: e.target.value }))} /><span>trx</span></div></label>
           <label className="input-label">Docelowy Cost of Labour<div className="number-input"><input type="number" step="0.1" value={form.settings.colTargetPct} disabled={locked} onChange={(e) => setSetting('colTargetPct', Number(e.target.value) || 0)} /><span>%</span></div></label>
           <div className="control-divider" />
           <label className="input-label">Scenariusz popytu</label>
@@ -221,7 +232,7 @@ export default function MonthlyForecast({ api, data }) {
                 ))}
               </div>
             ) : <div className="dialog-empty" style={{ padding: 30 }}>Ustaw założenia po lewej i kliknij „Generuj plan" — rozkład dni powstanie z historii POS.</div>}
-            {plan && <div className="forecast-explain"><Sparkles size={17} /><span>Rozkład historyczny ({plan.historyQuality.confidence === 'LOW' ? 'niska pewność' : 'dobra pewność'}: {plan.historyQuality.salesDays} dni sprzedaży, {plan.historyQuality.transactionDays} dni ruchu). Minima UOP {plan.valid ? 'zapewnione' : 'niezapewnione'}. Profil 15 min: <b>{plan.intraday && plan.intraday.source === 'measured' ? `zmierzony z POS${plan.intraday.from ? ` (${plan.intraday.from} – ${plan.intraday.to})` : ''}` : 'standardowe założenie QSR'}</b>.</span><button onClick={() => setAdvanced((x) => !x)}>Parametry</button></div>}
+            {plan && <div className="forecast-explain"><Sparkles size={17} /><span>Rozkład historyczny ({plan.historyQuality.confidence === 'LOW' ? 'niska pewność' : 'dobra pewność'}: {plan.historyQuality.salesDays} dni sprzedaży, {plan.historyQuality.transactionDays} dni ruchu). Minima UOP {plan.valid ? 'zapewnione' : 'niezapewnione'}. Profil 15 min: <b>{plan.intraday && plan.intraday.source === 'measured' ? `zmierzony z POS${plan.intraday.from ? ` (${plan.intraday.from} – ${plan.intraday.to})` : ''}` : 'standardowe założenie QSR'}</b>.{plan.aopHours != null ? <> Limit AOP <b>{plan.aopHours} h</b>: {plan.aopHeadroom >= 0 ? `zostaje ${plan.aopHeadroom} h` : <b style={{ color: '#B94352' }}>przekroczony o {-plan.aopHeadroom} h</b>}.</> : null}</span><button onClick={() => setAdvanced((x) => !x)}>Parametry</button></div>}
           </article>
 
           <div className="forecast-bottom-grid">

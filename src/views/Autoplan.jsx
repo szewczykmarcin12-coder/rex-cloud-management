@@ -19,14 +19,16 @@ export const AutoplanAOP = ({ data, setPage }) => {
   const [modelInfo, setModelInfo] = useState(null);
   const [historia, setHistoria] = useState([]);
   const [widok, setWidok] = useState('dni');
+  const [mplan, setMplan] = useState(null);     // zatwierdzony Plan miesiąca okresu — jedno źródło sprzedaży, transakcji i limitu godzin
+  useEffect(() => { const m = String(from).slice(0, 7); api(`/month-plan?month=${m}`).then((r) => { if (r && r.success) { setMplan(r.plan && r.plan.status === 'APPROVED' ? r.plan : null); if (r.params && r.params.splh) setSplh(r.params.splh); } }).catch(() => {}); }, [from]);
   const stacje = [...new Set(['MANAGER', 'KANAPKI / WRAPY', 'FRYTKI', 'PANIEROWANIE', 'SMAŻENIE', 'KONTROLER', 'DISPATCHER', 'PHU', 'DESERY / NAPOJE', 'ZMYWAK', ...(data.shifts || []).map((x) => x.station)])].filter(Boolean);
   const DNI = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
   const zaladuj = () => { api('/autoplan?action=model').then((r) => { if (r && r.success) setModelInfo(r); }).catch(() => {}); api('/autoplan').then((r) => { if (r && r.success) setHistoria(r.proposals || []); }).catch(() => {}); };
   useEffect(zaladuj, []);
   const generuj = async () => {
-    if (!aop.crewHoursMax || !aop.sales) return data.show('Podaj przynajmniej górną granicę godzin CREW i estymowaną sprzedaż AOP', 'error');
+    if (!mplan && (!aop.crewHoursMax || !aop.sales)) return data.show('Zatwierdź Plan miesiąca albo podaj górną granicę godzin CREW i sprzedaż', 'error');
     setBusy(true);
-    const r = await api('/autoplan?action=generate', 'POST', { from, to, aop: { crewHoursMax: Number(aop.crewHoursMax), totalHours: Number(aop.totalHours) || 0, sales: Number(aop.sales), transactions: Number(aop.transactions) || 0 }, wymagania: wym.filter((w) => w.station && w.start && w.end), splh: Number(splh) || 420, seed: Date.now() % 100000 });
+    const r = await api('/autoplan?action=generate', 'POST', { from, to, aop: { crewHoursMax: Number(aop.crewHoursMax) || 0, totalHours: Number(aop.totalHours) || 0, sales: Number(aop.sales) || 0, transactions: Number(aop.transactions) || 0 }, wymagania: wym.filter((w) => w.station && w.start && w.end), splh: Number(splh) || 420, seed: Date.now() % 100000 });
     setBusy(false);
     if (r && r.success) { setProp(r.proposal); setWidok('dni'); data.show(`Propozycja gotowa: ${r.proposal.podsumowanie.obsadzone}/${r.proposal.podsumowanie.zmian} zmian obsadzonych`); zaladuj(); }
     else data.show((r && r.error) || 'Błąd generowania', 'error');
@@ -57,10 +59,11 @@ export const AutoplanAOP = ({ data, setPage }) => {
             <label className="input-label">Od<div className="number-input"><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div></label>
             <label className="input-label">Do<div className="number-input"><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div></label>
           </div>
-          {pole('crewHoursMax', 'Górna granica godzin CREW', 'h', 'np. 1450')}
-          {pole('totalHours', 'Godziny total (informacyjnie; MGR układa kierownik)', 'h', 'np. 1900')}
-          {pole('sales', 'Estymowana sprzedaż AOP', 'PLN', 'np. 1420000')}
-          {pole('transactions', 'Estymowane transakcje AOP', 'trx', 'np. 29800')}
+          {mplan ? <div className="model-note" style={{ marginBottom: 8 }}><Check size={16} /><div><strong>Z Planu miesiąca v{mplan.version} ({String(from).slice(0, 7)})</strong><span>{Math.round(mplan.sales).toLocaleString('pl-PL')} zł • {Math.round(mplan.transactions).toLocaleString('pl-PL')} trx{mplan.hoursAop != null ? ` • limit ${mplan.crewHours != null ? `${mplan.crewHours} h CREW` : `${mplan.hoursAop} h AOP`}` : ''} — proporcjonalnie do dni okresu. Pola poniżej nadpisują plan tylko na tę propozycję.</span></div></div>
+            : <div className="model-note" style={{ marginBottom: 8 }}><Sparkles size={16} /><div><strong>Brak zatwierdzonego Planu miesiąca</strong><span>Wpisz liczby ręcznie albo <button className="underline font-semibold" onClick={() => setPage('plan-miesiaca')}>zatwierdź plan</button> — wtedy autoplan, P5 i obsada liczą to samo.</span></div></div>}
+          {pole('crewHoursMax', mplan ? 'Górna granica godzin CREW (nadpisanie)' : 'Górna granica godzin CREW', 'h', mplan ? 'z planu' : 'np. 1450')}
+          {pole('sales', mplan ? 'Sprzedaż (nadpisanie)' : 'Estymowana sprzedaż miesiąca', 'PLN', mplan ? 'z planu' : 'np. 1420000')}
+          {pole('transactions', mplan ? 'Transakcje (nadpisanie)' : 'Estymowane transakcje', 'trx', mplan ? 'z planu' : 'np. 29800')}
           <label className="input-label">SPLH docelowe (sprzedaż / roboczogodzina)<div className="number-input"><input type="number" value={splh} onChange={(e) => setSplh(e.target.value)} /><span>zł/h</span></div></label>
           <div className="control-divider" />
           <label className="input-label">Wymagane zmiany w dobie (szablon)</label>

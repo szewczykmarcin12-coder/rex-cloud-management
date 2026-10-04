@@ -16,7 +16,7 @@ import { ForecastPlan } from './views/DemandModel.jsx';
 import { BudgetPlan } from './views/BudgetPlan.jsx';
 import { PlanObsada } from './views/Staffing.jsx';
 import { AutoplanAOP } from './views/Autoplan.jsx';
-import { PlanPage } from './views/HourLimits.jsx';
+import { MonthPlan } from './views/MonthPlan.jsx';
 import { ForecastQualityPage } from './views/ForecastQuality.jsx';
 import { API_BASE, HUB_URL, api, store } from './lib/api.js';
 import { D3, NS, SZAB, f0, optRozbicie } from './lib/demandEngine.js';
@@ -263,22 +263,6 @@ const ObsadaLive = ({ data, setPage }) => {
 };
 
 // ═════════ DYSPOZYCYJNOŚĆ — kolejka decyzji wg wzorca ORDO (realne endpointy) ═════════
-const KolejkaWn = ({ title, kicker, icon: Icon, items, onSelect }) => (
-  <article className="panel request-queue">
-    <div className="panel-title"><div><span>{kicker}</span><h2>{title}</h2></div><Icon size={19} /></div>
-    <div className="request-list">
-      {items.map((it) => (
-        <button key={it.id} onClick={() => onSelect(it)}>
-          <i>{String(it.name).split(/\s|→/).filter(Boolean).slice(0, 2).map((c) => c[0]).join('')}</i>
-          <span><strong>{it.name}</strong><small>{it.meta}</small><em>{it.detail}</em></span>
-          <b className={`request-status ${it.status}`}>{it.conflict && it.status === 'pending' ? 'Konflikt' : it.status === 'pending' ? 'Do decyzji' : it.status === 'approved' ? 'Zatwierdzone' : 'Odrzucone'}</b>
-          <ChevronRight size={16} />
-        </button>
-      ))}
-      {!items.length && <div className="dialog-empty" style={{ padding: 14 }}>Brak zgłoszeń.</div>}
-    </div>
-  </article>
-);
 
 // ── Kalendarz dyspozycji jednej osoby (jak w Employee Hub) + decyzje zbiorcze ──
 const DyspoOsobaDialog = ({ osoba, reqs, onClose, onDone, data }) => {
@@ -461,8 +445,12 @@ const RequestsAdmin = ({ data, setPage }) => {
               {!osobyDy.length && <div className="dialog-empty" style={{ padding: 14 }}>Brak dyspozycji.</div>}
             </div>
           </article>
-          <KolejkaWn title="Absencje i urlopy" kicker="SALDA I KOLIZJE" icon={Coffee} items={abItems} onSelect={setSel} />
-          <KolejkaWn title="Giełda zamian" kicker="KWALIFIKACJE I ODPOCZYNEK" icon={ArrowLeftRight} items={swItems} onSelect={(it) => setPage('swaps')} />
+          <article className="panel" style={{ padding: 16 }}>
+            <div className="panel-title"><div><span>NIEOBECNOŚCI I ZAMIANY</span><h2>Decyzje są w jednym miejscu</h2></div><ArrowLeftRight size={18} /></div>
+            <p className="text-sm" style={{ color: '#6e5a62', margin: '6px 0 10px' }}>{abItems.filter((x) => x.status === 'pending').length} absencji i {swItems.filter((x) => x.status === 'pending').length} zamian czeka na decyzję.</p>
+            <button className="primary-action" onClick={() => setPage('zamiany')}><ArrowLeftRight size={15} /> Otwórz Zamiany i nieobecności</button>
+          </article>
+          <AvailabilityAdmin data={data} />
         </div>
         <aside className="request-side">
           <article className="panel publication-panel">
@@ -534,7 +522,7 @@ const ComplianceGate = () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Powłoka Studio: obszary (menu boczne) → moduły (pasek poziomy) → widok. Katalog w navigation.js.
 // ═══════════════════════════════════════════════════════════════════════════════
-const NAV_ICONS = { LayoutDashboard, TrendingUp, Calendar, Activity, Gauge, Users, Settings, Zap, CircleDollarSign, LayoutGrid, Bot, BookOpen, TimerReset, Clock3, CheckCircle2, Clock, ShieldCheck, Printer, CalendarCheck2, RefreshCw, Upload };
+const NAV_ICONS = { Sparkles, LayoutDashboard, TrendingUp, Calendar, Activity, Gauge, Users, Settings, Zap, CircleDollarSign, LayoutGrid, Bot, BookOpen, TimerReset, Clock3, CheckCircle2, Clock, ShieldCheck, Printer, CalendarCheck2, RefreshCw, Upload };
 const NavIcon = ({ name, size = 18 }) => { const I = NAV_ICONS[name] || LayoutGrid; return <I size={size} />; };
 
 const Sidebar = ({ moduleId, go, logout, role, badges = {}, userName, mini, setMini, open, onClose }) => {
@@ -668,6 +656,9 @@ const Dashboard = ({ data, setPage, userName }) => {
     api(`/forecast?from=${dzis}&days=1`).then((r) => { if (r && r.success && r.days && r.days[0]) setFcDzis(r.days[0].forecast); }).catch(() => {});
   }, []);
 
+  const [planNast, setPlanNast] = useState(undefined);
+  const nastYm = (() => { const d = new Date(); const x = new Date(d.getFullYear(), d.getMonth() + 1, 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`; })();
+  useEffect(() => { api(`/month-plan?month=${nastYm}`).then((r) => setPlanNast(r && r.success ? r.plan : null)).catch(() => setPlanNast(null)); }, []);
   const HOURS = ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '00', '01'];
   const hodOp = (h) => ((h - 6 + 24) % 24);              // godzina → indeks doby operacyjnej 06:00+
   const dzienne = data.shifts.filter((x) => x.date === dzis && !jestInstruktor(x));
@@ -711,20 +702,21 @@ const Dashboard = ({ data, setPage, userName }) => {
   const naCzas = rozpoczete.filter((x) => wbici.has(x.accountId)).length;
   const ryzyka = (lukaIdx >= 0 ? 1 : 0) + (spoznieni.length ? 1 : 0);
 
-  // na zmianie teraz
-  const stanKont = {}; evs.forEach((e) => { stanKont[e.accountId] = e; });
-  const naZmianie = Object.values(stanKont).filter((e) => e.type !== 'clock_out').map((e) => {
-    const k = konta.find((a) => a.id === e.accountId) || {};
-    const z = dzienne.find((x) => x.accountId === e.accountId);
-    return { initials: String(k.name || e.name || '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(), name: k.name || e.name, role: k.funkcja || 'CREW', shift: z ? `${z.start}–${z.end}` : '—', przerwa: e.type === 'break_start' };
-  });
-
   // puls operacyjny
   const fPokrycie = Math.round(cv.coveragePct);
   const fKoszt = sprzedazDzis ? Math.max(0, Math.min(100, Math.round(100 - Math.max(0, colDzis - 20) * 6))) : 100;
   const fCzas = rozpoczete.length ? Math.round(naCzas / rozpoczete.length * 100) : 100;
   const score = Math.round(fPokrycie * 0.4 + fKoszt * 0.3 + fCzas * 0.3);
   const KOLORY_AV = ['blue', 'mint', 'violet', 'coral'];
+  const sw = (data.salesData || {}).swiezosc;
+  const decyzje = (data.swaps || []).filter((x) => x.status === 'open' && x.volunteers.length > 0).length + (data.absences || []).filter((x) => x.status === 'open').length + (data.availPending || 0);
+  const mcN = new Intl.DateTimeFormat('pl-PL', { month: 'long' }).format(new Date(nastYm + '-01T12:00:00'));
+  const kroki = [
+    { tytul: 'Dane POS', opis: sw && sw.ostatniDzien ? `do ${sw.ostatniDzien}${sw.przeterminowane ? ' — import wtorkowy zaległy' : ' — aktualne'}` : 'brak historii sprzedaży', akcja: sw && sw.przeterminowane ? 'Importuj' : 'OK', ok: !!(sw && !sw.przeterminowane), cel: 'import-eksport' },
+    { tytul: `Plan ${mcN}`, opis: planNast === undefined ? 'sprawdzam…' : !planNast ? 'brak planu — zaproponuj sprzedaż i limit godzin AOP' : planNast.status === 'APPROVED' ? `zatwierdzony v${planNast.version}: ${Math.round(planNast.sales).toLocaleString('pl-PL')} zł${planNast.hoursAop != null ? `, ${planNast.hoursAop} h` : ''}` : `roboczy v${planNast.version} — do zatwierdzenia`, akcja: planNast && planNast.status === 'APPROVED' ? 'OK' : 'Zaplanuj', ok: !!(planNast && planNast.status === 'APPROVED'), cel: 'plan-miesiaca' },
+    { tytul: 'Decyzje', opis: decyzje ? `${decyzje} wniosków czeka (zamiany, nieobecności, dyspozycje)` : 'brak oczekujących wniosków', akcja: decyzje ? 'Rozpatrz' : 'OK', ok: !decyzje, cel: 'zamiany' },
+    { tytul: 'Grafik', opis: `${dzienne.length} zmian dziś • ${new Set(dzienne.map((x) => x.name)).size} osób`, akcja: 'Otwórz', ok: dzienne.length > 0, cel: 'grafik' },
+  ];
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -775,12 +767,11 @@ const Dashboard = ({ data, setPage, userName }) => {
           </article>
 
           <article className="panel duty-panel">
-            <div className="panel-head"><div><span className="section-kicker">ZESPÓŁ</span><h2>Na zmianie teraz</h2></div><button className="quiet-button" onClick={() => setPage('emps')}>Pokaż {konta.length} osób</button></div>
+            <div className="panel-head"><div><span className="section-kicker">DZISIAJ DO ZROBIENIA</span><h2>Następne kroki</h2></div><button className="quiet-button" onClick={() => setPage('obsada-live')}>Obsada na żywo</button></div>
             <div className="duty-table">
-              {naZmianie.slice(0, 5).map((person, i) => (
-                <div className="duty-row" key={i}><div className={`person-avatar ${KOLORY_AV[i % 4]}`}>{person.initials}</div><div className="person-main"><strong>{person.name}</strong><span>{person.role}</span></div><div className="person-shift"><strong>{person.shift}</strong><span className={person.przerwa ? 'break-status' : 'online-status'}>{person.przerwa ? 'Przerwa' : 'Na zmianie'}</span></div><button onClick={() => setPage('emps')} aria-label={`Więcej: ${person.name}`}><MoreHorizontal size={18} /></button></div>
+              {kroki.map((k, i) => (
+                <button className="duty-row" key={i} onClick={() => setPage(k.cel)} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, cursor: 'pointer' }}><div className={`person-avatar ${k.ok ? 'mint' : KOLORY_AV[i % 4]}`}>{k.ok ? '✓' : '!'}</div><div><strong>{k.tytul}</strong><span>{k.opis}</span></div><em>{k.akcja}</em></button>
               ))}
-              {!naZmianie.length && <div className="duty-row"><div className="person-avatar blue">—</div><div className="person-main"><strong>Nikt nie jest wbity</strong><span>Odbicia pojawią się tutaj na żywo (Employee Hub / terminal)</span></div></div>}
             </div>
           </article>
 
@@ -1167,13 +1158,11 @@ const PrintPage = ({ data }) => {
       let doc;
       let fname;
       if (mode === 'day') {
-        const pl = data.planowanie[singleDate.slice(0, 7)] || {};
-        const dod = (Number((pl.mgr || {})[singleDate]) || 0) + (Number((pl.mgrFunk || {})[singleDate]) || 0);
-        doc = generateDayPDF(data.shifts, singleDate, undefined, dod);
+        doc = generateDayPDF(data.shifts, singleDate, undefined, 0);
         fname = `grafik_${singleDate}.pdf`;
       } else {
         if (new Date(rangeEnd) < new Date(rangeStart)) { data.show('Data końcowa przed początkową', 'error'); setBusy(false); return; }
-        doc = generateRangePDF(data.shifts, rangeStart, rangeEnd, undefined, data.planowanie);
+        doc = generateRangePDF(data.shifts, rangeStart, rangeEnd, undefined, {});
         fname = `grafik_${rangeStart}_${rangeEnd}.pdf`;
       }
       if (open) {
@@ -1928,7 +1917,7 @@ const AdminSwaps = ({ data }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Zamiany i wnioski" subtitle="Zamiany zmian oraz wnioski urlopowe pracowników — decyzje kierownika" />
+      <Header title="Zamiany i nieobecności" subtitle="Jedna kolejka decyzji: urlopy i nieobecności oraz giełda zamian. Okno dyspozycji ustawiasz w Dyspozycyjności." />
       <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="flex items-center justify-between">
           <div />
@@ -1936,8 +1925,6 @@ const AdminSwaps = ({ data }) => {
         </div>
 
         <AbsencesAdmin data={data} />
-
-        <AvailabilityAdmin data={data} />
 
         <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #B86D82' }}>
           <h3 className="text-lg font-semibold mb-4" style={{ color: colors.primary.darkest }}>Do akceptacji ({doAkceptacji.length})</h3>
@@ -3558,9 +3545,6 @@ const useData = () => {
   const [months, setMonths] = useState([]);
   const monthsRef = useRef([]);
   useEffect(() => { monthsRef.current = months; }, [months]);
-  const [planowanie, setPlanowanie] = useState({});
-  const planRef = useRef({});
-  useEffect(() => { planRef.current = planowanie; }, [planowanie]);
   const [swaps, setSwaps] = useState([]);
   const [ts, setTs] = useState({ actuals: {}, completed: {}, weekStatus: {} });
   const tsRef = useRef({ actuals: {}, completed: {}, weekStatus: {} });
@@ -3581,8 +3565,6 @@ const useData = () => {
     try {
       const r = await api('/schedule');
       if (r.success) { setShifts(r.shifts || []); setRoster(r.roster || []); setMeta(r.meta || {}); setMonths(r.months || []); }
-      const rp = await api('/planning');
-      if (rp.success) setPlanowanie(rp.planowanie || {});
       const rs = await api('/swaps');
       if (rs.success) setSwaps(rs.swaps || []);
       const rt = await api('/timesheets');
@@ -3643,35 +3625,6 @@ const useData = () => {
   useEffect(() => { sync(); }, [sync]);
 
   // ── Akcje planowania (zapisują cały obiekt planu do backendu) ──
-  const persistPlan = useCallback(async (next) => {
-    planRef.current = next;
-    setPlanowanie(next);
-    try { await api('/planning', 'PUT', { planowanie: next }); } catch { show('Błąd zapisu planu', 'error'); }
-  }, []);
-  const setPlanTotal = useCallback((ym, val) => {
-    const cur = planRef.current;
-    persistPlan({ ...cur, [ym]: { ...(cur[ym] || {}), planTotal: Number(val) || 0 } });
-  }, [persistPlan]);
-  const applyGodziny = useCallback((ym, kind, mode, hours, date, weekdays) => {
-    const h = Number(hours) || 0;
-    let dates = [];
-    if (mode === 'day' && date) dates = [date];
-    else if (mode === 'month') dates = dniMiesiaca(ym);
-    else if (mode === 'schemat') dates = dniMiesiaca(ym).filter(d => { const [Y, M, D] = d.split('-').map(Number); return (weekdays || []).includes(new Date(Y, M - 1, D).getDay()); });
-    if (!dates.length) { show('Wybierz dzień lub dni', 'error'); return; }
-    const cur = planRef.current;
-    const mies = { ...(cur[ym] || {}) };
-    const mapa = { ...(mies[kind] || {}) };
-    dates.forEach(d => { if (h > 0) mapa[d] = h; else delete mapa[d]; });
-    mies[kind] = mapa;
-    persistPlan({ ...cur, [ym]: mies });
-    show(`${kind === 'mgr' ? 'MGR' : 'MGR funkcyjne'}: ${h}h ${mode === 'month' ? 'na cały miesiąc' : mode === 'schemat' ? 'wg schematu' : 'w wybrany dzień'} (${dates.length} dni)`);
-  }, [persistPlan]);
-  const clearGodziny = useCallback((ym, kind) => {
-    const cur = planRef.current;
-    persistPlan({ ...cur, [ym]: { ...(cur[ym] || {}), [kind]: {} } });
-    show('Wyczyszczono ręczne godziny');
-  }, [persistPlan]);
 
   const refreshSwaps = useCallback(async () => {
     try { const rs = await api('/swaps'); if (rs.success) setSwaps(rs.swaps || []); } catch {}
@@ -3809,7 +3762,7 @@ const useData = () => {
 
   const saveBudget = useCallback(async (obj) => { setBudget(obj); try { await api('/budget', 'PUT', { data: obj }); } catch { show('Błąd zapisu budżetu', 'error'); } }, []);
 
-  return { shifts, roster, meta, months, planowanie, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, setPlanTotal, applyGodziny, clearGodziny, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek, addHoursBulk, ustawSzkolenie, tsSetCompletedWeek };
+  return { shifts, roster, meta, months, swaps, ts, accounts, budget, salesData, loading, toast, setToast, show, sync, importSchedule, deleteMonth, clearSchedule, refreshSwaps, approveSwap, rejectSwap, tsPutActual, tsPutActualsBulk, tsToggleCompleted, tsSetWeek, addShiftManual, updateShiftManual, removeShiftManual, addAccount, updateAccount, resetAccountPassword, deleteAccount, saveBudget, saveSales, clearSales, przypiszZmiany, lastSync, templates, saveTemplate, templateDetail, applyTemplate, deleteTemplate, absences, availPending, tsCloseWeek, tsReopenWeek, addHoursBulk, ustawSzkolenie, tsSetCompletedWeek };
 };
 
 // ===================== MAIN =====================
@@ -3861,7 +3814,7 @@ export default function App() {
     'wt': () => <WorkingTime key="wt" data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
     'staffing': () => <PlanObsada data={data} setPage={setPage} />,
     'autoplan': () => <AutoplanAOP data={data} setPage={setPage} />,
-    'limits': () => <PlanPage data={data} />,
+    'month-plan': () => <MonthPlan data={data} setPage={setPage} />,
     'live': () => <ObsadaLive data={data} setPage={setPage} />,
     'analytics': () => <AnalyticsPage data={data} setPage={setPage} />,
     'forecast-quality': () => <ForecastQualityPage data={data} setPage={setPage} />,

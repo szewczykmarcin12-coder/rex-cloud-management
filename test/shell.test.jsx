@@ -18,7 +18,12 @@ const DANE = {
   '/org': { success: true, unit: { code: 'PLK 201043', name: 'Galeria Krakowska' } }, '/templates': { success: true, templates: [] }, '/absences': { success: true, absences: [] },
   '/availability': { success: true, pending: 0, requests: [], window: null }, '/audit': { success: true, entries: [] }, '/kpi': { success: true, snapshots: [], cronSkonfigurowany: false },
   '/forecast': { success: true, days: [], backtest: { dni: 28, mape: 8.5, wape: 8.6, model: 'hybryda' }, modele: { wybrany: 'hybryda', mediana: { dni: 28, mape: 12.8, wape: 12.7 }, hybryda: { dni: 28, mape: 8.5, wape: 8.6 } }, dane: { ostatniDzien: '2026-09-30', dniOdOstatniego: 13, nastepnyImport: '2026-10-20', przeterminowane: true, rytm: 'wtorek, ostatnie 8 tygodni' } }, '/autoplan': { success: true, proposals: [], model: null }, '/compliance': { success: true, violations: [], summary: {} },
-  '/monthly-forecast': { success: true, plan: null, months: [] }, '/terminals': { success: true, terminals: [] }, '/health': { success: true },
+  '/monthly-forecast': { success: true, exists: false, plan: null, months: [] },
+  '/month-plan': { success: true, month: '2026-10', plan: null, params: { splh: 420, mpt: 4, podloga: 3, indirectPct: 0.12, colTargetPct: 20, yoyWeight: 0.3 }, miesiace: [{ month: '2026-10', status: null }], grafik: { godziny: 0, zmian: 0, dni: 0 },
+    events: [{ id: 'e1', name: 'Kampania kanapkowa', typ: 'promo', from: '2026-10-06', to: '2026-10-19', upliftPct: 8, by: 'Marta ASM' }],
+    sezon: { idx: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i + 1), { factor: i === 8 ? 0.937 : 1, zrodlo: i === 8 ? 'learned' : 'default', n: i === 8 ? 1 : 0 }])), miesiecyHistorii: 2 },
+    kalibracja: [{ month: '2026-09', proposal: null, plan: null, status: null, actual: 849285, dniZDanymi: 30, dni: 30, kompletny: true, odchPlanPct: null, odchPropPct: null }],
+    proposal: { ok: true, month: '2026-10', asOf: '2026-10-03', ostatniDzien: '2026-09-30', sales: 811259, transactions: 21269, agc: 38.15, low: 723970, high: 898548, pasmoPct: 10.76, poziomTyg: 200087, trendTygPct: -4, tygodniHistorii: 8, tygodniDoPrzodu: 1, dniWMiesiacu: 31, sklad: { Nd: 4, Pn: 4, Wt: 4, Sr: 4, Cz: 5, Pt: 5, Sb: 5 }, udzialDow: [16.6, 14.8, 13.4, 14, 14.3, 13.9, 13], yoy: { dostepne: false }, tygodnie: [{ start: '2026-08-03', end: '2026-08-09', sales: 248616, checks: 6100 }, { start: '2026-09-21', end: '2026-09-27', sales: 191441, checks: 5000 }], sezon: { factor: 1.07, idxCel: { factor: 1, zrodlo: 'default' }, idxBaza: { factor: 0.937, zrodlo: 'learned', n: 1 }, idxRatio: 1.07 }, zdarzenia: ['Kampania kanapkowa'], wplywZdarzen: 28000, powody: ['Sezon: indeks 10/12 (start QSR-galeria) 1 vs miesiąc bazowy 0.937 → ×1.07 (danych rok wcześniej brak — indeks nauczy się z Twoich zamkniętych miesięcy).'], dni: [] } }, '/terminals': { success: true, terminals: [] }, '/health': { success: true },
 };
 let awarie = new Set();     // ścieżki, które mają zwrócić błąd
 const zapytania = [];
@@ -61,7 +66,7 @@ describe('powłoka Studio', () => {
     expect(location.hash).toBe('#/realizacja/wykonanie');
     fireEvent.change(input, { target: { value: 'budzet' } });
     fireEvent.keyDown(input, { key: 'ArrowDown' }); fireEvent.keyDown(input, { key: 'ArrowUp' }); fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(location.hash).toBe('#/prognozy/budzet'));
+    await waitFor(() => expect(location.hash).toBe('#/prognozy/koszty-pracy'));
     fireEvent.change(input, { target: { value: 'xxx' } }); fireEvent.keyDown(input, { key: 'Escape' });
     expect(input.value).toBe('');
   });
@@ -69,16 +74,16 @@ describe('powłoka Studio', () => {
   it('3. historia i odświeżenie: stary skrót #/plan otwiera Budżet i koszty, a wstecz wraca do poprzedniego modułu', async () => {
     zaloguj('asm'); location.hash = '#/plan';
     render(<App />);
-    await waitFor(() => expect(aktywnaZakladka()).toContain('Budżet i koszty'));
-    await waitFor(() => expect(location.hash).toBe('#/prognozy/budzet'));      // adres znormalizowany bez nowego wpisu
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Koszty pracy'));
+    await waitFor(() => expect(location.hash).toBe('#/prognozy/koszty-pracy'));      // adres znormalizowany bez nowego wpisu
     fireEvent.click(within(document.querySelector('aside nav')).getByText('Planowanie').closest('button'));   // obszar → pierwszy moduł: Grafik
     await waitFor(() => expect(location.hash).toBe('#/planowanie/grafik'));
-    await act(async () => { location.hash = '#/prognozy/budzet'; window.dispatchEvent(new PopStateEvent('popstate')); });
-    await waitFor(() => expect(aktywnaZakladka()).toContain('Budżet i koszty'));
+    await act(async () => { location.hash = '#/prognozy/koszty-pracy'; window.dispatchEvent(new PopStateEvent('popstate')); });
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Koszty pracy'));
   });
 
   it('4. ograniczona rola: kierownik zmiany widzi 3 obszary i 4 moduły; adres do budżetu spada na pulpit', async () => {
-    zaloguj('kierownik'); location.hash = '#/prognozy/budzet';
+    zaloguj('kierownik'); location.hash = '#/prognozy/koszty-pracy';
     render(<App />);
     await waitFor(() => expect(document.querySelector('.module-bar')).toBeTruthy());
     expect(location.hash).toBe('#/centrum/pulpit');
@@ -147,6 +152,40 @@ describe('powłoka Studio', () => {
     expect(screen.getByText(/hybryda 8,5% vs mediana 12,8%/)).toBeTruthy();
     expect(screen.getByText(/ZALEGŁY — prognoza opiera się na starym poziomie/)).toBeTruthy();
     delete DANE['/sales'].swiezosc;
+  });
+
+  it('10. Plan miesiąca: propozycja z historii, korekta > 3 % wymaga uzasadnienia, zapis i zatwierdzenie; P5 pokazuje źródło', async () => {
+    zaloguj('asm'); location.hash = '#/prognozy/plan-miesiaca';
+    render(<App />);
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Plan miesiąca'));
+    await screen.findByText('811 259 zł');
+    expect(screen.getByText(/−4 %\/tydz\.|-4 %\/tydz\./)).toBeTruthy();
+    expect(screen.getByText('Kampania kanapkowa')).toBeTruthy();                         // kalendarz zdarzeń
+    expect(screen.getByText('wyuczony (1)')).toBeTruthy();                                // indeks sezonowy uczy się z wykonania
+    expect(screen.getByText('849 285 zł')).toBeTruthy();                                  // kalibracja: wykonanie września
+    const pola = document.querySelectorAll('aside.forecast-controls input[type="number"]');
+    fireEvent.change(pola[0], { target: { value: '700000' } });
+    expect(screen.getByText(/względem propozycji — wymaga uzasadnienia/)).toBeTruthy();
+    const zapisz = screen.getByText('Zapisz plan roboczy').closest('button');
+    expect(zapisz.disabled).toBe(true);
+    fireEvent.change(pola[2], { target: { value: '4700' } });                       // godziny AOP = limit
+    fireEvent.change(document.querySelector('aside.forecast-controls input[type="text"]'), { target: { value: 'remont galerii' } });
+    expect(zapisz.disabled).toBe(false);
+    const ciala = []; const fetchOrig = global.fetch;
+    global.fetch = vi.fn(async (url, opts) => { if (String(url).includes('/month-plan?action=save')) { ciala.push(JSON.parse(opts.body)); return { status: 200, ok: true, json: async () => ({ success: true, plan: { month: '2026-10', version: 1, status: 'DRAFT', sales: 700000, transactions: 21269, hoursAop: 4700, source: 'manual', reason: 'remont galerii', history: [] } }) }; } return fetchOrig(url, opts); });
+    fireEvent.click(zapisz);
+    await waitFor(() => expect(ciala.length).toBe(1));
+    expect(ciala[0].month).toMatch(/^\d{4}-\d{2}$/); expect(ciala[0]).toMatchObject({ sales: 700000, hoursAop: 4700, source: 'manual', reason: 'remont galerii', expectedVersion: 0 });
+    expect(ciala[0].proposal.sales).toBe(811259);
+    // P5 bez zatwierdzonego planu ostrzega; z zatwierdzonym — blokuje pola i pokazuje źródło
+    await act(async () => { location.hash = '#/prognozy/prognoza-miesiaca'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await screen.findByText('Brak zatwierdzonego Planu miesiąca');
+    DANE['/month-plan'] = { ...DANE['/month-plan'], plan: { month: '2026-10', version: 2, status: 'APPROVED', sales: 700000, transactions: 21269, hoursAop: 4700, source: 'manual', history: [] } };
+    await act(async () => { location.hash = '#/prognozy/plan-miesiaca'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await act(async () => { location.hash = '#/prognozy/prognoza-miesiaca'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await screen.findByText('Z Planu miesiąca v2');
+    expect(screen.getByText(/limit 4700 h AOP/)).toBeTruthy();
+    DANE['/month-plan'].plan = null;
   });
 
   it('7. Analizy: KPI i CSV z tego samego okresu; awaria KPI dziennych i prognozy pokazuje błąd z ponowieniem', async () => {

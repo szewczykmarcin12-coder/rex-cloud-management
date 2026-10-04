@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import { f0 } from '../lib/demandEngine.js';
 import { colors, godzZ, jestInstruktor, months, wtAct, wtDur } from '../lib/domain.js';
 import { Btn, Header, Sekcja } from '../ui/primitives.jsx';
+import { api } from '../lib/api.js';
 // ── Prognozy i estymacja → Budżet i koszty ──
 // ===================== PLAN BUDŻETU (kalkulator COL) =====================
 const BP_POZ = ['RGM', 'ASM', 'SM', 'JSM', 'CREW'];
@@ -116,7 +117,13 @@ export const BudgetPlan = ({ data, setPage }) => {
   const godzTotal = sum(koszty, (x) => x.k.worked);
   const colAkt = sum(kosztyAkt, (x) => x.k.total);
   const godzAktTotal = sum(kosztyAkt, (x) => x.k.worked);
-  const sale = sprzedaz[mIdx] || 0, tr = transakcje[mIdx] || 0, dni = dniS[mIdx] || 0;
+  // Sprzedaż miesiąca: zatwierdzony Plan miesiąca (jedno źródło), a dla miesięcy z wykonaniem — POS; własne pola w Budżecie zostały usunięte
+  const [mplan, setMplan] = useState(null);
+  const ymKey = `${rokBud}-${String(mIdx + 1).padStart(2, '0')}`;
+  useEffect(() => { api(`/month-plan?month=${ymKey}`).then((r) => setMplan(r && r.success && r.plan && r.plan.status === 'APPROVED' ? r.plan : null)).catch(() => setMplan(null)); }, [ymKey]);
+  const posM = useMemo(() => { const sd = (data.salesData || {}); const dniS2 = Object.keys(sd.sales || {}).filter((d) => d.startsWith(ymKey)); return { sale: dniS2.reduce((a, d) => a + (Number(sd.sales[d]) || 0), 0), tr: dniS2.reduce((a, d) => a + (Number((sd.checks || {})[d]) || 0), 0), dni: dniS2.length }; }, [data.salesData, ymKey]);
+  const zrodloSprz = mplan ? `Plan miesiąca v${mplan.version}` : (posM.dni ? `POS (${posM.dni} dni wykonania)` : 'brak — zatwierdź Plan miesiąca');
+  const sale = mplan ? mplan.sales : posM.sale, tr = mplan ? mplan.transactions : posM.tr, dni = mplan ? new Date(rokBud, mIdx + 1, 0).getDate() : posM.dni;
   const colPct = sale ? col / sale : 0;
   const agc = tr ? sale / tr : 0, splh = godzTotal ? sale / godzTotal : 0, mpt = tr ? godzTotal * 60 / tr : 0;
   const linia = (f) => sum(koszty, (x) => f(x.k));
@@ -189,23 +196,22 @@ export const BudgetPlan = ({ data, setPage }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Plan budżetu" subtitle="Kalkulator COL — pracownicy, składki ZUS, koszty, budżet i analityka miesiąca">
+      <Header title="Koszty pracy" subtitle="Składki, stawki, normy etatu i Cost of Labour plan vs wykonanie. Sprzedaż i godziny pochodzą z Planu miesiąca i grafiku — tu ich nie wpisujesz.">
         <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Miesiąc</span>
         <select value={mIdx} onChange={(e) => setMIdx(Number(e.target.value))} className="px-3 py-2 rounded-lg border text-sm font-medium" style={{ borderColor: colors.primary.bg, color: colors.primary.darkest }}>{months.map((m, i) => <option key={i} value={i}>{m} · norma {settings.normy[i]}h</option>)}</select>
       </Header>
       <div className="flex-1 p-8 space-y-5 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
         <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: 'white' }}>
-          {[['budzet', 'Budżet miesiąca'], ['prac', 'Pracownicy'], ['analiza', 'Analityka'], ['ust', 'Ustawienia ZUS']].map(([id, l]) => (
+          {[['budzet', 'Koszt miesiąca (COL)'], ['prac', 'Parametry kosztowe pracowników'], ['analiza', 'Analityka'], ['ust', 'Składki i normy']].map(([id, l]) => (
             <button key={id} onClick={() => setTab(id)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: tab === id ? colors.primary.medium : 'transparent', color: tab === id ? 'white' : colors.primary.dark }}>{l}</button>
           ))}
         </div>
 
         {tab === 'budzet' && (<>
-          <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl p-4 shadow-sm border" style={{ borderColor: colors.primary.bg }}>
-            <Fld label="Sprzedaż (zł)">{numIn(sale, (v) => setSprzedaz((p) => ({ ...p, [mIdx]: Number(v) || 0 })), 'w-36')}</Fld>
-            <Fld label="Transakcje">{numIn(tr, (v) => setTransakcje((p) => ({ ...p, [mIdx]: Number(v) || 0 })), 'w-28')}</Fld>
-            <Fld label="Dni sprzedaży">{numIn(dni, (v) => setDniS((p) => ({ ...p, [mIdx]: Number(v) || 0 })), 'w-24')}</Fld>
-            <span className="text-xs text-slate-400 ml-auto self-center">Wskaźniki dla: <b style={{ color: colors.primary.dark }}>{months[mIdx]}</b></span>
+          <div className="flex flex-wrap items-center gap-4 bg-white rounded-xl p-4 shadow-sm border text-sm" style={{ borderColor: colors.primary.bg }}>
+            <span>Sprzedaż netto: <b>{zl(sale)} zł</b></span><span>Transakcje: <b>{f0(tr)}</b></span><span>Dni: <b>{dni}</b></span>
+            <span className="text-xs text-slate-400 ml-auto">źródło: <b style={{ color: colors.primary.dark }}>{zrodloSprz}</b>{mplan && mplan.hoursAop != null ? ` • limit AOP ${mplan.hoursAop} h` : ''}</span>
+            <Btn variant="secondary" onClick={() => setPage && setPage('plan-miesiaca')}>Plan miesiąca</Btn>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Dwa label="COL — koszt pracy (total)" akt={`${zl(colAkt)} zł`} plan={`${zl(col)} zł`} kolor={colors.primary.darkest} />

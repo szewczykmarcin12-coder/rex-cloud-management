@@ -39,10 +39,10 @@ export const ForecastQuality = ({ data }) => {
           {dane.days.map((d) => (
             <button key={d.date} onClick={() => setEdytuj({ date: d.date, value: d.override ? d.override.value : (d.baseline ?? ''), reason: d.override ? d.override.reason : '' })}
               className="shrink-0 w-[92px] rounded-lg border px-2 py-1.5 text-left hover:shadow-sm"
-              style={{ borderColor: d.override ? '#A7465F' : colors.primary.bg, backgroundColor: d.override ? '#F1E4E8' : 'white' }}>
+              style={{ borderColor: d.override ? '#A7465F' : d.events && d.events.length ? '#B86D82' : colors.primary.bg, backgroundColor: d.override ? '#F1E4E8' : d.events && d.events.length ? '#FBF3F5' : 'white' }}>
               <p className="text-[10px] font-bold" style={{ color: colors.primary.light }}>{DK[d.dow]} {d.date.slice(8)}.{d.date.slice(5, 7)}</p>
               <p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{d.forecast != null ? d.forecast.toLocaleString('pl-PL') : '—'}</p>
-              <p className="text-[9.5px] truncate" style={{ color: d.override ? '#A7465F' : colors.primary.light }}>{d.override ? `korekta: ${d.override.reason}` : (d.baseline != null ? 'baseline' : 'brak historii')}</p>
+              <p className="text-[9.5px] truncate" style={{ color: d.override ? '#A7465F' : colors.primary.light }}>{d.override ? `korekta: ${d.override.reason}` : d.events && d.events.length ? `${d.eventFactor === 0 ? 'zamknięte' : `${d.eventFactor > 1 ? '+' : ''}${Math.round((d.eventFactor - 1) * 100)} %`}: ${d.events[0]}` : (d.baseline != null ? 'model' : 'brak historii')}</p>
             </button>
           ))}
         </div>
