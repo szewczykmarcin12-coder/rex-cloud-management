@@ -1,12 +1,15 @@
 import { useEffect } from 'react';
 import { Printer, X } from 'lucide-react';
 
-// Karta wydruku dziennego 1:1 wg wzorca ORDO (klasy ordo-print-* z ordo-views.css).
-// A4 poziomo, jedna strona: tabela obsady z mini-osią 06→02, pokrycie godzinowe,
-// podsumowanie godzin, priorytety zmiany i podpisy managerów.
+// Karta wydruku dziennego — układ wg „ORDO_grafik_dzienny_propozycja_v3” (kolorystyka ORDO, bez kosztu dnia).
+// A4 poziomo, jedna strona: nagłówek + 4 wskaźniki, pełnoszerokościowa tabela obsady z osią 06→06,
+// pod nią panel operacyjny: obsada vs zapotrzebowanie, prowadzenie zmiany (podpis), priorytety i uwagi.
+// Rezerwa: do 3 osób z zatwierdzoną dyspozycją „dostępny” w tym dniu, bez zmiany w grafiku (z informacją od–do).
+// Klasy opv3-* są zdefiniowane w ordo-overrides.css; powłoka (overlay, pasek, strona, @media print) w ordo-views.css.
 
-const OSIE = [6, 8, 10, 12, 14, 16, 18, 20, 22, 0, 2];
+const OS_H = Array.from({ length: 13 }, (_, i) => (6 + i * 2) % 24);          // 06 08 … 04 06
 const gL = (h) => String(h).padStart(2, '0');
+const TONE_LBL = [['deep', 'Manager'], ['mid', 'Front / obsługa'], ['soft', 'Kuchnia'], ['outline', 'Prep / pozostałe']];
 
 export const DailyRosterPrint = ({ open, data, onClose }) => {
   useEffect(() => {
@@ -23,8 +26,10 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
   const people = d.people || [];
   const need = d.needHours || [];
   const plan = d.planHours || [];
-  const kosztLbl = d.koszt != null ? `${Math.round(d.koszt).toLocaleString('pl-PL')} zł` : '—';
-  const kosztSub = d.sprzedaz ? `${(d.koszt / d.sprzedaz * 100).toFixed(1).replace('.', ',')}% sprzedaży` : 'wg stawek kont';
+  const n = Math.max(need.length, plan.length, 20);
+  const godzOsi = Array.from({ length: n }, (_, i) => (6 + i) % 24);
+  const osoby = people.length;
+  const gesto = osoby > 16 ? ' dense' : '';
 
   return (
     <div className="ordo-print-overlay" role="dialog" aria-modal="true" aria-label="Podgląd wydruku grafiku dziennego">
@@ -33,72 +38,80 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
         <div><button onClick={onClose}><X size={15} /> Zamknij</button><button className="primary" onClick={() => window.print()}><Printer size={15} /> Drukuj / zapisz PDF</button></div>
       </div>
 
-      <article className="ordo-print-page">
-        <header className="ordo-print-header">
-          <div className="ordo-print-brand"><b style={{ color: '#741334', fontSize: 26, letterSpacing: '.26em', fontWeight: 800 }}>ORDO</b><span>Workforce Studio</span></div>
-          <div className="ordo-print-title"><span>WORKFORCE • SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong><small>{d.operationalDayLabel} • {d.versionLabel?.toLowerCase()}</small></div>
-          <div className="ordo-print-location"><span>RESTAURACJA</span><strong>{d.restaurantName} • {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
+      <article className={`ordo-print-page opv3${gesto}`}>
+        <header className="opv3-head">
+          <div className="opv3-brand"><b>ORDO</b><span>WORKFORCE STUDIO</span></div>
+          <div className="opv3-title"><span>WORKFORCE / SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong><small>{d.operationalDayLabel} • {(d.versionLabel || '').toLowerCase()}</small></div>
+          <div className="opv3-loc"><span>LOKAL</span><strong>{d.restaurantName} – {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
         </header>
 
-        <section className="ordo-print-summary">
-          <div><span>Pracownicy</span><strong>{d.employeeCount}</strong><small>pełna obsada dnia</small></div>
-          <div><span>Zmiany</span><strong>{d.shiftCount}</strong><small>w tym podziały stanowisk</small></div>
-          <div><span>Godziny planu</span><strong>{d.plannedHours}</strong><small>łącznie</small></div>
-          <div><span>Godziny managerów</span><strong>{d.managerHours}</strong><small>otwarcie + zamknięcie</small></div>
-          <div><span>Pokrycie</span><strong>{d.coveragePercent}%</strong><small>{d.coverageAttentionLabel}</small></div>
-          <div><span>Koszt szacowany</span><strong>{kosztLbl}</strong><small>{kosztSub}</small></div>
+        <section className="opv3-kpis">
+          <div><span>OSOBY W PLANIE</span><strong>{d.employeeCount}</strong><small>pełna obsada dnia</small></div>
+          <div><span>GODZINY ŁĄCZNIE</span><strong>{d.plannedHours}</strong><small>plan dnia • {d.shiftCount} zmian</small></div>
+          <div><span>GODZINY MGR</span><strong>{d.managerHours}</strong><small>managerowie</small></div>
+          <div><span>POKRYCIE OBSADY</span><strong>{d.coveragePercent}%</strong><small>{d.coverageAttentionLabel || 'plan vs zapotrzebowanie'}</small></div>
         </section>
 
-        <main className="ordo-print-layout">
-          <section className="ordo-print-roster">
-            <div className="ordo-print-section-head"><span>01</span><div><strong>Obsada i stanowiska</strong><small>Plan pracy wszystkich osób na jednej osi dnia</small></div></div>
-            <div className="ordo-print-table">
-              <div className="ordo-print-table-head"><span>PRACOWNIK</span><span>FUNKCJA</span><span>GODZINY</span><span>STANOWISKO</span><span>PRZERWA</span><span className="ordo-print-timeline-head">{OSIE.map((h) => <i key={h}>{gL(h)}</i>)}</span></div>
-              {people.map((p) => (
-                <div className="ordo-print-person" key={p.name}>
-                  <span className="ordo-print-name"><i>{p.initials}</i><strong>{p.name}</strong></span>
-                  <span>{p.job.replace('Młodszy ', 'Mł. ')}</span>
-                  <strong>{p.segments.map((s) => s.time).join(' / ')}</strong>
-                  <span>{p.segments.map((s) => s.role).join(' → ')}</span>
-                  <span>{p.przerwa}</span>
-                  <span className="ordo-print-timeline">
-                    <i className="ordo-print-grid">{Array.from({ length: 10 }, (_, i) => <b key={i} />)}</i>
-                    {p.segments.map((s, i) => <em key={i} className={`print-shift-${s.tone || 'mid'}`} style={{ left: `${Math.max(0, (s.start - 6) / 20) * 100}%`, width: `${Math.min((s.end - s.start) / 20, 1 - Math.max(0, (s.start - 6) / 20)) * 100}%` }}><small>{(s.end - s.start) >= 8 ? `${s.time.replace(/:00/g, '')} · ${s.role}` : s.time.replace(/:00/g, '')}</small></em>)}
-                  </span>
-                </div>
-              ))}
+        <section className="opv3-card opv3-roster">
+          <div className="opv3-card-head">
+            <i>01</i><div><strong>Obsada i przydział stanowisk</strong><small>Kto pracuje, na jakim stanowisku i w których godzinach</small></div>
+            <div className="opv3-legend">{TONE_LBL.map(([t, l]) => <span key={t}><b className={`opv3-sw ${t}`} />{l}</span>)}</div>
+          </div>
+          <div className="opv3-table">
+            <div className="opv3-tr opv3-th">
+              <span>ZESPÓŁ</span><span>ZMIANA</span><span>STANOWISKO</span><span>PRZERWA</span>
+              <span className="opv3-axis">{OS_H.map((h, i) => <i key={i} style={{ left: `${i / 12 * 100}%` }}>{gL(h)}</i>)}</span>
             </div>
-          </section>
+            {people.map((p) => (
+              <div className="opv3-tr" key={p.name}>
+                <span className="opv3-who"><i>{p.initials}</i><div><strong>{p.name}</strong><small>{String(p.job || '').replace('Młodszy ', 'Mł. ')}</small></div></span>
+                <span className="opv3-time"><div>{p.segments.map((s, i) => <b key={i}>{s.time}</b>)}</div></span>
+                <span className="opv3-st">{p.segments.map((s, i) => <b key={i} className={`opv3-chip ${s.tone || 'mid'}`}>{s.role}</b>)}</span>
+                <span className="opv3-brk">{p.przerwa}</span>
+                <span className="opv3-tl">
+                  <i className="opv3-grid">{Array.from({ length: 12 }, (_, i) => <b key={i} />)}</i>
+                  {p.segments.map((s, i) => { const l = Math.max(0, (s.start - 6) / 24), w = Math.min((s.end - s.start) / 24, 1 - l); return (
+                    <em key={i} className={`opv3-bar ${s.tone || 'mid'}`} style={{ left: `${l * 100}%`, width: `${w * 100}%` }}><small>{p.initials} {s.time}</small></em>
+                  ); })}
+                </span>
+              </div>
+            ))}
+            {!people.length && <div className="opv3-empty">Brak zmian w tym dniu.</div>}
+          </div>
+        </section>
 
-          <aside className="ordo-print-side">
-            <section className="ordo-print-coverage">
-              <div className="ordo-print-section-head"><span>02</span><div><strong>Pokrycie godzinowe</strong><small>Plan względem personelu idealnego</small></div><b>{d.coveragePercent}%</b></div>
-              <div className="ordo-print-coverage-hours">{Array.from({ length: 20 }, (_, i) => <span key={i}>{i % 2 === 0 ? gL((6 + i) % 24) : ''}</span>)}</div>
-              <div className="ordo-print-coverage-row"><label>IDEAŁ</label><div>{need.map((v, i) => <span key={i}>{v || ''}</span>)}</div></div>
-              <div className="ordo-print-coverage-row plan"><label>PLAN</label><div>{plan.map((v, i) => <span className={v < need[i] ? 'deficit' : v > need[i] + 2 ? 'excess' : ''} key={i}>{v || ''}</span>)}</div></div>
-              <p><i /> pokrycie <i /> zapas <i /> niedobór</p>
-            </section>
+        <section className="opv3-card opv3-ops">
+          <div className="opv3-card-head"><i>02</i><div><strong>Panel operacyjny</strong><small>Najważniejsze informacje do prowadzenia zmiany</small></div></div>
+          <div className="opv3-ops-grid">
+            <div className="opv3-cov">
+              <div className="opv3-cov-head"><div><strong>Obsada względem zapotrzebowania</strong><small>Liczba osób w planie na kolejne godziny</small></div><b>{d.coveragePercent}%</b></div>
+              <div className="opv3-cov-hours">{godzOsi.map((h, i) => <span key={i}>{i % 4 === 0 || i === n - 1 ? gL(h) : ''}</span>)}</div>
+              <div className="opv3-cov-row need">{godzOsi.map((_, i) => <span key={i}>{need[i] || ''}</span>)}</div>
+              <div className="opv3-cov-row plan">{godzOsi.map((_, i) => <span key={i} className={plan[i] < need[i] ? 'deficit' : ''}>{plan[i] || ''}</span>)}</div>
+              <small className="opv3-cov-note">góra: zapotrzebowanie • dół: plan</small>
+            </div>
+            <div className="opv3-lead">
+              <strong className="opv3-h">Prowadzenie zmiany</strong>
+              <div><span>OTWARCIE</span><b>{d.openingManager}</b></div>
+              <div><span>ZAMKNIĘCIE</span><b>{d.closingManager}</b></div>
+              <label>Podpis managera prowadzącego<i /></label>
+            </div>
+            <div className="opv3-reserve">
+              <strong className="opv3-h">Rezerwa — dostępni dziś</strong>
+              {(d.rezerwa || []).length ? (d.rezerwa || []).map((r) => (
+                <div key={r.name}><i>{r.initials}</i><div><b>{r.name}</b><small>{r.job}</small></div><em>{r.dostepnosc}</em></div>
+              )) : <small className="opv3-muted">Brak osób z zatwierdzoną dyspozycją poza grafikiem.</small>}
+            </div>
+            <div className="opv3-prio">
+              <strong className="opv3-h">{(d.priorities || []).length ? 'Priorytety / komunikaty' : 'Uwagi zmiany'}</strong>
+              {(d.priorities || []).length > 0 && <ul>{d.priorities.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+              {(d.priorities || []).length > 0 && <span className="opv3-notes-lbl">UWAGI ZMIANY</span>}
+              <i className="opv3-line" /><i className="opv3-line" />{!(d.priorities || []).length && <><i className="opv3-line" /><i className="opv3-line" /></>}
+            </div>
+          </div>
+        </section>
 
-            <section className="ordo-print-hours">
-              <div className="ordo-print-section-head"><span>03</span><div><strong>Podsumowanie godzin</strong><small>Podział dnia według funkcji</small></div></div>
-              {(d.hoursSummary || []).map((w) => <div key={w.id}><span>{w.label}</span><strong>{w.planned}</strong><i /></div>)}
-            </section>
-
-            <section className="ordo-print-priorities">
-              <div className="ordo-print-section-head"><span>04</span><div><strong>Priorytety zmiany</strong><small>Do omówienia na pre-shifcie</small></div></div>
-              <ol>{(d.priorities || []).map((x, i) => <li key={i}>{x}</li>)}</ol>
-              <label>Uwagi kierownika<i /></label>
-            </section>
-
-            <section className="ordo-print-signatures">
-              <div><span>Manager otwierający</span><strong>{d.openingManager}</strong></div>
-              <div><span>Manager zamykający</span><strong>{d.closingManager}</strong></div>
-              <label>Podpis<i /></label>
-            </section>
-          </aside>
-        </main>
-
-        <footer className="ordo-print-footer"><span>ORDO Workforce Studio • Schedule</span><span>{d.generatedAt}</span><span>{d.documentLabel}</span></footer>
+        <footer className="opv3-foot"><span>ORDO Workforce Studio • Schedule</span><span>{d.generatedAt}</span><span>{d.documentLabel}</span></footer>
       </article>
     </div>
   );

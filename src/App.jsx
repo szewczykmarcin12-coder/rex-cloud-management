@@ -178,7 +178,7 @@ const ObsadaLive = ({ data, setPage }) => {
 
   return (
     <div className="page-wrap module-view live-view">
-      <MHead kicker={`LIVE COMMAND • ${new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' }).toUpperCase()} • ${new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`} title="Obsada w ciągu dnia" copy="Porównuj plan, realne odbicia i popyt co 15 minut. Reaguj zanim luka wpłynie na service.">
+      <MHead kicker={`OBSADA NA ŻYWO • ${new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' }).toUpperCase()} • ${new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`} title="Obsada w ciągu dnia" copy="Porównuj plan, realne odbicia i popyt co 15 minut. Reaguj zanim luka wpłynie na service.">
         <button className="secondary-action" onClick={zaladuj}><RefreshCw size={16} /> Odśwież{syncAt ? ` • ${syncAt.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}` : ''}</button>
         <button className="primary-action" onClick={() => setPage('swaps')}><Smartphone size={16} /> Wyślij do zmiany</button>
       </MHead>
@@ -418,7 +418,7 @@ const RequestsAdmin = ({ data, setPage }) => {
 
   return (
     <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view requests-view" style={{ width: '100%' }}>
-      <MHead kicker="WORKFORCE • DYSPOZYCYJNOŚĆ" title="Dyspozycyjność" copy="Jedna kolejka decyzji dla dostępności, absencji i zamian — powiązana bezpośrednio z grafikiem dziennym.">
+      <MHead kicker="ZESPÓŁ" title="Dyspozycyjność i wnioski" copy="Jedna kolejka decyzji dla dostępności, absencji i zamian — powiązana bezpośrednio z grafikiem dziennym.">
         <button className="secondary-action" title="Plik w układzie poziomym (jak import): zatwierdzone deklaracje crew na miesiąc docelowy" onClick={() => { const ym = okno && okno.targetMonth ? okno.targetMonth : mc; const r = eksportDyspoPoziome(reqs, data.accounts || [], ym, { tylkoZatwierdzone: true }); data.show(`Wyeksportowano dyspozycje ${ym}: ${r.osoby} osób, ${r.deklaracji} dni`); }}><Download size={16} /> Eksport dyspozycji</button>
         <button className="secondary-action" title="Wariant z oczekującymi (niezatwierdzonymi) deklaracjami" onClick={() => { const ym = okno && okno.targetMonth ? okno.targetMonth : mc; const r = eksportDyspoPoziome(reqs, data.accounts || [], ym, { tylkoZatwierdzone: false }); data.show(`Wyeksportowano dyspozycje ${ym} (z oczekującymi): ${r.osoby} osób, ${r.deklaracji} dni`); }}><Download size={16} /> + oczekujące</button>
         <button className="secondary-action" onClick={przelaczOkno}><CalendarCheck2 size={16} /> {okno && okno.otwarte ? 'Zamknij okno' : 'Otwórz okno'}</button>
@@ -1024,7 +1024,7 @@ const ImportPage = ({ data, setPage }) => {
   return (
     <div className="flex-1 flex flex-col">
       <div className="flex-1 overflow-y-auto"><div className="page-wrap module-view reports-view" style={{ width: '100%' }}>
-      <MHead kicker="ORDO WORKFORCE STUDIO • NARZĘDZIA" title="Import / eksport godzin" copy="Raporty godzin, dzienna obsada, szkolenia oraz pełna historia zmian operacyjnych.">
+      <MHead kicker="ADMINISTRACJA" title="Import i eksport" copy="Raporty godzin, dzienna obsada, szkolenia oraz pełna historia zmian operacyjnych.">
         <button className="secondary-action" onClick={() => fileRef.current && fileRef.current.click()}><Upload size={16} /> Import danych</button>
         <label className="secondary-action" style={{ cursor: 'pointer', gap: 8 }} title="Wariant podglądowy: obok godzin kolumna ze stanowiskiem (3 kolumny na dzień). Bez zaznaczenia: szablon 1:1 dla systemu docelowego."><input type="checkbox" checked={expStacje} onChange={(e) => setExpStacje(e.target.checked)} style={{ accentColor: '#741334' }} /> Zaznacz stanowiska</label>
         <button className="primary-action" onClick={async () => { if (!expM) return; try { const r = expStacje ? exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: true }) : await exportGO(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})${r.stanowiska ? ' — wariant ze stanowiskami' : ' — kopia oryginalnego szablonu GO'}`, 'success'); } catch (e) { data.show(e.message || 'Błąd eksportu', 'error'); } }}><Download size={16} /> {expStacje ? 'Eksport ze stanowiskami' : 'Eksport (szablon)'}</button>
@@ -1094,7 +1094,7 @@ const ImportPage = ({ data, setPage }) => {
             <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.darkest }}><input type="checkbox" checked={expStacje} onChange={(e) => setExpStacje(e.target.checked)} style={{ accentColor: '#741334' }} /> Zaznacz stanowiska <span className="text-xs" style={{ color: colors.primary.light }}>(podgląd, 3 kolumny/dzień; bez zaznaczenia — szablon 1:1 do importu w systemie docelowym)</span></label>
             <Btn icon={Download} onClick={async () => { if (!expM) return; try { const r = expStacje ? exportPoziomy(data.shifts, data.accounts, expM, { stanowiska: true }) : await exportGO(data.shifts, data.accounts, expM); data.show(`Wyeksportowano ${r.osoby} osób (${r.zmian} dni ze zmianami${r.scalone ? `, ${r.scalone} scalonych` : ''})`, 'success'); } catch (e) { data.show(e.message || 'Błąd eksportu', 'error'); } }}>{expStacje ? 'Pobierz XLSX ze stanowiskami' : 'Pobierz XLSX (szablon)'}</Btn>
           </div>
-          {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w WorkRhythm albo zaimportuj plik.</p>}
+          {(data.months || []).length === 0 && <p className="text-xs mt-3" style={{ color: colors.primary.light }}>Brak miesięcy w systemie — najpierw ułóż grafik w module Grafik albo zaimportuj plik.</p>}
         </div>
 
         {preview && (
@@ -1433,7 +1433,7 @@ const TaLive = ({ data }) => {
 
   return (
     <div className="module-view time-view">
-      <MHead kicker={`WORKFORCE • ${dayLbl.toUpperCase()}`} title="Rejestr obecności" copy="Odbicia, przerwy, korekty oraz różnice między grafikiem a rzeczywistym czasem pracy.">
+      <MHead kicker={`REALIZACJA • ${dayLbl.toUpperCase()}`} title="Rejestr obecności" copy="Odbicia, przerwy, korekty oraz różnice między grafikiem a rzeczywistym czasem pracy.">
         <button className="secondary-action" onClick={raport}><Download size={16} /> Raport</button>
         <button className="primary-action" onClick={zamknij}><Lock size={16} /> {completedD ? 'Dzień zamknięty' : 'Zamknij dzień'}</button>
       </MHead>
@@ -1574,7 +1574,7 @@ const TerminalsCard = ({ data }) => {
   const usun = async (t) => { if (!confirm(`Usunąć terminal ${t.id}? Urządzenie straci możliwość odbijania.`)) return; const r = await api('/clock?action=terminal-del', 'POST', { id: t.id }); if (r.success) setTerms(r.terminals); else data.show(r.error || 'Błąd', 'error'); };
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl">
-      <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Terminale REX Clock</h3>
+      <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Terminale odbić</h3>
       <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Odbicia przyjmowane są wyłącznie z zarejestrowanych, aktywnych terminali (identyfikator z adresu urządzenia: ?terminal=…).</p>
       {terms === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : terms.length === 0 ? <p className="text-sm mb-3" style={{ color: '#A7465F' }}>Brak terminali — REX Clock nie przyjmie żadnych odbić, dopóki nie dodasz urządzenia.</p> : (
         <div className="space-y-2 mb-4">
@@ -1603,7 +1603,7 @@ const UnitCard = ({ data }) => {
   useEffect(() => { api('/org').then((r) => { if (r && r.success && r.unit) { setUnit(r.unit); setF({ ...UNIT }); } }).catch(() => {}); }, []);
   const zapisz = async () => {
     setBusy(true);
-    const r = await api('/org', 'PUT', f);
+    const r = await api('/org', 'PUT', { ...f, komunikaty: (Array.isArray(f.komunikaty) ? f.komunikaty : []).map((x) => String(x).trim()).filter(Boolean) });
     setBusy(false);
     if (r && r.success) { setUnit(r.unit); setF({ ...UNIT }); data.show('Dane jednostki zapisane — nagłówki, wydruki i Employee Hub używają nowej konfiguracji'); data.sync(); }
     else data.show((r && r.error) || 'Błąd zapisu', 'error');
@@ -1618,6 +1618,9 @@ const UnitCard = ({ data }) => {
         {pole('brand', 'Marka', 'Popeyes')}{pole('region', 'Region', 'Małopolska')}
         <div className="grid grid-cols-2 gap-2">{pole('openFrom', 'Otwarcie', '06:00')}{pole('openTo', 'Zamknięcie', '02:00')}</div>
       </div>
+      <label className="block mt-3"><span className="block text-[11px] font-semibold mb-1" style={{ color: '#71656A' }}>Komunikaty na wydruku dnia (jeden w linii, max 5) — sekcja „Priorytety / komunikaty”</span>
+        <textarea rows={3} value={Array.isArray(f.komunikaty) ? f.komunikaty.join('\n') : ''} onChange={(e) => setF((x) => ({ ...x, komunikaty: e.target.value.split('\n') }))} placeholder="np. Wbicia i wybicia kartą zgodnie z planem." className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: '#E3DCDD' }} />
+      </label>
       <div className="mt-4"><button onClick={zapisz} disabled={busy} className="primary-action">{busy ? 'Zapisuję…' : 'Zapisz jednostkę'}</button></div>
     </div>
   );
@@ -1717,7 +1720,7 @@ const SettingsPage = ({ data }) => {
           <p className="text-sm mb-4" style={{ color: colors.primary.light }}>Usuń cały grafik z bazy danych.</p>
           <Btn variant="danger" icon={Trash2} onClick={clearSchedule} loading={data.loading}>Wyczyść grafik</Btn>
         </div>
-        <p className="text-center text-sm" style={{ color: colors.primary.light }}>REX Cloud Admin v3.0 — Vercel KV</p>
+        <p className="text-center text-sm" style={{ color: colors.primary.light }}>ORDO Workforce Studio • {new Date().getFullYear()}</p>
       </div>
     </div>
   );
@@ -1838,7 +1841,7 @@ const AdminEmployees = ({ data }) => {
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
       <div className="page-wrap module-view team-view" style={{ width: '100%' }}>
-        <MHead kicker={`ZESPÓŁ • ${emps.length} AKTYWNYCH`} title="Pracownicy i konta" copy="Godziny umowne, kwalifikacje, dostępność, koszty i gotowość do obsady stanowisk.">
+        <MHead kicker={`ZESPÓŁ • ${emps.length} AKTYWNYCH`} title="Pracownicy" copy="Godziny umowne, kwalifikacje, dostępność, koszty i gotowość do obsady stanowisk.">
           <button className="secondary-action" onClick={() => data.przypiszZmiany()}><RefreshCw size={16} /> Przypisz zmiany</button>
           <button className="secondary-action" onClick={eksportT}><Download size={16} /> Eksport</button>
           <button className="primary-action" onClick={() => setForm({ ...emptyForm })}><Users size={16} /> Dodaj osobę</button>
@@ -3042,7 +3045,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     const teraz = new Date();
     return {
       dateLabel: `${dniP[d0.getDay()]}, ${d0.getDate()} ${mcP[d0.getMonth()]} ${d0.getFullYear()}`,
-      operationalDayLabel: 'Doba operacyjna 06:00–06:00', versionLabel: 'Wersja opublikowana',
+      operationalDayLabel: `Doba operacyjna ${UNIT.openFrom || '06:00'}–${UNIT.openFrom || '06:00'}`, versionLabel: 'wersja robocza',
       restaurantName: `${UNIT.brand} ${UNIT.city}`, restaurantDetail: UNIT.name, locationCode: UNIT.code,
       shiftCount: bezInstr.length, employeeCount: new Set(bezInstr.map(pelne)).size,
       plannedHours: fH(planH), coveragePercent: Math.round(cv.coveragePct),
@@ -3056,12 +3059,30 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         { id: 'szk', label: 'SZKOLENIA', planned: fH(szkH) },
         { id: 'razem', label: 'RAZEM', planned: fH(planH) },
       ],
-      priorities: ['Wbicia i wybicia kartą zgodnie z planem.', 'Reakcja na wskaźnik kalkulatora MPT.', 'Każda zamiana wymaga akceptacji ASM lub RGM.'],
+      priorities: Array.isArray(UNIT.komunikaty) ? UNIT.komunikaty : [],
       generatedAt: `Wygenerowano ${String(teraz.getDate()).padStart(2, '0')}.${String(teraz.getMonth() + 1).padStart(2, '0')}.${teraz.getFullYear()} · ${String(teraz.getHours()).padStart(2, '0')}:${String(teraz.getMinutes()).padStart(2, '0')}`,
       documentLabel: `Dokument operacyjny · ${UNIT.code} · strona 1/1`,
     };
   };
-  const otworzWydruk = (d) => { setPrintOpen(false); setRosterData(zbudujRoster(d)); };
+  // wydruk: status publikacji miesiąca + rezerwa (osoby z zatwierdzoną dyspozycją „dostępny” w tym dniu, bez zmiany w grafiku)
+  const otworzWydruk = async (d) => {
+    setPrintOpen(false);
+    const karta = zbudujRoster(d);
+    try {
+      const [pi, av] = await Promise.all([api(`/schedule?action=pubinfo&pubmonth=${d.slice(0, 7)}`).catch(() => null), api('/availability?reqs=1').catch(() => null)]);
+      if (pi && pi.success) karta.versionLabel = pi.opublikowany ? `wersja opublikowana v${pi.wersjaPub}${pi.roznice && pi.roznice.razem ? ` • ${pi.roznice.razem} zmian roboczych po publikacji` : ''}` : 'wersja robocza';
+      const wGrafiku = new Set(data.shifts.filter((x) => x.date === d).map((x) => x.accountId).filter(Boolean));
+      const konta = new Map((data.accounts || []).map((a) => [a.id, a]));
+      const opis = (r) => r.type === 'available' ? 'cały dzień' : r.type === 'from_time' ? `od ${r.startTime}` : r.type === 'until_time' ? `do ${r.endTime}` : `${r.startTime}–${r.endTime}`;
+      const waga = (r) => r.type === 'available' ? 0 : r.type === 'specific_shift' ? 1 : 2;
+      karta.rezerwa = ((av && av.success && av.requests) || [])
+        .filter((r) => r.date === d && r.status === 'approved' && r.type !== 'unavailable' && r.accountId && !wGrafiku.has(r.accountId) && konta.has(r.accountId) && konta.get(r.accountId).aktywny !== false)
+        .sort((a, b) => waga(a) - waga(b))
+        .slice(0, 3)
+        .map((r) => { const k = konta.get(r.accountId); return { name: String(k.name || '').toUpperCase(), initials: String(k.name || '?').split(/\s+/).map((c) => c[0]).join('').slice(0, 2).toUpperCase(), job: k.funkcja || 'CREW', dostepnosc: opis(r) }; });
+    } catch {}
+    setRosterData(karta);
+  };
   const zmienTydzien = (dni) => { const d = new Date(weekStart); d.setDate(d.getDate() + dni); const nowy = ymd(d); setWeekStart(nowy); setDay(nowy); };
   const [trybDnia, setTrybDnia] = useState('plan');   // 'plan' (siatka Gantta) | 'wykonanie' (timesheet)
   const [addOpen, setAddOpen] = useState(false);
@@ -3247,7 +3268,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             return (<>
             <div className="module-heading" style={{ marginTop: 4 }}>
               <div>
-                <span>WORKFORCE • {wrTab === 'schedule' ? 'PLANOWANIE • TYGODNIE GRAFIKU' : wrTab === 'actual' ? 'REALIZACJA • WYKONANIE' : 'REALIZACJA • OBECNOŚĆ'}</span>
+                <span>{wrTab === 'schedule' ? 'PLANOWANIE • TYGODNIE GRAFIKU' : wrTab === 'actual' ? 'REALIZACJA • WYKONANIE' : 'REALIZACJA • OBECNOŚĆ'}</span>
                 <h1>{wrTab === 'schedule' ? 'Grafik' : wrTab === 'actual' ? 'Wykonanie i karty czasu' : 'Rejestr obecności'}</h1>
                 <p>{wrTab === 'schedule' ? 'Wybierz tydzień, sprawdź etap akceptacji i przejdź do grafiku tygodniowego lub dziennej siatki.' : wrTab === 'actual' ? 'Wykonanie zmian: odbicia z Employee Hub i terminala, przerwy oraz korekty kierownika.' : 'Karty czasu, wyjątki i zamknięcie tygodnia (Closed blokowane na serwerze).'}</p>
               </div>
@@ -3289,7 +3310,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               <footer className="rota-list-footer"><span>Wyświetlono {widoczneRoty.length} z {weeks.length} tygodni</span><small>Completed = gotowy do review • Reviewed = zatwierdzony • Closed = zamknięty i zablokowany na serwerze</small></footer>
             </section>
 
-            {nowyOpen && <DialogS title="Nowy grafik tygodniowy" kicker="WORKFORCE • WEEKLY ROTAS" description="Wybierz tydzień i punkt startowy planowania." onClose={() => setNowyOpen(false)} actions={<><button onClick={() => setNowyOpen(false)}>Anuluj</button><button className="dialog-primary" onClick={utworzTydzien}><Plus size={15} /> Utwórz i otwórz</button></>}>
+            {nowyOpen && <DialogS title="Nowy grafik tygodniowy" kicker="GRAFIK" description="Wybierz tydzień i punkt startowy planowania." onClose={() => setNowyOpen(false)} actions={<><button onClick={() => setNowyOpen(false)}>Anuluj</button><button className="dialog-primary" onClick={utworzTydzien}><Plus size={15} /> Utwórz i otwórz</button></>}>
               <div className="dialog-form-grid">
                 <label className="dialog-field">Tydzień (poniedziałek)<input type="date" value={nowyData} onChange={(e) => setNowyData(wtMonday(e.target.value))} /></label>
                 <label className="dialog-field">Punkt startowy<select value={nowyTpl} onChange={(e) => setNowyTpl(e.target.value)}><option value="">Pusty grafik</option>{(data.templates || []).map((t) => <option key={t.id} value={t.id}>Blueprint: {t.name}</option>)}</select></label>

@@ -204,10 +204,10 @@ export default function MonthlyForecast({ api, data }) {
           <label className="input-label">Scenariusz popytu</label>
           <div className="scenario-list">
             <button className={form.scenario === 'BASE' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'BASE' }))}><i><Target size={16} /></i><div><strong>Bazowy</strong><span>trend i sezonowość</span></div><Check size={15} /></button>
-            <button className={form.scenario === 'GROWTH' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'GROWTH' }))}><i><TrendingUp size={16} /></i><div><strong>Wzrost +8%</strong><span>kampania produktowa</span></div><Check size={15} /></button>
-            <button className={form.scenario === 'EVENT' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'EVENT' }))}><i><Calendar size={16} /></i><div><strong>Eventy lokalne</strong><span>+4,5% wieczory szczytowe</span></div><Check size={15} /></button>
+            <button className={form.scenario === 'GROWTH' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'GROWTH' }))}><i><TrendingUp size={16} /></i><div><strong>Wzrost +8%</strong><span>scenariusz optymistyczny</span></div><Check size={15} /></button>
+            <button className={form.scenario === 'EVENT' ? 'active' : ''} disabled={locked} onClick={() => setForm((f) => ({ ...f, scenario: 'EVENT' }))}><i><Calendar size={16} /></i><div><strong>Eventy</strong><span>+4,5% w szczytach wieczornych</span></div><Check size={15} /></button>
           </div>
-          <div className="model-note"><Sparkles size={16} /><div><strong>Model hybrydowy</strong><span>historia POS {form.settings.historyWeeks} tyg., kalendarz, święta i korekty managera</span></div></div>
+          <div className="model-note"><Sparkles size={16} /><div><strong>Rozkład na dni</strong><span>historia POS {form.settings.historyWeeks} tyg., kalendarz, zdarzenia i korekty dnia</span></div></div>
           <button className="generate-button" disabled={busy || locked || Number(form.monthlySales) <= 0} onClick={generate}><BarChart3 size={17} /> {busy ? 'Przeliczam…' : plan ? 'Przelicz i wygeneruj plan' : 'Generuj plan'}</button>
         </aside>
 
