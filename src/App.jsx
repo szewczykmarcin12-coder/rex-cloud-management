@@ -66,7 +66,8 @@ const Login = ({ onLogin }) => {
         <div className="stl-left">
           <form onSubmit={submit}>
             <span className="stl-eyebrow"><Lock size={12} /> DOSTĘP MANAGERSKI</span>
-            <h1>{reset ? 'Reset hasła' : 'Zaloguj się do panelu'}</h1>
+            <div className="stl-brand stl-brand-card" aria-hidden="true"><b>ORDO</b><span>WORKFORCE STUDIO</span></div>
+            <h1>{reset ? 'Reset hasła' : 'Zaloguj się'}</h1>
             <p className="stl-sub">{reset ? 'Podaj identyfikator — ASM otrzyma zgłoszenie i przekaże Ci tymczasowy PIN.' : 'Użyj firmowego adresu e-mail lub identyfikatora menedżera.'}</p>
             {err && <div className="stl-alert err">{err}</div>}
             {info && <div className="stl-alert ok">{info}</div>}

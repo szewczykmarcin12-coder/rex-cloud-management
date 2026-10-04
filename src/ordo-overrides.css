@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ORDO Workforce Studio — nadpisania typografii i gęstości (v12.3–v12.7).
+   Ten plik jest importowany JAKO OSTATNI (po ordo-views.css), bo ordo-views.css ma te same selektory
+   (.gantt-shift, .weekly-shift-pill, .table-row…) i wcześniej wygrywał kolejnością — stąd „wciąż to samo”.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+/* ── v12.3: czytelność — Inter z otwartymi cyframi (ss01: 6/8/9/0 nie do pomylenia), cyfry tabelaryczne, minimalny rozmiar 10,5 px ── */
+html { -webkit-text-size-adjust: 100%; }
+body, button, input, select, textarea { font-family: Inter, "Segoe UI", Roboto, Arial, Helvetica, sans-serif; font-feature-settings: "ss01" 1, "tnum" 1, "cv11" 1; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+small, .text-xs, .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\] { font-size: 11.5px !important; }
+.text-\[13px\], .text-sm { font-size: 13.5px !important; }
+strong, b, .metric-card strong, .dialog-stat strong, .mini-metric > strong { font-feature-settings: "ss01" 1, "tnum" 1; }
+
+/* ═══ v12.4: spójna skala typograficzna po powiększeniu — nic nie zawija się ani nie wychodzi poza obszar ═══ */
+:root { --fs-xs: 10.5px; --fs-sm: 11.5px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15.5px; }
+/* menu boczne: szerzej, etykiety w jednej linii z wielokropkiem */
+.sidebar { width: 236px; padding: 16px 12px 12px; }
+.workspace { width: calc(100% - 236px); margin-left: 236px; }
+.sidebar.mini { width: 60px; } .workspace.mini { width: calc(100% - 60px); margin-left: 60px; }
+.sidebar nav button, .sidebar-bottom > button { height: 38px; gap: 10px; font-size: var(--fs-base); font-weight: 560; line-height: 1.2; }
+.sidebar nav button span, .sidebar-bottom > button span, .employee-app-link span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar nav button svg, .sidebar-bottom > button svg, .employee-app-link svg { flex: 0 0 auto; }
+.sidebar nav button b { font-size: 10.5px; }
+.sidebar nav button.nav-sub { height: 33px; font-size: 12.5px; }
+.sidebar nav p { margin: 14px 10px 5px; font-size: var(--fs-xs); letter-spacing: .12em; }
+.unit-switcher { gap: 9px; } .unit-switcher > div { min-width: 0; }
+.unit-switcher span { font-size: 10px; letter-spacing: .07em; } .unit-switcher strong { font-size: 12.5px; }
+.employee-app-link { font-size: 12.5px; line-height: 1.2; } .employee-app-link span { white-space: nowrap; }
+.user-card { grid-template-columns: 30px minmax(0, 1fr) 16px; } .user-card > div { min-width: 0; }
+.user-card strong { font-size: 12.5px; } .user-card span { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.brand-lockup > span { font-size: 10px; letter-spacing: .14em; }
+/* pasek górny i pasek modułów */
+.search input { font-size: var(--fs-base); } .search kbd { font-size: 10px; }
+.module-bar-area { font-size: 10.5px; } .module-bar-tabs button { font-size: 12.5px; height: 36px; } .module-bar-desc { font-size: var(--fs-sm); }
+.search-results button strong { font-size: 12.5px; } .search-results button small { font-size: 11px; }
+/* nagłówki stron i panele */
+.page-heading p { font-size: var(--fs-base); } .date-button, .primary-button, .secondary-action, .primary-action { font-size: 12.5px; }
+.workforce-view .panel-title > div:first-child > span, .panel-title > div:first-child > span { font-size: var(--fs-xs); letter-spacing: .11em; }
+.workforce-view .panel-title h2, .panel-title h2 { font-size: var(--fs-lg); }
+.workforce-view .table-header, .table-header { font-size: var(--fs-xs); } .workforce-view .table-row, .table-row { font-size: 12px; }
+.workforce-view .table-row small, .table-row small { font-size: 10.5px !important; }
+.workforce-view .input-label, .input-label { font-size: 11px; } .number-input input { font-size: 13px; } .number-input span { font-size: 11px; }
+.workforce-view .model-note strong, .model-note strong { font-size: 12px; } .workforce-view .model-note span, .model-note span { font-size: 11px; }
+.workforce-view .forecast-explain span, .forecast-explain span { font-size: 11.5px; }
+.dialog-stat span { font-size: 10.5px; } .dialog-stat strong { font-size: 15px; }
+/* pigułki, znaczniki, statusy — jedna linia, tekst nie wychodzi poza kafel */
+.weekly-shift-pill { height: auto; min-height: 48px; }
+.weekly-shift-pill strong { font-size: 11.5px; letter-spacing: 0; } .weekly-shift-pill span { font-size: 10.5px; }
+.status-ready, .status-warning, .status-active, .request-status, .dyspo-tag, .today-chip, .score-chip { font-size: 10.5px; line-height: 1.25; white-space: nowrap; }
+.metric-card small, .metric-card span, .mini-metric > small, .mini-metric > span { font-size: 10.5px; }
+.metric-card strong, .mini-metric > strong { font-size: 19px; line-height: 1.1; }
+/* siatka dnia i tygodnia: etykiety osi, chipy zmian */
+.schedule-corner span, .day-header span { font-size: 10px; } .day-header strong { font-size: 13px; }
+.gantt-drag-time, .gantt-drag-label { font-size: 11px; } .gantt-drag-dur { font-size: 11px; }
+.gantt-person strong { font-size: 12.5px; } .gantt-person small { font-size: 10.5px; }
+/* ogólne: nic poniżej 10,5 px, nic w tabelach/menu nie zawija się na siłę */
+small { font-size: 10.5px !important; }
+.text-xs, .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\] { font-size: 11px !important; }
+.text-sm { font-size: 13px !important; }
+/* v12.5: paski zmian w siatce dnia — dwie linie (stanowisko + godziny) zawsze w całości widoczne */
+.gantt-shift { height: auto; min-height: 46px; top: 8px; bottom: 8px; padding: 5px 8px; gap: 2px; line-height: 1.2; justify-content: center; }
+.gantt-shift strong { font-size: 11.5px; line-height: 1.2; }
+.gantt-shift span { font-size: 10.5px; line-height: 1.2; }
+.gantt-shift em { top: 4px; font-size: 10px; }
+.gantt-person-track { min-height: 66px; }
+.gantt-fullscreen .gantt-person, .gantt-fullscreen .gantt-person-track { min-height: 56px; }
+.gantt-fullscreen .gantt-shift { min-height: 40px; top: 7px; bottom: 7px; padding: 3px 7px; gap: 1px; }
+.gantt-fullscreen .gantt-shift strong { font-size: 11px; } .gantt-fullscreen .gantt-shift span { font-size: 10px; }
+.weekly-shift-pill { padding: 5px 7px; gap: 2px; line-height: 1.2; }
+
+/* ── v12.6: telefon i tablet — menu boczne chowane, treść na całą szerokość (blok v12.4 nie może tego nadpisywać) ── */
+@media (max-width: 780px) {
+  .sidebar, .sidebar.mini { width: 246px; transform: translateX(-100%); } .sidebar.open, .sidebar.mini.open { transform: translateX(0); }
+  .workspace, .workspace.mini { width: 100%; margin-left: 0; }
+  .topbar { height: 54px; padding: 0 12px; gap: 8px; } .search { width: auto; flex: 1 1 auto; min-width: 0; margin-left: 6px; } .search input { font-size: 13px; } .search kbd { display: none; }
+  .module-bar { padding: 4px 12px 0; } .module-bar-tabs button { height: 34px; padding: 0 10px; font-size: 12px; }
+  .page-wrap { padding: 14px 12px 32px; } .page-heading h1 { font-size: 22px; } .page-heading p { font-size: 12.5px; }
+  .dialog-notice { flex-wrap: wrap; } .dialog-notice > button { margin-left: 0 !important; width: 100%; justify-content: center; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; } .dashboard-grid { grid-template-columns: 1fr; }
+  .analytics-kpis { grid-template-columns: 1fr 1fr; } .forecast-layout { grid-template-columns: 1fr; }
+  .heading-actions, .module-actions { flex-wrap: wrap; }
+}
+@media (max-width: 520px) { .metrics-grid, .analytics-kpis, .dialog-stat-grid { grid-template-columns: 1fr; } .module-bar-tabs button span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; } }
+/* pigułki zmian w siatce tygodnia: wyśrodkowane, z odstępem od grubej lewej krawędzi */
+.weekly-shift-pill { padding: 5px 8px 5px 10px; align-items: center; text-align: center; }
+.weekly-shift-pill strong { font-size: 11.5px; letter-spacing: 0; line-height: 1.2; } .weekly-shift-pill span { font-size: 10.5px; max-width: 100%; }
+
+/* ── v12.7: siatka dnia — pasek zmiany zawsze mieści stanowisko i godziny (także w trybie pełnoekranowym) ── */
+.gantt-person-track { min-height: 66px; }
+.gantt-shift { height: auto; min-height: 0; top: 8px; bottom: 8px; padding: 4px 8px; gap: 1px; line-height: 1.2; align-items: flex-start; justify-content: center; }
+.gantt-shift strong { display: block; max-width: 100%; font-size: 11.5px; line-height: 1.25; }
+.gantt-shift span { display: block; font-size: 10.5px; line-height: 1.25; }
+.gantt-fullscreen .gantt-person, .gantt-fullscreen .gantt-person-track { min-height: 54px; }
+.gantt-fullscreen .gantt-shift { height: auto; min-height: 0; top: 6px; bottom: 6px; padding: 3px 7px; }
+.gantt-fullscreen .gantt-shift strong { font-size: 11px; } .gantt-fullscreen .gantt-shift span { font-size: 10px; }
+.weekly-shift-pill { height: auto; min-height: 48px; }
+
+/* ── v12.8: logowanie Studio — na telefonie karta jak w projekcie (tło z łukami, logo w karcie, duże „Zaloguj się”) ── */
+.stl-brand-card { display: none; }
+.stl-screen { position: relative; overflow: hidden; background: #f4eef0; }
+.stl-screen::before, .stl-screen::after { content: ''; position: absolute; border-radius: 50%; background: #ecd9df; opacity: .75; pointer-events: none; z-index: 0; }
+.stl-screen::before { width: 120vw; height: 120vw; max-width: 1100px; max-height: 1100px; right: -45vw; top: -70vw; }
+.stl-screen::after { width: 110vw; height: 110vw; max-width: 1000px; max-height: 1000px; left: -55vw; bottom: -75vw; }
+.stl-card { position: relative; z-index: 1; }
+@media (max-width: 860px) {
+  .stl-screen { display: flex; align-items: center; justify-content: center; min-height: 100dvh; padding: 24px 16px; }
+  .stl-card { width: 100%; max-width: 440px; min-height: 0; border-radius: 28px; box-shadow: 0 24px 60px rgba(63,11,28,.14); }
+  .stl-left { padding: 40px 28px 34px; }
+  .stl-left form { width: 100%; }
+  .stl-eyebrow { color: #6e5a62; font-size: 11.5px; letter-spacing: .22em; font-weight: 800; }
+  .stl-eyebrow svg { color: #741334; width: 15px; height: 15px; }
+  .stl-brand-card { display: block; margin: 22px 0 28px; }
+  .stl-brand-card b { display: block; color: #741334; font-size: 38px; font-weight: 900; letter-spacing: .26em; line-height: 1; }
+  .stl-brand-card span { display: block; margin-top: 8px; color: #6e5a62; font-size: 12px; font-weight: 800; letter-spacing: .3em; }
+  .stl-left h1 { margin: 0 0 22px; font-size: 36px; font-weight: 700; letter-spacing: -.02em; color: #231318; }
+  .stl-sub { display: none; }
+  .stl-label { margin: 16px 0 8px; font-size: 15px; font-weight: 800; color: #1f1216; }
+  .stl-field > svg { left: 16px; width: 20px; height: 20px; color: #6e5a62; }
+  .stl-field input { height: 54px; padding: 0 48px 0 50px; border: 1.5px solid #e4dadd; border-radius: 14px; font-size: 15px; }
+  .stl-field input::placeholder { color: #9a8a90; }
+  .stl-eye { right: 12px; width: 36px; height: 36px; color: #6e5a62; } .stl-eye svg { width: 20px; height: 20px; }
+  .stl-row { margin: 18px 0 24px; }
+  .stl-check { font-size: 13px; color: #5b4a51; gap: 9px; } .stl-check input { width: 20px; height: 20px; border-radius: 6px; }
+  .stl-link { font-size: 13px; font-weight: 800; margin-left: auto; }
+  .stl-submit { height: 58px; border-radius: 16px; font-size: 17px; font-weight: 700; box-shadow: 0 8px 18px rgba(116,19,52,.2); }
+  .stl-note { justify-content: flex-start; align-items: flex-start; gap: 10px; margin: 30px 0 0; color: #5b4a51; font-size: 13.5px; line-height: 1.45; text-align: left; }
+  .stl-note svg { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; color: #741334; }
+  .stl-foot { display: none; }
+}
+
+@media (max-width: 899px) { .stl-link { white-space: nowrap; } .stl-row { gap: 10px; flex-wrap: wrap; } }
+@media (max-width: 860px) { .stl-check { white-space: nowrap; } }
