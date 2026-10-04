@@ -29,7 +29,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
   const n = Math.max(need.length, plan.length, 20);
   const godzOsi = Array.from({ length: n }, (_, i) => (6 + i) % 24);
   const osoby = people.length;
-  const gesto = osoby > 16 ? ' dense' : '';
+  const gesto = osoby > 14 ? ' dense' : '';
 
   return (
     <div className="ordo-print-overlay" role="dialog" aria-modal="true" aria-label="Podgląd wydruku grafiku dziennego">
@@ -41,7 +41,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
       <article className={`ordo-print-page opv3${gesto}`}>
         <header className="opv3-head">
           <div className="opv3-brand"><b>ORDO</b><span>WORKFORCE STUDIO</span></div>
-          <div className="opv3-title"><span>WORKFORCE / SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong><small>{d.operationalDayLabel} • {(d.versionLabel || '').toLowerCase()}</small></div>
+          <div className="opv3-title"><span>WORKFORCE / SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong>{/^wersja robocza/i.test(d.versionLabel || '') && <small className="opv3-draft">wersja robocza — przed publikacją</small>}</div>
           <div className="opv3-loc"><span>LOKAL</span><strong>{d.restaurantName} – {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
         </header>
 
@@ -54,7 +54,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
 
         <section className="opv3-card opv3-roster">
           <div className="opv3-card-head">
-            <i>01</i><div><strong>Obsada i przydział stanowisk</strong><small>Kto pracuje, na jakim stanowisku i w których godzinach</small></div>
+            <i>01</i><div><strong>Obsada i przydział stanowisk</strong></div>
             <div className="opv3-legend">{TONE_LBL.map(([t, l]) => <span key={t}><b className={`opv3-sw ${t}`} />{l}</span>)}</div>
           </div>
           <div className="opv3-table">
@@ -63,7 +63,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
               <span className="opv3-axis">{OS_H.map((h, i) => <i key={i} style={{ left: `${i / 12 * 100}%` }}>{gL(h)}</i>)}</span>
             </div>
             {people.map((p) => (
-              <div className="opv3-tr" key={p.name}>
+              <div className={'opv3-tr' + (p.segments.length > 1 ? ' multi' : '')} key={p.name}>
                 <span className="opv3-who"><i>{p.initials}</i><div><strong>{p.name}</strong><small>{String(p.job || '').replace('Młodszy ', 'Mł. ')}</small></div></span>
                 <span className="opv3-time"><div>{p.segments.map((s, i) => <b key={i}>{s.time}</b>)}</div></span>
                 <span className="opv3-st">{p.segments.map((s, i) => <b key={i} className={`opv3-chip ${s.tone || 'mid'}`}>{s.role}</b>)}</span>
@@ -81,14 +81,13 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
         </section>
 
         <section className="opv3-card opv3-ops">
-          <div className="opv3-card-head"><i>02</i><div><strong>Panel operacyjny</strong><small>Najważniejsze informacje do prowadzenia zmiany</small></div></div>
+          <div className="opv3-card-head"><i>02</i><div><strong>Panel operacyjny</strong></div></div>
           <div className="opv3-ops-grid">
             <div className="opv3-cov">
-              <div className="opv3-cov-head"><div><strong>Obsada względem zapotrzebowania</strong><small>Liczba osób w planie na kolejne godziny</small></div><b>{d.coveragePercent}%</b></div>
-              <div className="opv3-cov-hours">{godzOsi.map((h, i) => <span key={i}>{i % 4 === 0 || i === n - 1 ? gL(h) : ''}</span>)}</div>
-              <div className="opv3-cov-row need">{godzOsi.map((_, i) => <span key={i}>{need[i] || ''}</span>)}</div>
-              <div className="opv3-cov-row plan">{godzOsi.map((_, i) => <span key={i} className={plan[i] < need[i] ? 'deficit' : ''}>{plan[i] || ''}</span>)}</div>
-              <small className="opv3-cov-note">góra: zapotrzebowanie • dół: plan</small>
+              <div className="opv3-cov-head"><strong>Obsada względem zapotrzebowania</strong><b>{d.coveragePercent}%</b></div>
+              <div className="opv3-cov-line"><label /><div className="opv3-cov-hours">{godzOsi.map((h, i) => <span key={i}>{i % 4 === 0 || i === n - 1 ? gL(h) : ''}</span>)}</div></div>
+              <div className="opv3-cov-line"><label>ZAPOTRZ.</label><div className="opv3-cov-row need">{godzOsi.map((_, i) => <span key={i}>{need[i] || ''}</span>)}</div></div>
+              <div className="opv3-cov-line"><label>PLAN</label><div className="opv3-cov-row plan">{godzOsi.map((_, i) => <span key={i} className={plan[i] < need[i] ? 'deficit' : ''}>{plan[i] || ''}</span>)}</div></div>
             </div>
             <div className="opv3-lead">
               <strong className="opv3-h">Prowadzenie zmiany</strong>

@@ -237,3 +237,21 @@ small { font-size: 10.5px !important; }
 .opv3-reserve small { display: block; color: #806d74; font-size: 7px; }
 .opv3-reserve em { padding: 2px 6px; border-radius: 5px; color: #33464F; background: #E3EBEF; border: 1px solid #96AAB5; font-style: normal; font-size: 7.5px; font-weight: 800; white-space: nowrap; }
 .opv3-muted { display: block; color: #806d74; font-size: 8px; line-height: 1.4; }
+
+/* v12.10: karta dnia — bez podtytułów, status tylko dla wersji roboczej, chipy stanowisk nigdy nie ucięte */
+.opv3-draft { color: #B94352 !important; font-weight: 800; }
+.opv3-card-head > div { display: flex; align-items: center; }
+.opv3-card-head strong { font-size: 12px; }
+.opv3-tr { max-height: 38px; }
+.opv3-tr.multi { flex-grow: 1.7; max-height: 56px; }
+.opv3-st { flex-wrap: wrap; align-content: center; gap: 3px 4px; padding: 2px 8px !important; }
+.opv3-chip { padding: 1px 6px; line-height: 1.3; }
+.opv3-tr.multi .opv3-chip { font-size: 7px; }
+.opv3-tr > span.opv3-st { overflow: visible; }
+.opv3.dense .opv3-tr { max-height: 28px; } .opv3.dense .opv3-tr.multi { max-height: 44px; }
+.opv3.dense .opv3-chip { font-size: 7px; padding: 0 5px; } .opv3.dense .opv3-time { font-size: 8.5px; }
+.opv3-cov-head { align-items: center; margin-bottom: 5px; }
+.opv3-cov-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 6px; }
+.opv3-cov-line label { color: #806d74; font-size: 6.5px; font-weight: 800; letter-spacing: .1em; }
+.opv3-cov-line + .opv3-cov-line { margin-top: 2px; }
+.opv3-cov-row.plan { margin-top: 0; }
