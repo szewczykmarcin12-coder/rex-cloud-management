@@ -698,3 +698,50 @@ body, button, input, select, textarea { font-family: Inter, "Segoe UI", Roboto, 
 small, .text-xs, .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\] { font-size: 11.5px !important; }
 .text-\[13px\], .text-sm { font-size: 13.5px !important; }
 strong, b, .metric-card strong, .dialog-stat strong, .mini-metric > strong { font-feature-settings: "ss01" 1, "tnum" 1; }
+
+/* ═══ v12.4: spójna skala typograficzna po powiększeniu — nic nie zawija się ani nie wychodzi poza obszar ═══ */
+:root { --fs-xs: 10.5px; --fs-sm: 11.5px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15.5px; }
+/* menu boczne: szerzej, etykiety w jednej linii z wielokropkiem */
+.sidebar { width: 236px; padding: 16px 12px 12px; }
+.workspace { width: calc(100% - 236px); margin-left: 236px; }
+.sidebar.mini { width: 60px; } .workspace.mini { width: calc(100% - 60px); margin-left: 60px; }
+.sidebar nav button, .sidebar-bottom > button { height: 38px; gap: 10px; font-size: var(--fs-base); font-weight: 560; line-height: 1.2; }
+.sidebar nav button span, .sidebar-bottom > button span, .employee-app-link span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar nav button svg, .sidebar-bottom > button svg, .employee-app-link svg { flex: 0 0 auto; }
+.sidebar nav button b { font-size: 10.5px; }
+.sidebar nav button.nav-sub { height: 33px; font-size: 12.5px; }
+.sidebar nav p { margin: 14px 10px 5px; font-size: var(--fs-xs); letter-spacing: .12em; }
+.unit-switcher { gap: 9px; } .unit-switcher > div { min-width: 0; }
+.unit-switcher span { font-size: 10px; letter-spacing: .07em; } .unit-switcher strong { font-size: 12.5px; }
+.employee-app-link { font-size: 12.5px; line-height: 1.2; } .employee-app-link span { white-space: nowrap; }
+.user-card { grid-template-columns: 30px minmax(0, 1fr) 16px; } .user-card > div { min-width: 0; }
+.user-card strong { font-size: 12.5px; } .user-card span { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.brand-lockup > span { font-size: 10px; letter-spacing: .14em; }
+/* pasek górny i pasek modułów */
+.search input { font-size: var(--fs-base); } .search kbd { font-size: 10px; }
+.module-bar-area { font-size: 10.5px; } .module-bar-tabs button { font-size: 12.5px; height: 36px; } .module-bar-desc { font-size: var(--fs-sm); }
+.search-results button strong { font-size: 12.5px; } .search-results button small { font-size: 11px; }
+/* nagłówki stron i panele */
+.page-heading p { font-size: var(--fs-base); } .date-button, .primary-button, .secondary-action, .primary-action { font-size: 12.5px; }
+.workforce-view .panel-title > div:first-child > span, .panel-title > div:first-child > span { font-size: var(--fs-xs); letter-spacing: .11em; }
+.workforce-view .panel-title h2, .panel-title h2 { font-size: var(--fs-lg); }
+.workforce-view .table-header, .table-header { font-size: var(--fs-xs); } .workforce-view .table-row, .table-row { font-size: 12px; }
+.workforce-view .table-row small, .table-row small { font-size: 10.5px !important; }
+.workforce-view .input-label, .input-label { font-size: 11px; } .number-input input { font-size: 13px; } .number-input span { font-size: 11px; }
+.workforce-view .model-note strong, .model-note strong { font-size: 12px; } .workforce-view .model-note span, .model-note span { font-size: 11px; }
+.workforce-view .forecast-explain span, .forecast-explain span { font-size: 11.5px; }
+.dialog-stat span { font-size: 10.5px; } .dialog-stat strong { font-size: 15px; }
+/* pigułki, znaczniki, statusy — jedna linia, tekst nie wychodzi poza kafel */
+.weekly-shift-pill { height: auto; min-height: 48px; }
+.weekly-shift-pill strong { font-size: 11.5px; letter-spacing: 0; } .weekly-shift-pill span { font-size: 10.5px; }
+.status-ready, .status-warning, .status-active, .request-status, .dyspo-tag, .today-chip, .score-chip { font-size: 10.5px; line-height: 1.25; white-space: nowrap; }
+.metric-card small, .metric-card span, .mini-metric > small, .mini-metric > span { font-size: 10.5px; }
+.metric-card strong, .mini-metric > strong { font-size: 19px; line-height: 1.1; }
+/* siatka dnia i tygodnia: etykiety osi, chipy zmian */
+.schedule-corner span, .day-header span { font-size: 10px; } .day-header strong { font-size: 13px; }
+.gantt-drag-time, .gantt-drag-label { font-size: 11px; } .gantt-drag-dur { font-size: 11px; }
+.gantt-person strong { font-size: 12.5px; } .gantt-person small { font-size: 10.5px; }
+/* ogólne: nic poniżej 10,5 px, nic w tabelach/menu nie zawija się na siłę */
+small { font-size: 10.5px !important; }
+.text-xs, .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\] { font-size: 11px !important; }
+.text-sm { font-size: 13px !important; }
