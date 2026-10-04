@@ -61,7 +61,7 @@ export const MonthPlan = ({ data, setPage }) => {
         {plan && (approved ? <button className="secondary-action" onClick={otworz} disabled={busy}><Unlock size={16} /> Otwórz do edycji</button> : <button className="primary-action" onClick={zatwierdz} disabled={busy}><Lock size={16} /> Zatwierdź plan</button>)}
       </MHead>
       {blad && <div className="dialog-notice" style={{ marginBottom: 12 }}><AlertTriangle size={16} /><span>{blad}</span><button className="secondary-action" style={{ marginLeft: 'auto' }} onClick={() => zaladuj()}>Ponów</button></div>}
-      {res && res.miesiace && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>{res.miesiace.map((m) => <button key={m.month} className={'secondary-action' + (m.month === month ? ' active' : '')} style={m.month === month ? { borderColor: '#741334', color: '#3f0b1c' } : {}} onClick={() => setMonth(m.month)}>{mcLabel(m.month)}{m.status ? <b style={{ marginLeft: 6, fontSize: 10, color: m.status === 'APPROVED' ? '#2f7a4a' : '#a7465f' }}>{m.status === 'APPROVED' ? '✓' : 'rob.'}</b> : null}</button>)}</div>}
+      {res && res.miesiace && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>{res.miesiace.map((m) => <button key={m.month} className={'secondary-action' + (m.month === month ? ' active' : '')} style={m.month === month ? { borderColor: '#741334', color: '#3f0b1c' } : {}} onClick={() => setMonth(m.month)}>{mcLabel(m.month)}{m.status ? <b style={{ marginLeft: 6, fontSize: 11, color: m.status === 'APPROVED' ? '#2f7a4a' : '#a7465f' }}>{m.status === 'APPROVED' ? '✓' : 'rob.'}</b> : null}</button>)}</div>}
 
       <section className="analytics-kpis">
         <MMetric icon={TrendingUp} label="Propozycja sprzedaży netto" value={prop && prop.ok ? zl(prop.sales) : '—'} helper={prop && prop.ok ? `pasmo ${zl(prop.low)} – ${zl(prop.high)} (±${String(prop.pasmoPct).replace('.', ',')} %)` : (prop && prop.powody[0]) || 'brak historii'} tone="blue" />
@@ -101,7 +101,7 @@ export const MonthPlan = ({ data, setPage }) => {
               </div>
               <p className="dialog-section-title" style={{ marginTop: 12 }}>PEŁNE TYGODNIE HISTORII (NETTO)</p>
               <div style={{ display: 'grid', gridTemplateColumns: `repeat(${prop.tygodnie.length}, 1fr)`, gap: 6, alignItems: 'end', height: 80 }}>
-                {prop.tygodnie.map((t) => <div key={t.start} title={`${t.start} – ${t.end}: ${zl(t.sales)} • ${t.checks} paragonów`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 3, height: '100%' }}><small style={{ fontSize: 10, color: '#6e5a62' }}>{Math.round(t.sales / 1000)}k</small><i style={{ width: '100%', height: `${t.sales / maxTyg * 54}px`, background: '#741334', borderRadius: 4 }} /><small style={{ fontSize: 9.5, color: '#8a7a80' }}>{t.start.slice(5)}</small></div>)}
+                {prop.tygodnie.map((t) => <div key={t.start} title={`${t.start} – ${t.end}: ${zl(t.sales)} • ${t.checks} paragonów`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 3, height: '100%' }}><small style={{ fontSize: 11, color: '#6e5a62' }}>{Math.round(t.sales / 1000)}k</small><i style={{ width: '100%', height: `${t.sales / maxTyg * 54}px`, background: '#741334', borderRadius: 4 }} /><small style={{ fontSize: 11, color: '#8a7a80' }}>{t.start.slice(5)}</small></div>)}
               </div>
               <p className="dialog-section-title" style={{ marginTop: 12 }}>SKŁAD KALENDARZA × UDZIAŁ DNIA TYGODNIA</p>
               <div className="data-table forecast-table"><div className="table-header"><span>Dzień</span><span>Udział w tygodniu</span><span>Ile razy w {mcLabel(month)}</span><span>Średnia dnia</span></div>
@@ -144,10 +144,10 @@ export const MonthPlan = ({ data, setPage }) => {
             {res && res.sezon && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 6 }}>
               {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((k) => { const v = res.sezon.idx[k]; const aktywny = Number(month.slice(5, 7)) === Number(k); return (
                 <div key={k} style={{ textAlign: 'center', padding: '8px 4px', borderRadius: 10, background: aktywny ? '#f7eef1' : '#faf8f8', border: `1px solid ${aktywny ? '#741334' : '#eee6e9'}` }}>
-                  <small style={{ fontSize: 10.5, fontWeight: 700, color: '#6e5a62' }}>{MIES[i_of(k)].slice(0, 3).toUpperCase()}</small>
+                  <small style={{ fontSize: 11, fontWeight: 700, color: '#6e5a62' }}>{MIES[i_of(k)].slice(0, 3).toUpperCase()}</small>
                   {sezonEdit ? <input type="number" step="0.01" min="0.5" max="2" value={sezonEdit[k]} placeholder={String(v.factor)} onChange={(e) => setSezonEdit((p) => ({ ...p, [k]: e.target.value }))} style={{ width: '100%', textAlign: 'center', border: '1px solid #ddd', borderRadius: 6, padding: 2, fontSize: 12 }} />
                     : <div style={{ fontSize: 15, fontWeight: 800, color: v.zrodlo === 'manual' ? '#741334' : '#3f0b1c' }}>{String(v.factor).replace('.', ',')}</div>}
-                  <small style={{ fontSize: 9.5, color: v.zrodlo === 'learned' ? '#2f7a4a' : v.zrodlo === 'manual' ? '#741334' : '#8a7a80' }}>{v.zrodlo === 'learned' ? `wyuczony (${v.n})` : v.zrodlo === 'manual' ? 'ręczny' : 'start'}</small>
+                  <small style={{ fontSize: 11, color: v.zrodlo === 'learned' ? '#2f7a4a' : v.zrodlo === 'manual' ? '#741334' : '#8a7a80' }}>{v.zrodlo === 'learned' ? `wyuczony (${v.n})` : v.zrodlo === 'manual' ? 'ręczny' : 'start'}</small>
                 </div>); })}
             </div>}
             {sezonEdit && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><button className="primary-action" onClick={zapiszSezon}><Check size={15} /> Zapisz indeks</button><button className="secondary-action" onClick={() => setSezonEdit(null)}>Anuluj</button><small style={{ alignSelf: 'center', color: '#8a7a80' }}>Puste pole = wróć do wartości wyuczonej/startowej.</small></div>}

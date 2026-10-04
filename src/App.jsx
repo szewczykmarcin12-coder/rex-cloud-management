@@ -474,7 +474,7 @@ const RequestsAdmin = ({ data, setPage }) => {
                 <div className="panel-title"><div><span>BRAK DYSPOZYCJI • {mcL.toUpperCase()}</span><h2>{brak.length ? `${brak.length} z ${crew.length} crew bez dyspozycji` : 'Komplet dyspozycji crew'}</h2></div><AlertTriangle size={19} style={{ color: brak.length ? '#B94352' : '#96AAB5' }} /></div>
                 {brak.length ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                    {brak.map((a) => <span key={a.id} className="dyspo-tag no" style={{ fontSize: 10, textTransform: 'none', letterSpacing: 0, padding: '4px 9px' }} title={`${funkcjaLabel(a.funkcja)} • ${a.umowa || ''} • login ${a.login}`}>{a.name}</span>)}
+                    {brak.map((a) => <span key={a.id} className="dyspo-tag no" style={{ fontSize: 11, textTransform: 'none', letterSpacing: 0, padding: '4px 9px' }} title={`${funkcjaLabel(a.funkcja)} • ${a.umowa || ''} • login ${a.login}`}>{a.name}</span>)}
                   </div>
                 ) : <div className="dialog-empty" style={{ padding: 12 }}>Każdy pracownik crew ma przynajmniej jedną deklarację na ten miesiąc.</div>}
                 <div className="request-note" style={{ marginTop: 10 }}><ShieldCheck size={16} /><span>Liczone dla miesiąca docelowego okna dyspozycji (bez managerów: RGM/ASM/SM/JSM). Odrzucone deklaracje nie liczą się jako podane.</span></div>
@@ -1032,7 +1032,7 @@ const ImportPage = ({ data, setPage }) => {
         <button className="panel report-card" onClick={obsadaDzienna}><i><Printer size={21} /></i><span><small>OPERACJE</small><strong>Obsada dzienna</strong><em>Zmiany, stanowiska, obecność i miejsce na notatki kierownika.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={planSzkolen}><i><CalendarCheck2 size={21} /></i><span><small>ROZWÓJ</small><strong>Plan szkoleń</strong><em>Instruktor, uczestnik, stanowisko i godziny szkoleniowe.</em></span><Download size={18} /></button>
         <button className="panel report-card" onClick={() => setPage && setPage('settings')}><i><Clock size={21} /></i><span><small>ZGODNOŚĆ</small><strong>Dziennik audytu</strong><em>Publikacje, korekty, decyzje i operacje wrażliwe.</em></span><ChevronRight size={18} /></button>
-        <button className="panel report-card" onClick={() => posRef.current && posRef.current.click()}><i><CircleDollarSign size={21} /></i><span><small>POS • RAPORTY R&A</small><strong>Sprzedaż dzienna i profil dnia (XLSX)</strong><em>„Sales Day by Day” → netto, brutto, paragony dzień po dniu (prognoza, COL, MPT). „Daily Operations” → zmierzony rozkład sprzedaży na 15 min (sloty P5, obsada, autoplan).{(data.salesData || {}).meta && (data.salesData || {}).meta.basis ? ` • podstawa: ${(data.salesData || {}).meta.basis === 'net' ? 'netto' : 'brutto'}` : ''}{(data.salesData || {}).intraday ? ` • profil ${(data.salesData || {}).intraday.from}–${(data.salesData || {}).intraday.to}` : ''}{(data.salesData || {}).swiezosc && (data.salesData || {}).swiezosc.ostatniDzien ? ` • dane do ${(data.salesData || {}).swiezosc.ostatniDzien}, następny import wt. ${(data.salesData || {}).swiezosc.nastepnyImport}` : ''}</em></span>{(data.salesData || {}).swiezosc && (data.salesData || {}).swiezosc.przeterminowane ? <b className="status-warning" style={{ marginRight: 8, fontSize: 10 }}>ZALEGŁY</b> : null}<Upload size={18} /></button>
+        <button className="panel report-card" onClick={() => posRef.current && posRef.current.click()}><i><CircleDollarSign size={21} /></i><span><small>POS • RAPORTY R&A</small><strong>Sprzedaż dzienna i profil dnia (XLSX)</strong><em>„Sales Day by Day” → netto, brutto, paragony dzień po dniu (prognoza, COL, MPT). „Daily Operations” → zmierzony rozkład sprzedaży na 15 min (sloty P5, obsada, autoplan).{(data.salesData || {}).meta && (data.salesData || {}).meta.basis ? ` • podstawa: ${(data.salesData || {}).meta.basis === 'net' ? 'netto' : 'brutto'}` : ''}{(data.salesData || {}).intraday ? ` • profil ${(data.salesData || {}).intraday.from}–${(data.salesData || {}).intraday.to}` : ''}{(data.salesData || {}).swiezosc && (data.salesData || {}).swiezosc.ostatniDzien ? ` • dane do ${(data.salesData || {}).swiezosc.ostatniDzien}, następny import wt. ${(data.salesData || {}).swiezosc.nastepnyImport}` : ''}</em></span>{(data.salesData || {}).swiezosc && (data.salesData || {}).swiezosc.przeterminowane ? <b className="status-warning" style={{ marginRight: 8, fontSize: 11 }}>ZALEGŁY</b> : null}<Upload size={18} /></button>
         <input ref={posRef} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" onChange={(e) => importPosPlik(e.target.files[0])} />
         <button className="panel report-card" onClick={() => hourlyRef.current && hourlyRef.current.click()}><i><TrendingUp size={21} /></i><span><small>POS • 15 MIN / GODZINY</small><strong>Sprzedaż godzinowa (CSV)</strong><em>data;godzina;sprzedaż;transakcje — zasila realny profil popytu{(data.salesData || {}).hourlyDays ? ` • ${(data.salesData || {}).hourlyDays} dni w bazie` : ''}.</em></span><Upload size={18} /></button>
         <input ref={hourlyRef} type="file" accept=".csv,.txt" className="hidden" onChange={(e) => importHourly(e.target.files[0])} />
@@ -2734,19 +2734,21 @@ const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '', zoom = '60',
 
   const godzinyOsi = Array.from({ length: PLN_HN - PLN_H0 }, (_, i) => PLN_H0 + i);
 
+  // przeciąganie po pustym tle: pozycja myszy → minuty na osi 06→02, przyciągane do kroku zoomu (60/30/15 min)
+  const KROK = { '60': 30, '30': 15, '15': 15 }[String(zoom)] || 30;
   const slotZ = (e) => {
     const box = e.currentTarget.getBoundingClientRect();
     const frac = Math.min(Math.max((e.clientX - box.left) / box.width, 0), 1);
-    return Math.round(frac * 40);          // slot co 30 min na osi 06→02 (0..40)
+    return Math.round(frac * 1200 / KROK) * KROK;          // minuty od 06:00 (0..1200), krok = zoom
   };
-  const dragStart = (w, e) => { if (locked || e.button !== 0) return; const a = slotZ(e); setDrag({ key: w.key, w, a, b: a + 1 }); };
-  const dragMove = (w, e) => { if (!drag || drag.key !== w.key) return; const b = slotZ(e); setDrag((d) => ({ ...d, b })); };
+  const dragStart = (w, e) => { if (locked || e.button !== 0) return; const a = slotZ(e); setDrag({ key: w.key, w, a, b: a + KROK, krok: KROK }); };
+  const dragMove = (w, e) => { if (!drag || drag.key !== w.key) return; const b = slotZ(e); setDrag((d) => (d.b === b ? d : { ...d, b })); };
   const dragEnd = (w, e) => {
     if (!drag || drag.key !== w.key) { setDrag(null); return; }
     const a = Math.min(drag.a, drag.b), b = Math.max(drag.a, drag.b);
-    const minA = PLN_H0 * 60 + a * 30;
-    const minB = PLN_H0 * 60 + Math.max(b, a + 1) * 30;
-    const przeciagniete = Math.abs(drag.b - drag.a) >= 1;
+    const minA = PLN_H0 * 60 + a;
+    const minB = PLN_H0 * 60 + Math.max(b, a + drag.krok);
+    const przeciagniete = Math.abs(drag.b - drag.a) >= drag.krok;
     setDrag(null);
     setModal({ tryb: 'nowa', osoba: w.grafik, accountId: w.id, station: 'MANAGER',
       start: plnClock(minA), end: plnClock(przeciagniete ? minB : Math.min(minA + 480, PLN_HN * 60)) });
@@ -2849,7 +2851,20 @@ const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '', zoom = '60',
                   onMouseUp={(e) => dragEnd(w, e)}>
                   <div className="gantt-track-grid" aria-hidden="true">{G_H.map((h) => <span key={h} />)}</div>
                   {dzisG && terazMinG <= G_MIN && <i className="gantt-now-line" style={{ left: `${terazMinG / G_MIN * 100}%` }} />}
-                  {drag && drag.key === w.key && (() => { const a2 = Math.min(drag.a, drag.b) * 30, b2 = Math.max(drag.a, drag.b, Math.min(drag.a, drag.b) + 1) * 30; return <span style={{ position: 'absolute', top: 6, bottom: 6, left: `${a2 / G_MIN * 100}%`, width: `${(b2 - a2) / G_MIN * 100}%`, borderRadius: 8, border: '2px dashed #741334', background: 'rgba(116,19,52,.12)', pointerEvents: 'none' }} />; })()}
+                  {drag && drag.key === w.key && (() => {
+                    const a2 = Math.min(drag.a, drag.b), b2 = Math.max(drag.a, drag.b, a2 + drag.krok);
+                    const od = plnClock(PLN_H0 * 60 + a2), doo = plnClock(PLN_H0 * 60 + b2), godz = (b2 - a2) / 60;
+                    const szer = (b2 - a2) / G_MIN * 100, waska = szer < 9;
+                    return (
+                      <span className={'gantt-drag-preview' + (waska ? ' narrow' : '')} style={{ left: `${a2 / G_MIN * 100}%`, width: `${szer}%` }}>
+                        {waska ? <b className="gantt-drag-label">{od}–{doo} · {godz.toFixed(godz % 1 ? 2 : 0).replace('.', ',').replace(/,?0+$/, '')} h</b> : <>
+                          <b className="gantt-drag-time">{od}</b>
+                          <em className="gantt-drag-dur">{godz.toFixed(godz % 1 ? 2 : 0).replace('.', ',').replace(/,?0+$/, '')} h</em>
+                          <b className="gantt-drag-time">{doo}</b>
+                        </>}
+                      </span>
+                    );
+                  })()}
                   {w.moje.map((x, xi) => { const swieci = slotSel != null && slotSwieci(x, slotSel); const act = aktZ(x);
                     const spozn = act && act.start ? Math.abs(plnMin(act.start) - plnMin(x.start)) : null;
                     const wyjatek = actualMode && ((act && act.start && !act.end && day < ymd(new Date())) || (!act && day < ymd(new Date())) || (spozn != null && spozn > 10));
@@ -2874,7 +2889,7 @@ const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '', zoom = '60',
           <span><i /> NADMIAR (H) <strong>{cov96.excessH.toFixed(1).replace('.', ',')}</strong></span>
           <span><i /> NIEDOBÓR (H) <strong>{cov96.deficitH.toFixed(1).replace('.', ',')}</strong></span>
         </div>
-        <p style={{ margin: '8px 14px 12px', color: '#71656A', fontSize: 10.5 }}>Klik na pasku = edycja zmiany (godziny, stanowisko, instruktor). Przeciągnij po pustym torze wiersza, aby dodać zmianę.{locked ? ' Tydzień zamknięty — tylko podgląd.' : ''}</p>
+        <p style={{ margin: '8px 14px 12px', color: '#71656A', fontSize: 11 }}>Klik na pasku = edycja zmiany (godziny, stanowisko, instruktor). Przeciągnij po pustym torze wiersza, aby dodać zmianę.{locked ? ' Tydzień zamknięty — tylko podgląd.' : ''}</p>
       </article>
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,.45)' }} onClick={() => !saving && setModal(null)}>
