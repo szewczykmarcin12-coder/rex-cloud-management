@@ -13,3 +13,8 @@ export const publikujMiesiac = async (ym) => {
   }
   return r;
 };
+
+// ── Zmiana mimo dyspozycji „nie mogę”: 409 { dyspozycja:true } → dialog (DyspoGate w App) → ponowienie z mimoDyspozycji ──
+let __dyspoHandler = null;
+export const setDyspoHandler = (fn) => { __dyspoHandler = fn; };
+export const potwierdzDyspozycje = (info) => new Promise((resolve) => { if (!__dyspoHandler) return resolve(null); __dyspoHandler({ ...info, resolve }); });

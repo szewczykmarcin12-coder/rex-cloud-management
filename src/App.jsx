@@ -21,7 +21,7 @@ import { ForecastQualityPage } from './views/ForecastQuality.jsx';
 import { API_BASE, HUB_URL, api, store } from './lib/api.js';
 import { D3, NS, SZAB, f0, optRozbicie } from './lib/demandEngine.js';
 import { FUNKCJE, WT_TICKS, colors, dayNames, dniMiesiaca, dniPelne, etykietaStacji, funkcjaLabel, godzZ, jestInstruktor, kosztGodzin, months, monthsGen, opisZmiany, paraOpis, scalParyPlan, stationColor, stationColors, statusZamiany, wtAct, wtDur, wtHours, wtKey, wtMonday, wtRel, ymd } from './lib/domain.js';
-import { publikujMiesiac, setComplianceHandler } from './lib/publish.js';
+import { publikujMiesiac, setComplianceHandler, setDyspoHandler, potwierdzDyspozycje } from './lib/publish.js';
 import { UNIT, setProfDow, setUnit, unitLabel } from './lib/runtime.js';
 import { Btn, DNI_KROTKIE, DialogS, Header, MHead, MMetric, Toast, opisDnia } from './ui/primitives.jsx';
 import { AnalyticsPage } from './views/Analytics.jsx';
@@ -503,6 +503,24 @@ const RequestsAdmin = ({ data, setPage }) => {
 
 // ═════════ ANALITYKA PRACY — wzorzec ORDO na realnych agregatach ═════════
 // ── Publikacja z bramką zgodności: 409 compliance → dialog z naruszeniami i publikacją z uzasadnieniem ──
+// Pracownik zgłosił „nie mogę”, ale potem powiedział, że jednak może: manager potwierdza zmianę i (domyślnie) poprawia dyspozycję
+const DyspoGate = () => {
+  const [st, setSt] = useState(null);
+  const [powod, setPowod] = useState('');
+  const [aktualizuj, setAktualizuj] = useState(true);
+  useEffect(() => { setDyspoHandler((x) => { setPowod(''); setAktualizuj(true); setSt(x); }); return () => setDyspoHandler(null); }, []);
+  if (!st) return null;
+  const zamknij = () => { st.resolve(null); setSt(null); };
+  return (
+    <DialogS title="Zmiana mimo zgłoszonej niedostępności" kicker={`GRAFIK • ${st.date || ''}`} description={st.error} onClose={zamknij}
+      actions={<><button onClick={zamknij}>Anuluj</button><button className="dialog-primary" onClick={() => { st.resolve({ mimoDyspozycji: true, aktualizujDyspozycje: aktualizuj, powod: powod.trim() }); setSt(null); }}><Check size={15} /> Dodaj zmianę mimo to</button></>}>
+      <label className="dialog-check-row"><input type="checkbox" checked={aktualizuj} onChange={(e) => setAktualizuj(e.target.checked)} /> Zmień dyspozycję pracownika na ten dzień na „dostępny” <strong>{aktualizuj ? 'tak' : 'nie — zostaw „nie mogę”'}</strong></label>
+      <label className="dialog-field full" style={{ marginTop: 12 }}>Powód (opcjonalnie, trafi do dziennika audytu)<input value={powod} onChange={(e) => setPowod(e.target.value)} placeholder="np. pracownik potwierdził telefonicznie, że może przyjść" /></label>
+      <div className="dialog-notice" style={{ marginTop: 12 }}><ShieldCheck size={16} /><span>Zmiana będzie oznaczona jako dodana mimo dyspozycji (kto, kiedy, powód). Pracownik zobaczy ją w Employee Hub jak każdą inną.</span></div>
+    </DialogS>
+  );
+};
+
 const ComplianceGate = () => {
   const [st, setSt] = useState(null);
   const [reason, setReason] = useState('');
@@ -1501,7 +1519,7 @@ const AvailabilityAdmin = ({ data }) => {
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ borderLeft: '4px solid #741334' }}>
       <h3 className="text-lg font-semibold mb-1" style={{ color: colors.primary.darkest }}>Propozycje dostępności ({oczekujace.length})</h3>
-      <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Po zatwierdzeniu planer blokuje dni „niedostępny" i ostrzega poza oknem godzin (WFM-02/05).</p>
+      <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Po zatwierdzeniu planer ostrzega przy dniach „niedostępny” i poza oknem godzin; zmianę można dodać mimo to po potwierdzeniu (z wpisem w audycie i opcjonalną zmianą dyspozycji).</p>
       <div className="space-y-3">
         {oczekujace.map((rec) => (
           <div key={rec.accountId} className="rounded-xl p-3" style={{ backgroundColor: colors.primary.bgLight }}>
@@ -3722,7 +3740,8 @@ const useData = () => {
     return true;
   }, [sync]);
   const addShiftManual = useCallback(async (payload) => {
-    const r = await api('/schedule?action=add', 'POST', { ...payload, expectedVersion: wersjaMiesiaca(payload.date) });
+    let r = await api('/schedule?action=add', 'POST', { ...payload, expectedVersion: wersjaMiesiaca(payload.date) });
+    if (!r.success && r.dyspozycja) { const zg = await potwierdzDyspozycje({ error: r.error, date: payload.date }); if (!zg) return false; r = await api('/schedule?action=add', 'POST', { ...payload, ...zg, expectedVersion: wersjaMiesiaca(payload.date) }); }
     if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się dodać zmiany', 'error'); return false; }
     const sh = r.shift;
     await sync();                                        // COR-02: wykonanie powstaje wyłącznie z odbić / korekty
@@ -3732,7 +3751,8 @@ const useData = () => {
   }, [sync]);
 
   const updateShiftManual = useCallback(async (ident, nowe) => {
-    const r = await api('/schedule?action=update', 'POST', { ...ident, nowe, expectedVersion: wersjaMiesiaca(ident.date) });
+    let r = await api('/schedule?action=update', 'POST', { ...ident, nowe, expectedVersion: wersjaMiesiaca(ident.date) });
+    if (!r.success && r.dyspozycja) { const zg = await potwierdzDyspozycje({ error: r.error, date: ident.date }); if (!zg) return false; r = await api('/schedule?action=update', 'POST', { ...ident, nowe, ...zg, expectedVersion: wersjaMiesiaca(ident.date) }); }
     if (!r.success) { if (r.konflikt) await sync(); show(r.error || 'Nie udało się zapisać zmiany', 'error'); return false; }
     await sync();
     if (r.warnings && r.warnings.length) show(`Zapisano z ostrzeżeniem: ${r.warnings[0]}`, 'error');
@@ -3882,6 +3902,7 @@ export default function App() {
       </section>
       {navOpen && <button className="scrim" aria-label="Zamknij menu" onClick={() => setNavOpen(false)} />}
       <ComplianceGate />
+      <DyspoGate />
       {data.toast && <Toast message={data.toast.message} type={data.toast.type} onClose={() => data.setToast(null)} />}
     </main>
   );
