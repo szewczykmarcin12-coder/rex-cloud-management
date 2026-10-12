@@ -215,7 +215,7 @@ export const BudgetPlan = ({ data, setPage }) => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Dwa label="COL — koszt pracy (total)" akt={`${zl(colAkt)} zł`} plan={`${zl(col)} zł`} kolor={colors.primary.darkest} />
-            <Dwa label="COL % (koszt / sprzedaż)" akt={`${(sale ? colAkt / sale * 100 : 0).toFixed(2)}%`} plan={`${(colPct * 100).toFixed(2)}%`} kolor={(sale ? colAkt / sale : 0) > 0.2 ? '#A94455' : '#2674B8'} />
+            <Dwa label="COL % (koszt / sprzedaż)" akt={`${(sale ? colAkt / sale * 100 : 0).toFixed(2)}%`} plan={`${(colPct * 100).toFixed(2)}%`} kolor={(sale ? colAkt / sale : 0) > 0.2 ? '#A94455' : '#407362'} />
             <Dwa label="Godziny total" akt={`${godzAktTotal.toFixed(0)} h`} plan={`${godzTotal.toFixed(0)} h`} />
             <Dwa label="Godziny na dzień" akt={`${dni ? (godzAktTotal / dni).toFixed(1) : 0} h`} plan={`${dni ? (godzTotal / dni).toFixed(1) : 0} h`} />
           </div>
@@ -323,8 +323,8 @@ export const BudgetPlan = ({ data, setPage }) => {
                   <span className="text-xs" style={{ color: colors.primary.light }}>{z.umowa}</span>
                   <span className="text-right">{z.teor.toFixed(0)}</span>
                   <span className="text-right">{z.plan.toFixed(0)}</span>
-                  <span className="text-right font-medium" style={{ color: z.nadmiar ? '#2674B8' : '#C7B4BB' }}>{z.nadmiar ? z.nadmiar.toFixed(0) : '—'}</span>
-                  <span className="text-right font-medium" style={{ color: z.niedobor ? '#A94455' : '#C7B4BB' }}>{z.niedobor ? z.niedobor.toFixed(0) : '—'}</span>
+                  <span className="text-right font-medium" style={{ color: z.nadmiar ? '#2674B8' : '#9DA4AA' }}>{z.nadmiar ? z.nadmiar.toFixed(0) : '—'}</span>
+                  <span className="text-right font-medium" style={{ color: z.niedobor ? '#A94455' : '#9DA4AA' }}>{z.niedobor ? z.niedobor.toFixed(0) : '—'}</span>
                 </div>
               ))}
             </div></div>

@@ -229,9 +229,10 @@ export function parseGrafik(arrayBuffer) {
       if (!start || !end) continue;
       let hours = (timeMin(end) - timeMin(start)) / 60;
       if (hours <= 0) hours += 24;   // zmiana przez polnoc (22:00 -> 06:00)
-      let station = '';
-      if (krok === 3) { const st = wiersz[c + 2]; if (st != null && String(st).trim()) { station = String(st).trim().toUpperCase().split(/\s*→\s*/)[0].trim(); zeStacjami++; } }
-      shifts.push({ date, name, station, start, end, hours: Math.round(hours * 100) / 100 });
+      let station = '', stacjaDocelowa = null;
+      if (krok === 3) { const st = wiersz[c + 2]; if (st != null && String(st).trim()) { const czesci = String(st).trim().toUpperCase().split(/\s*(?:→|->)\s*/).map((x) => x.trim()).filter(Boolean); station = czesci[0] || ''; if (czesci[1]) stacjaDocelowa = czesci[1]; zeStacjami++; } }
+      // „KONTROLER → PREP” bez godziny przejścia: zapisujemy stanowisko docelowe, audyt zgłosi brak odcinków
+      shifts.push({ date, name, station, start, end, hours: Math.round(hours * 100) / 100, ...(stacjaDocelowa ? { stacjaDocelowa } : {}) });
     }
   }
   if (!shifts.length) throw new Error('Nie znaleziono żadnych zmian — sprawdź, czy godziny są w parach kolumn pod datami');

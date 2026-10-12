@@ -1,3 +1,4 @@
+import { stationStyle as stationStyleFn } from './stations.js';
 // ── Wspólne definicje dziedzinowe: paleta, stanowiska, czas pracy, miesiące, koszt godzin ──
 export const colors = {
   // Atmosphere: grafit na treści, błękit na interakcji, jasne powierzchnie
@@ -5,14 +6,12 @@ export const colors = {
   accent: { dark: '#292D32', medium: '#2674B8', light: '#79A2C0', bg: '#E8F0F7' }
 };
 
-export const stationColors = {
-  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#A94455', 'KANAPKI / WRAPY': '#00A3E0',
-  'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
-  'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#65717C',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#292D32', 'MGR FUNKCYJNE': '#3F4A55',
-  'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#3F4A55'
-};
-export const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
+// Kolory stanowisk: JEDNO źródło w lib/stations.js (pastelowe rodziny Brand Kitu, tekst grafitowy).
+// stationColor() zwraca kolor TEKSTU/akcentu czytelny na bieli (ink rodziny); tła brać z stationFill(), kropki z stationAccent().
+export { stationStyle, stationFill, stationAccent, stationInk, stationTone, stationFamily, STATION_FAMILIES, FAMILY_LEGEND } from './stations.js';
+export const stationColors = Object.fromEntries(['MANAGER', 'MGR FUNKCYJNE', 'KONTROLER', 'KANAPKI / WRAPY', 'PANIEROWANIE', 'SMAŻENIE', 'FRYTKI', 'ZMYWAK', 'PREP', 'DOSTAWA', 'DISPATCHER', 'PHU', 'DESERY / NAPOJE', 'WSPARCIE WIECZORNE / FLEX', 'SZKOLENIA'].map((k) => [k, stationStyleFn(k).ink]));
+const stationInkFn = (s) => stationStyleFn(s).ink;
+export const stationColor = (s) => stationInkFn(s);
 export const godzZ = (s) => (s.hours != null ? s.hours : 0);
 const jestMgr = (st) => ['MANAGER', 'MGR FUNKCYJNE'].includes((st || '').toUpperCase());
 export const MGR_FUNKCJE = new Set(['RGM', 'ASM', 'SM', 'JSM']);

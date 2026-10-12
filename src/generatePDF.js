@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { LIB_SANS_REGULAR, LIB_SANS_BOLD } from './fonts.js';
+import { stationRgb } from './lib/stations.js';
 
 // ── Nazwy / kolejność ────────────────────────────────────────────────
 const dniPl = ['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];
@@ -9,13 +10,8 @@ const KOLEJNOSC = ['PANIEROWANIE','SMAŻENIE','KANAPKI / WRAPY','KONTROLER','WSP
   'DISPATCHER','PHU','DESERY / NAPOJE','FRYTKI','ZMYWAK','PREP','DOSTAWA','SZKOLENIA','TRAINING','INSTRUKTOR','MANAGER','MGR FUNKCYJNE'];
 const rank = (s) => { const i = KOLEJNOSC.indexOf((s||'').toUpperCase()); return i === -1 ? 99 : i; };
 
-const KOLORY = {
-  'PANIEROWANIE':[124,179,66],'SMAŻENIE':[231,76,60],'KANAPKI / WRAPY':[0,163,224],
-  'KONTROLER':[30,58,138],'WSPARCIE WIECZORNE / FLEX':[156,39,176],'DISPATCHER':[255,112,67],
-  'PHU':[0,137,123],'DESERY / NAPOJE':[236,64,122],'FRYTKI':[245,176,0],'ZMYWAK':[100,116,139],
-  'PREP':[141,110,99],'DOSTAWA':[92,107,192],'SZKOLENIA':[38,166,154],'TRAINING':[38,166,154],'INSTRUKTOR':[0,121,107],'MANAGER':[16,24,21],'MGR FUNKCYJNE':[69,90,100]
-};
-const kolor = (s) => KOLORY[(s||'').toUpperCase()] || [89,128,124];
+// Kolory stanowisk: te same pastelowe rodziny co w Studio i Employee Hub (lib/stations.js) — tło pastelowe, tekst grafitowy.
+const kolor = (s) => stationRgb(s);   // { fill, accent, ink, text }
 
 const NAVY = [41,45,50], NAVY2 = [63,74,85], STAL = [38,116,184], LIGHT = [237,240,243];   // Atmosphere: grafit + action blue
 const PEACH = [38,116,184], INK = [41,45,50], GREY = [101,113,124];   // akcent = action blue
@@ -136,10 +132,11 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
 
   const rysujBlok = (x, yy, st, ludzie) => {
     const kol = kolor(st);
-    // pasek stanowiska
-    doc.setFillColor(...kol); doc.roundedRect(x, yy, colW, headH, 1, 1, 'F');
-    doc.setTextColor(255,255,255); doc.setFont('Lib','bold'); doc.setFontSize(8.3);
-    doc.text(st, x + 2.5, yy + headH - 2);
+    // pasek stanowiska: pastel rodziny + akcent z lewej, tekst grafitowy
+    doc.setFillColor(...kol.fill); doc.roundedRect(x, yy, colW, headH, 1, 1, 'F');
+    doc.setFillColor(...kol.accent); doc.rect(x, yy, 1.4, headH, 'F');
+    doc.setTextColor(...kol.ink); doc.setFont('Lib','bold'); doc.setFontSize(8.3);
+    doc.text(st, x + 3.2, yy + headH - 2);
     const gsum = ludzie.filter(s=>!jestInstr(s)).reduce((a,s)=>a+godzZmiany(s),0);
     const samiInstr = ludzie.length > 0 && ludzie.every(s=>jestInstr(s));
     doc.setFontSize(7.4);
@@ -355,7 +352,7 @@ export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = '
   F(0, 7, [183, 212, 208]); pion(`Doba operacyjna 06:00–06:00 · ${wersja}`, 23.5, H - 78);
   doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.5); doc.circle(16, 14, 5.2, 'S');
   F(1, 8.5, [255, 255, 255]); pion('Atmosphere', 14.5, 24);
-  F(0, 5.4, [145, 173, 169]); pion('WORKRHYTHM · DAILY ROSTER', 19.5, 24, { charSpace: 0.5 });
+  F(0, 5.4, [145, 173, 169]); pion('ATMOSPHERE · GRAFIK DZIENNY', 19.5, 24, { charSpace: 0.5 });
 
   // ── pasek KPI ──
   const X0 = 38, KY = 8, KW = W - X0 - 8;
@@ -423,9 +420,9 @@ export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = '
     const kol = kolor(g);
     doc.setFillColor(255, 255, 255); doc.setDrawColor(...LINIA); doc.setLineWidth(0.3);
     doc.roundedRect(cx, cy, kolW, wys, 1.8, 1.8, 'FD');
-    doc.setFillColor(...kol); doc.roundedRect(cx, cy, 2, wys, 1, 1, 'F');
-    doc.setFillColor(...kol); doc.roundedRect(cx + 4, cy + 2, 10, 4, 1, 1, 'F');
-    F(1, 5.4, [255, 255, 255]); doc.text(g.slice(0, 3), cx + 9, cy + 4.8, { align: 'center' });
+    doc.setFillColor(...kol.accent); doc.roundedRect(cx, cy, 2, wys, 1, 1, 'F');
+    doc.setFillColor(...kol.fill); doc.roundedRect(cx + 4, cy + 2, 10, 4, 1, 1, 'F');
+    F(1, 5.4, kol.ink); doc.text(g.slice(0, 3), cx + 9, cy + 4.8, { align: 'center' });
     F(1, 7.4, INK); doc.text(czesc > 1 ? `${g} (cd.)` : g, cx + 16, cy + 5, { maxWidth: kolW - 34 });
     if (czesc === 1) { F(1, 7.4, TEAL7); doc.text(`${hGr.toFixed(1).replace('.', ',')} h`, cx + kolW - 3, cy + 5, { align: 'right' }); }
     let ry = cy + 8.6;

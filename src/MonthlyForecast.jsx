@@ -11,7 +11,7 @@ const SCEN_F = { BASE: [1, 1], GROWTH: [1.08, 1.06], EVENT: [1.045, 1.05] };
 
 const C = {
   ink: '#292D32', dark: '#3F4A55', mid: '#2674B8', mute: '#65717C', line: '#DCE3E9', pale: '#F7F8FA',
-  ok: '#2674B8', warn: '#2674B8', bad: '#A94455', blue: '#3F4A55', violet: '#2674B8', teal: '#79A2C0', slate: '#3A3438',
+  ok: '#407362', warn: '#886929', bad: '#A94455', blue: '#2674B8', violet: '#8B7FAE', teal: '#79A2C0', slate: '#3F4A55',   // semantyka Atmosphere: zieleń / bursztyn / czerwień / błękit / lawenda
 };
 const CATEGORIES = [
   ['crew', 'Crew', C.blue],

@@ -19,6 +19,11 @@ const DANE = {
   '/availability': { success: true, pending: 0, requests: [], window: null }, '/audit': { success: true, entries: [] }, '/kpi': { success: true, snapshots: [], cronSkonfigurowany: false },
   '/forecast': { success: true, days: [], backtest: { dni: 28, mape: 8.5, wape: 8.6, model: 'hybryda' }, modele: { wybrany: 'hybryda', mediana: { dni: 28, mape: 12.8, wape: 12.7 }, hybryda: { dni: 28, mape: 8.5, wape: 8.6 } }, dane: { ostatniDzien: '2026-09-30', dniOdOstatniego: 13, nastepnyImport: '2026-10-20', przeterminowane: true, rytm: 'wtorek, ostatnie 8 tygodni' } }, '/autoplan': { success: true, proposals: [], model: null }, '/compliance': { success: true, violations: [], summary: {} },
   '/monthly-forecast': { success: true, exists: false, plan: null, months: [] },
+  '/work-model': { success: true, slownik: [{ kod: 'MANAGER', krytyczne: true }, { kod: 'KONTROLER', krytyczne: true }, { kod: 'KANAPKI / WRAPY', krytyczne: true }, { kod: 'PANIEROWANIE', krytyczne: true }], model: { version: 2, status: 'propozycja', przekazanieMin: 0, mgrOperacyjnyUdzial: 0.7, zrodlo: { plik: 'plan_2026-10 (wzorzec)', od: '2026-10-01', do: '2026-10-31', zmian: 459 }, uwagi: [{ typ: 'luka-uzupelniona', opis: 'PANIEROWANIE Pt: w ≥ 50 % dni brak obsady 16:00–18:00 — w propozycji uzupełnione, potwierdź.' }],
+    stanowiska: { MANAGER: { krytyczne: true }, PANIEROWANIE: { krytyczne: true }, KONTROLER: { krytyczne: true } },
+    biblioteka: [{ id: 't1', station: 'MANAGER', start: '06:00', end: '16:00', dni: [0, 1, 2, 3, 4, 5, 6], liczba: 1, typ: 'podstawowa', rola: 'otwarcie', flexMin: 60, godzin: 10 }, { id: 't2', station: 'PANIEROWANIE', start: '06:00', end: '16:00', dni: [0, 1, 2, 3, 4, 5, 6], liczba: 1, typ: 'podstawowa', rola: 'otwarcie', flexMin: 60, godzin: 10 }, { id: 't3', station: 'PANIEROWANIE', start: '18:00', end: '02:00', dni: [5], liczba: 1, typ: 'podstawowa', rola: 'zamkniecie', flexMin: 60, godzin: 8 }, { id: 't4', station: 'KONTROLER', start: '12:00', end: '15:00', dni: [1], liczba: 1, typ: 'dodatkowa', rola: 'srodek', flexMin: 60, godzin: 3 }] } },
+  '/qualifications': { success: true, matrix: { a1: { KONTROLER: { poziom: 2, zatwierdzone: true, zrodlo: 'manager' }, PANIEROWANIE: { poziom: 2, zatwierdzone: false, zrodlo: 'historia', zmian: 7 } } }, poziomy: { 0: 'brak', 1: 'w szkoleniu', 2: 'samodzielny', 3: 'trener' }, slownik: ['MANAGER', 'KONTROLER', 'KANAPKI / WRAPY', 'PANIEROWANIE'], stan: { osob: 1, zDanymi: 1, bezDanych: [], tryb: 'macierz', pula: { KONTROLER: { samodzielni: 1, wSzkoleniu: 0, propozycje: 0 }, PANIEROWANIE: { samodzielni: 0, wSzkoleniu: 0, propozycje: 1 }, MANAGER: { samodzielni: 0, wSzkoleniu: 0, propozycje: 0 }, 'KANAPKI / WRAPY': { samodzielni: 0, wSzkoleniu: 0, propozycje: 0 } }, stanowiskaBezPuli: ['PANIEROWANIE', 'MANAGER', 'KANAPKI / WRAPY'] } },
+  '/schedule-audit': { success: true, month: '2026-09', gotowy: false, streszczenie: 'Grafik niekompletny — 1 problemów krytycznych (Przerwa w obsadzie stanowiska: 1).', podsumowanie: { krytyczne: 1, wazne: 1, info: 0, perKod: { LUKA_STANOWISKA: 1, DUPLIKAT_ZMIANY: 1 }, blokujace: 1 }, perDate: { '2026-09-15': 1 }, problemy: [{ kod: 'LUKA_STANOWISKA', waga: 'krytyczna', nazwa: 'Przerwa w obsadzie stanowiska', date: '2026-09-15', od: '15:00', do: '18:00', station: 'KANAPKI / WRAPY', opis: '2026-09-15, KANAPKI / WRAPY 15:00–18:00: przerwa między zmianami na tym stanowisku.', naprawa: 'Sprawdź wcześniejszy start zmiany zamykającej.' }, { kod: 'DUPLIKAT_ZMIANY', waga: 'wazna', nazwa: 'Powielona zmiana kierownicza', date: '2026-09-22', od: '18:00', do: '02:00', station: 'MANAGER', opis: '2026-09-22: 2 osoby MANAGER 18:00–02:00.', naprawa: 'Potwierdź potrzebę.' }] },
   '/month-plan': { success: true, month: '2026-10', plan: null, params: { splh: 420, mpt: 4, podloga: 3, indirectPct: 0.12, colTargetPct: 20, yoyWeight: 0.3 }, miesiace: [{ month: '2026-10', status: null }], grafik: { godziny: 0, zmian: 0, dni: 0 },
     events: [{ id: 'e1', name: 'Kampania kanapkowa', typ: 'promo', from: '2026-10-06', to: '2026-10-19', upliftPct: 8, by: 'Marta ASM' }],
     sezon: { idx: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i + 1), { factor: i === 8 ? 0.937 : 1, zrodlo: i === 8 ? 'learned' : 'default', n: i === 8 ? 1 : 0 }])), miesiecyHistorii: 2 },
@@ -186,6 +191,38 @@ describe('powłoka Studio', () => {
     await screen.findByText('Z Planu miesiąca v2');
     expect(screen.getByText(/limit 4700 h AOP/)).toBeTruthy();
     DANE['/month-plan'].plan = null;
+  });
+
+  it('11. P0: Model pracy (propozycja do zatwierdzenia, luka PANIEROWANIE Pt widoczna w podglądzie), Kwalifikacje (propozycja z historii ≠ uprawnienie), Autoplan ostrzega bez zatwierdzonego modelu, Grafik pokazuje audyt miesiąca', async () => {
+    zaloguj('asm'); location.hash = '#/planowanie/model-pracy';
+    render(<App />);
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Model pracy'));
+    await screen.findByText('propozycja v2 — wymaga zatwierdzenia');
+    expect(screen.getByText(/PANIEROWANIE Pt: w ≥ 50 % dni brak obsady 16:00–18:00/)).toBeTruthy();   // uwaga z wyprowadzenia
+    const zatw = screen.getByText('Zatwierdź model').closest('button'); expect(zatw.disabled).toBe(false);
+    // podgląd piątku: PANIEROWANIE 06–16 i 18–02 → luka 16–18 oznaczona „!”
+    fireEvent.click(document.querySelector('.filter-tabs button:nth-child(5)'));
+    await waitFor(() => expect(document.querySelectorAll('.forecast-main span[title*="PANIEROWANIE 17:00"]').length).toBe(1));
+    expect(document.querySelector('.forecast-main span[title*="PANIEROWANIE 17:00"]').textContent).toBe('!');
+    // kwalifikacje
+    await act(async () => { location.hash = '#/zespol/kwalifikacje'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Kwalifikacje'));
+    await screen.findByText('Zatwierdź propozycje (1)');
+    const komorki = [...document.querySelectorAll('button[title*="ALA TEST • PANIEROWANIE"]')];
+    expect(komorki.length).toBe(1); expect(komorki[0].textContent).toBe('2?');                         // propozycja z historii, niezatwierdzona
+    expect(document.querySelector('button[title*="ALA TEST • KONTROLER"]').textContent).toBe('2');
+    // autoplan bez zatwierdzonego modelu
+    await act(async () => { location.hash = '#/planowanie/autoplan'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Automatyczne układanie'));
+    await screen.findByText('Brak zatwierdzonego modelu pracy.');
+    expect(screen.getAllByText('Sprawdź wykonalność').length).toBeGreaterThan(0);
+    // grafik: pasek publikacji pokazuje audyt
+    await act(async () => { location.hash = '#/planowanie/grafik'; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    await waitFor(() => expect(aktywnaZakladka()).toContain('Grafik'));
+    const chip = await screen.findByText(/audyt: 1 luk krytycznych • 1 do decyzji/);
+    fireEvent.click(chip);
+    await screen.findByText(/KANAPKI \/ WRAPY 15:00–18:00: przerwa między zmianami/);
+    expect(bledyKonsoli).toEqual([]);
   });
 
   it('7. Analizy: KPI i CSV z tego samego okresu; awaria KPI dziennych i prognozy pokazuje błąd z ponowieniem', async () => {

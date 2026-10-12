@@ -31,7 +31,7 @@ export const SZAB = [
   { n: "ŚRODEK 12–22", od: 12, do: 22, kol: "#2674B8" }, { n: "FLEX SZCZYT 12–20", od: 12, do: 20, kol: "#A94455" },
   { n: "ZAMKNIĘCIE 15–01", od: 15, do: 25, kol: "#2674B8" }, { n: "WSPARCIE WIECZ 16–24", od: 16, do: 24, kol: "#3F4A55" },
   { n: "ZAMKNIĘCIE 16–01", od: 16, do: 25, kol: "#2674B8" }, { n: "ZAMKNIĘCIE 17–02", od: 17, do: 26, kol: "#2674B8" },
-  { n: "PREP 18–24", od: 18, do: 24, kol: "#8A8880" }, { n: "ZMYWAK 22–06", od: 22, do: 30, kol: "#4A4A48" },
+  { n: "PREP 18–24", od: 18, do: 24, kol: "#65717C" }, { n: "ZMYWAK 22–06", od: 22, do: 30, kol: "#4A4A48" },
 ];
 
 export function optZapotrzebowanie(sprzedaz, splh, podloga, tryb, dow) {

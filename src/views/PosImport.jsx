@@ -51,7 +51,7 @@ export const PosImportDialog = ({ raport, onClose, onDone, api, show }) => {
             {[1, 2, 3, 4, 5, 6, 0].map((i) => <div key={i} style={{ textAlign: 'center' }}><div style={{ height: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}><i style={{ width: 22, height: `${(raport.dow[i].net || 0) / maxDow * 40}px`, background: i === 0 || i === 6 ? '#2674B8' : '#3F4A55', borderRadius: 3, display: 'block' }} /></div><small style={{ fontSize: 11, fontWeight: 700 }}>{DNI[i]}</small><br /><small style={{ fontSize: 11, color: '#65717C' }}>{raport.dow[i].net != null ? tys(raport.dow[i].net) : '—'}</small></div>)}
           </div>
           {raport.warnings.length > 0 && <div className="dialog-notice" style={{ marginTop: 12 }}><AlertTriangle size={16} /><span>{raport.warnings.join(' ')}</span></div>}
-          <p style={{ marginTop: 12, fontSize: 12, color: '#65717C' }}>Co z tego korzysta: prognoza dzienna (mediana tego samego dnia tygodnia × trend 4 tyg., backtest MAPE/WAPE), rozkład miesiąca AOP na dni, MPT z paragonów, COL w Analizach. Labor % z POS nie jest używany — kalibracja SPLH pochodzi z odbić ORDO.</p>
+          <p style={{ marginTop: 12, fontSize: 12, color: '#65717C' }}>Co z tego korzysta: prognoza dzienna (mediana tego samego dnia tygodnia × trend 4 tyg., backtest MAPE/WAPE), rozkład miesiąca AOP na dni, MPT z paragonów, COL w Analizach. Labor % z POS nie jest używany — kalibracja SPLH pochodzi z odbić w Atmosphere.</p>
         </>
       ) : (
         <>
@@ -67,7 +67,7 @@ export const PosImportDialog = ({ raport, onClose, onDone, api, show }) => {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#65717C', marginTop: 2 }}>{['06', '09', '12', '15', '18', '21', '00', '03'].map((h) => <span key={h}>{h}</span>)}</div>
           {raport.orderTypes.length > 0 && <><p className="dialog-section-title" style={{ marginTop: 12 }}>TYPY ZAMÓWIEŃ (INFORMACYJNIE)</p><div className="dialog-list">{raport.orderTypes.slice(0, 6).map((o) => <div key={o.name}><i>{Math.round(o.sharePct)}%</i><span><strong>{o.name}</strong><small>{zl(o.net)} • {o.checks.toLocaleString('pl-PL')} paragonów • AGC {o.avgCheck.toFixed(2).replace('.', ',')} zł</small></span></div>)}</div></>}
-          {!raport.totals.laborTracked && <p style={{ marginTop: 10, fontSize: 12, color: '#65717C' }}>Labor Cost % w POS = 0 (POS nie śledzi pracy) — koszt pracy liczy ORDO z grafiku i odbić.</p>}
+          {!raport.totals.laborTracked && <p style={{ marginTop: 10, fontSize: 12, color: '#65717C' }}>Koszt pracy % w POS = 0 (POS nie śledzi pracy) — koszt pracy liczy Atmosphere z grafiku i odbić.</p>}
           {raport.warnings.length > 0 && <div className="dialog-notice" style={{ marginTop: 12 }}><AlertTriangle size={16} /><span>{raport.warnings.join(' ')}</span></div>}
         </>
       )}

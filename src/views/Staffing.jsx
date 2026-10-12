@@ -4,7 +4,7 @@ import { NSLOT as V4_NSLOT, addCoverage as v4AddCoverage } from '../planning/tim
 import { upsample48to96 as v4Up96, mgrRequirement96, splitSchedule96, coverageSplit } from '../planning/coverageEngine.js';
 import { api } from '../lib/api.js';
 import { SZAB, optKsztaltuj, optRozbicie } from '../lib/demandEngine.js';
-import { colors, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, stationColor, wtMonday, ymd } from '../lib/domain.js';
+import { colors, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, stationFill, stationAccent, wtMonday, ymd } from '../lib/domain.js';
 import { mgrReqOpts } from '../lib/runtime.js';
 import { publikujMiesiac } from '../lib/publish.js';
 // ── Planowanie → Zapotrzebowanie i obsada ──
@@ -170,14 +170,14 @@ export const PlanObsada = ({ data, setPage }) => {
       {/* nagłówek */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
-          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#2674B8' }}>WORKRHYTHM PLANNING · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
-          <h1 className="text-[30px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Planowanie obsady</h1>
+          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#2674B8' }}>PLANOWANIE · ZAPOTRZEBOWANIE I OBSADA · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
+          <h1 className="text-[24px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: "-.02em" }}>Zapotrzebowanie i obsada</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Układaj grafik w oparciu o popyt, kompetencje i koszt pracy.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setPage('import')} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><Upload size={15} /> Importuj</button>
           <button onClick={() => setPorownaj((v) => !v)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><RefreshCw size={15} /> Porównaj</button>
-          <button onClick={opublikuj} disabled={busy} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><CheckCircle2 size={15} /> Opublikuj grafik</button>
+          <button onClick={opublikuj} disabled={busy} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: '#2674B8' }}><CheckCircle2 size={15} /> Opublikuj grafik</button>
         </div>
       </div>
 
@@ -194,8 +194,8 @@ export const PlanObsada = ({ data, setPage }) => {
             <option value="oszczedny">Oszczędny · −10% popytu</option>
             <option value="bezpieczny">Bezpieczny · +10% popytu</option>
           </select>
-          <span className="px-3 h-9 rounded-xl border text-xs font-bold flex items-center gap-1.5" style={{ borderColor: '#DCE3E9', color: wszystkieOpublikowane ? '#2674B8' : '#2674B8', backgroundColor: wszystkieOpublikowane ? '#E8F0F7' : '#fff6e4' }}>
-            <i className="w-2 h-2 rounded-full" style={{ backgroundColor: wszystkieOpublikowane ? '#2674B8' : '#79A2C0' }} />{wszystkieOpublikowane ? 'Published' : 'Preliminary'}
+          <span className="px-3 h-9 rounded-xl border text-xs font-bold flex items-center gap-1.5" style={{ borderColor: '#DCE3E9', color: wszystkieOpublikowane ? '#407362' : '#886929', backgroundColor: wszystkieOpublikowane ? '#E8F3EE' : '#FBF4E5' }}>
+            <i className="w-2 h-2 rounded-full" style={{ backgroundColor: wszystkieOpublikowane ? '#407362' : '#886929' }} />{wszystkieOpublikowane ? 'Opublikowany' : 'Wersja robocza'}
           </span>
         </span>
       </div>
@@ -206,26 +206,29 @@ export const PlanObsada = ({ data, setPage }) => {
       )}
 
       {/* KPI */}
-      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-        <KPI_KARTA label="Plan Hours" val={pobH1(kpi.plan)} sub={`${kpi.plan - kpi.req >= 0 ? '+' : ''}${pobH1(kpi.plan - kpi.req)} vs Required`} />
-        <KPI_KARTA label="Required Hours" val={pobH1(kpi.req)} sub="prognoza slotowa" />
-        <KPI_KARTA label="Excess" val={pobH1(kpi.exc)} sub={`${kpi.plan ? (kpi.exc / kpi.plan * 100).toFixed(1).replace('.', ',') : 0}% godzin`} kol="#2674B8" />
-        <KPI_KARTA label="Deficit" val={pobH1(kpi.def)} sub={`${niedobory.length} krytyczne sloty (dzień)`} kol="#A94455" />
-        <KPI_KARTA label="SPLH" val={kpi.splhP ? Math.round(kpi.splhP).toLocaleString('pl-PL') : '—'} sub={`cel ${splh}`} />
-        <KPI_KARTA label="COL" val={kpi.colP ? `${kpi.colP.toFixed(1).replace('.', ',')}%` : '—'} sub="target ≤ 20%" kol={kpi.colP > 20 ? '#A94455' : '#2674B8'} />
-        <KPI_KARTA label="Labor Cost" val={`${Math.round(kpi.koszt).toLocaleString('pl-PL')} zł`} sub="wg stawek kont" />
-        <KPI_KARTA label="Schedule Score" val={kpi.score} sub={kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Do poprawy' : 'Wymaga zmian'} kol={kpi.score >= 85 ? '#2674B8' : kpi.score >= 70 ? '#2674B8' : '#A94455'} />
+      {/* 4 najważniejsze metryki w jednym rzędzie (ocena grafiku jako pierwsza), szczegóły w drugim rzędzie */}
+      <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+        <KPI_KARTA label="Ocena grafiku" val={`${kpi.score} / 100`} sub={kpi.score >= 85 ? 'dobry plan' : kpi.score >= 70 ? 'do poprawy' : 'wymaga zmian'} kol={kpi.score >= 85 ? '#407362' : kpi.score >= 70 ? '#886929' : '#A94455'} />
+        <KPI_KARTA label="Godziny planu" val={pobH1(kpi.plan)} sub={`${kpi.plan - kpi.req >= 0 ? '+' : ''}${pobH1(kpi.plan - kpi.req)} względem wymaganych ${pobH1(kpi.req)}`} />
+        <KPI_KARTA label="Niedobór" val={pobH1(kpi.def)} sub={`${niedobory.length} krytycznych slotów w wybranym dniu`} kol={kpi.def > 0 ? '#A94455' : '#407362'} />
+        <KPI_KARTA label="Nadmiar (crew)" val={pobH1(kpi.exc)} sub={`${kpi.plan ? (kpi.exc / kpi.plan * 100).toFixed(1).replace('.', ',') : 0} % godzin planu`} kol={kpi.exc > 0 ? '#886929' : '#407362'} />
+      </div>
+      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+        <KPI_KARTA label="Godziny wymagane" val={pobH1(kpi.req)} sub="z prognozy slotowej 15 min" />
+        <KPI_KARTA label="SPLH" val={kpi.splhP ? Math.round(kpi.splhP).toLocaleString('pl-PL') : '—'} sub={`cel ${splh} zł/h`} />
+        <KPI_KARTA label="Koszt pracy (COL)" val={kpi.colP ? `${kpi.colP.toFixed(1).replace('.', ',')}%` : 'brak danych'} sub={kpi.colP ? 'cel ≤ 20 %' : 'brak stawek lub sprzedaży'} kol={kpi.colP > 20 ? '#A94455' : kpi.colP ? '#407362' : undefined} />
+        <KPI_KARTA label="Koszt pracy" val={kpi.koszt ? `${Math.round(kpi.koszt).toLocaleString('pl-PL')} zł` : 'brak danych'} sub={kpi.koszt ? 'wg stawek kont' : 'uzupełnij stawki w Pracownikach'} />
       </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: rekomOn ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr)' }}>
         <div className="min-w-0 space-y-4">
-          {/* wykres Demand vs Coverage */}
+          {/* wykres Zapotrzebowanie a obsada */}
           <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#DCE3E9' }}>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-              <div><p className="text-[15px] font-bold" style={{ color: colors.primary.darkest }}>Demand vs Coverage</p><p className="text-[11px]" style={{ color: colors.primary.light }}>wymagana i zaplanowana obsada · interwał 15 min · {day} {D.tryb === 'krzywa' ? '· krzywa (brak prognozy sprzedaży)' : ''}</p></div>
+              <div><p className="text-[15px] font-bold" style={{ color: colors.primary.darkest }}>Zapotrzebowanie a obsada</p><p className="text-[11px]" style={{ color: colors.primary.light }}>wymagana i zaplanowana obsada · interwał 15 min · {day} {D.tryb === 'krzywa' ? '· krzywa (brak prognozy sprzedaży)' : ''}</p></div>
               <span className="flex items-center gap-4 text-[11px]" style={{ color: colors.primary.dark }}>
-                <span className="flex items-center gap-1.5"><i className="w-4 h-0.5" style={{ backgroundColor: '#3F4A55' }} /> Required</span>
-                <span className="flex items-center gap-1.5"><i className="w-4 border-t-2 border-dashed" style={{ borderColor: '#2674B8' }} /> Scheduled</span>
+                <span className="flex items-center gap-1.5"><i className="w-4 h-0.5" style={{ backgroundColor: '#3F4A55' }} /> Wymagane</span>
+                <span className="flex items-center gap-1.5"><i className="w-4 border-t-2 border-dashed" style={{ borderColor: '#2674B8' }} /> Zaplanowane</span>
                 <button onClick={() => setPage('optymalizacja')} className="px-3 h-8 rounded-lg border text-xs font-bold" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}>Parametry popytu</button>
               </span>
             </div>
@@ -240,7 +243,7 @@ export const PlanObsada = ({ data, setPage }) => {
             {/* heatmapa pokrycia */}
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[12px] font-bold" style={{ color: colors.primary.darkest }}>Coverage heatmap <span className="font-normal text-[10.5px]" style={{ color: colors.primary.light }}>· kliknij slot, aby zobaczyć szczegóły</span></p>
+                <p className="text-[12px] font-bold" style={{ color: colors.primary.darkest }}>Mapa pokrycia <span className="font-normal text-[10.5px]" style={{ color: colors.primary.light }}>· kliknij slot, aby zobaczyć szczegóły</span></p>
                 <span className="flex items-center gap-3 text-[10.5px]" style={{ color: colors.primary.dark }}><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#2674B8' }} /> Pokrycie</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#79A2C0' }} /> Nadmiar</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#A94455' }} /> Niedobór</span></span>
               </div>
               <div className="flex gap-1">
@@ -269,7 +272,7 @@ export const PlanObsada = ({ data, setPage }) => {
               </div>
             </div>
             <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: '#E4E8EC' }}>
-              <button onClick={() => setModal({ date: day, start: '08:00', end: '16:00', station: stacje[0], osoba: '' })} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.darkest }}><Plus size={15} /> Dodaj zmianę</button>
+              <button onClick={() => setModal({ date: day, start: '08:00', end: '16:00', station: stacje[0], osoba: '' })} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.medium }}><Plus size={15} /> Dodaj zmianę</button>
               <button onClick={() => { setPage('wt'); }} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><FileSpreadsheet size={15} /> Szablon dnia</button>
               <button onClick={() => setRekomOn((v) => !v)} className="ml-auto px-4 h-10 rounded-xl text-sm font-bold flex items-center gap-2" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>{rekomOn ? 'Ukryj rekomendacje' : 'Pokaż rekomendacje'}</button>
             </div>
@@ -287,9 +290,9 @@ export const PlanObsada = ({ data, setPage }) => {
                       <div className="min-w-0"><p className="text-[13px] font-bold truncate" style={{ color: colors.primary.darkest }}>{w.name}</p><p className="text-[10.5px] truncate" style={{ color: colors.primary.light }}>{w.rola}{w.zm[0] ? ` · ${w.zm[0].station}` : ''}</p></div>
                       {w.zm.some((x) => konfliktZmiany(x)) && <AlertTriangle size={14} className="shrink-0" style={{ color: '#A94455' }} title={w.zm.map((x) => konfliktZmiany(x)).filter(Boolean).join('; ')} />}
                     </div>
-                    <div className="relative flex-1 py-3" style={{ backgroundImage: 'repeating-#F7F8FA' }}>
+                    <div className="relative flex-1 py-3" style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 calc(100% / 24 - 1px), #EDF0F3 calc(100% / 24 - 1px) calc(100% / 24))' }}>
                       {w.zm.map((x, i) => { const a = pobOp(x.start); let b = pobOp(x.end); if (b <= a) b += 1440; const kfl = konfliktZmiany(x); return (
-                        <div key={i} title={`${x.start}–${x.end} · ${x.station}${kfl ? ` · ⚠ ${kfl}` : ''}`} className="absolute h-8 rounded-lg border flex items-center px-2 text-[11px] font-semibold truncate cursor-default" style={{ left: `${a / 1440 * 100}%`, width: `${Math.min(b - a, 1440 - a) / 1440 * 100}%`, top: 8, backgroundColor: kfl ? '#FAE9ED' : stationColor(x.station) + '22', borderColor: kfl ? '#EFC7D0' : stationColor(x.station) + '55', color: kfl ? '#A94455' : colors.primary.darkest, borderLeft: `3px solid ${kfl ? '#A94455' : stationColor(x.station)}` }}>{x.start}–{x.end} · {x.station}{kfl && <AlertTriangle size={11} className="ml-1 shrink-0" />}</div>
+                        <div key={i} title={`${x.start}–${x.end} · ${x.station}${kfl ? ` · ⚠ ${kfl}` : ''}`} className="absolute h-8 rounded-lg border flex items-center px-2 text-[11px] font-semibold truncate cursor-default" style={{ left: `${a / 1440 * 100}%`, width: `${Math.min(b - a, 1440 - a) / 1440 * 100}%`, top: 8, backgroundColor: kfl ? '#FAE9ED' : stationFill(x.station), borderColor: kfl ? '#A94455' : stationAccent(x.station), color: kfl ? '#A94455' : colors.primary.darkest, borderLeft: `3px solid ${kfl ? '#A94455' : stationAccent(x.station)}` }}>{x.start}–{x.end} · {x.station}{kfl && <AlertTriangle size={11} className="ml-1 shrink-0" />}</div>
                       ); })}
                     </div>
                   </div>
@@ -297,12 +300,12 @@ export const PlanObsada = ({ data, setPage }) => {
                 {otwarte.map((o, i) => (
                   <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F8FA' }}>
                     <div className="w-56 shrink-0 px-4 py-3 flex items-center gap-2.5">
-                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#C7B4BB', color: '#65717C' }}><Plus size={15} /></button>
+                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#9DA4AA', color: '#65717C' }}><Plus size={15} /></button>
                       <div><p className="text-[13px] font-bold" style={{ color: colors.primary.dark }}>Otwarta zmiana</p><p className="text-[10.5px]" style={{ color: '#A94455' }}>niedobór {pobH1(o.h)}</p></div>
                       <AlertTriangle size={14} style={{ color: '#A94455' }} />
                     </div>
                     <div className="relative flex-1 py-3">
-                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="absolute h-8 rounded-lg border-2 border-dashed flex items-center px-2 text-[11px] font-semibold" style={{ left: `${pobOp(o.od) / 1440 * 100}%`, width: `${((pobOp(o.do) <= pobOp(o.od) ? pobOp(o.do) + 1440 : pobOp(o.do)) - pobOp(o.od)) / 1440 * 100}%`, top: 8, borderColor: '#C7A9B3', color: '#2674B8', backgroundImage: 'repeating-#F5ECEF' }}>{o.od}–{o.do} · Nieprzypisana</button>
+                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="absolute h-8 rounded-lg border-2 border-dashed flex items-center px-2 text-[11px] font-semibold" style={{ left: `${pobOp(o.od) / 1440 * 100}%`, width: `${((pobOp(o.do) <= pobOp(o.od) ? pobOp(o.do) + 1440 : pobOp(o.do)) - pobOp(o.od)) / 1440 * 100}%`, top: 8, borderColor: '#9DA4AA', color: '#2674B8', backgroundImage: 'repeating-linear-gradient(135deg, #E8F0F7 0 6px, #FFFFFF 6px 12px)' }}>{o.od}–{o.do} · Nieprzypisana</button>
                     </div>
                   </div>
                 ))}
@@ -327,11 +330,11 @@ export const PlanObsada = ({ data, setPage }) => {
               </div>
               <div className="space-y-3">
                 {niedobory.slice(0, 2).map((z, i) => (
-                  <div key={i} className="border rounded-xl p-3" style={{ borderColor: '#E9D6DC' }}>
+                  <div key={i} className="border rounded-xl p-3" style={{ borderColor: '#E8F0F7' }}>
                     <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#FAE9ED', color: '#A94455' }}>{pobHH(z.od * 15)}–{pobHH(z.do * 15)}</span>
                     <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Uzupełnij niedobór obsady</p>
                     <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>Dodaj zmianę pokrywającą ten zakres albo wydłuż sąsiednią.</p>
-                    <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Deficit −{pobH1((z.do - z.od) / 4)}</span></div>
+                    <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Niedobór −{pobH1((z.do - z.od) / 4)}</span></div>
                     <button onClick={() => setModal({ date: day, start: pobHH(z.od * 15), end: pobHH(z.do * 15), station: stacje[0], osoba: '' })} className="text-[12px] font-bold mt-2" style={{ color: '#2674B8' }}>Dodaj zmianę →</button>
                   </div>
                 ))}
@@ -340,12 +343,12 @@ export const PlanObsada = ({ data, setPage }) => {
                     <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>{pobHH(doSkrocenia.zakres.od * 15)}–{pobHH(doSkrocenia.zakres.do * 15)}</span>
                     <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Usuń nadmiar obsady</p>
                     <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>Skróć zmianę {doSkrocenia.osoba} do {pobHH(doSkrocenia.zakres.od * 15)} — pokrycie pozostanie pełne.</p>
-                    <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Koszt −{Math.round(kosztGodzin(kontoZm(doSkrocenia.x), doSkrocenia.zakres.h))} zł</span><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Excess −{pobH1(doSkrocenia.zakres.h)}</span></div>
+                    <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Koszt −{Math.round(kosztGodzin(kontoZm(doSkrocenia.x), doSkrocenia.zakres.h))} zł</span><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Nadmiar −{pobH1(doSkrocenia.zakres.h)}</span></div>
                     <button onClick={() => skroc(doSkrocenia)} className="text-[12px] font-bold mt-2" style={{ color: '#2674B8' }}>Zastosuj →</button>
                   </div>
                 )}
                 {konflikty.slice(0, 2).map((z, i) => (
-                  <div key={`k${i}`} className="border rounded-xl p-3" style={{ borderColor: '#E9D6DC' }}>
+                  <div key={`k${i}`} className="border rounded-xl p-3" style={{ borderColor: '#E8F0F7' }}>
                     <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#FAE9ED', color: '#A94455' }}>{z.x.start}–{z.x.end}</span>
                     <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Konflikt: {(kontoZm(z.x) || { name: z.x.name }).name}</p>
                     <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>{z.k}.</p>
@@ -354,7 +357,7 @@ export const PlanObsada = ({ data, setPage }) => {
                 ))}
                 {!niedobory.length && !doSkrocenia && !konflikty.length && <p className="text-[12px] text-center py-2" style={{ color: colors.primary.light }}>Brak sugestii — plan wygląda dobrze. ✓</p>}
               </div>
-              <button onClick={uruchomOptymalizator} className="w-full mt-3 h-11 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2" style={{ backgroundColor: colors.primary.darkest }}><LayoutGrid size={15} /> Uruchom optymalizator</button>
+              <button onClick={uruchomOptymalizator} className="w-full mt-3 h-11 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2" style={{ backgroundColor: colors.primary.medium }}><LayoutGrid size={15} /> Uruchom optymalizator</button>
               {propozycje && (
                 <div className="mt-3 border-t pt-3" style={{ borderColor: '#E4E8EC' }}>
                   <p className="text-[12px] font-bold mb-2" style={{ color: colors.primary.darkest }}>Propozycje ({propozycje.length}) · {pobH1(propozycje.reduce((a, x) => a + x.h, 0))}</p>
@@ -392,7 +395,7 @@ export const PlanObsada = ({ data, setPage }) => {
             </div>
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setModal(null)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button>
-              <button disabled={busy} onClick={zapiszModal} className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}>Dodaj do grafiku</button>
+              <button disabled={busy} onClick={zapiszModal} className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Dodaj do grafiku</button>
             </div>
           </div>
         </div>

@@ -78,7 +78,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
       </section>
       <section className="analytics-grid">
         <article className="panel performance-chart">
-          <div className="panel-title"><div><span>SPRZEDAŻ VS COST OF LABOUR</span><h2>Wzrost przy malejącym udziale kosztu</h2></div><div className="forecast-legend"><span><i className="sales-key" />Sprzedaż tys.</span><span><i className="hours-key" />COL %</span></div></div>
+          <div className="panel-title"><div><span>SPRZEDAŻ A KOSZT PRACY (COL)</span><h2>{(() => { const pts = agreg.map(([, o], i) => [o.sprzedaz || 0, colD[i]]).filter(([s2, c]) => s2 > 0 && c != null); if (pts.length < 3) return pts.length ? 'Za mało miesięcy z pełnymi danymi, by ocenić trend' : 'Brak danych o sprzedaży i koszcie'; const a = pts.slice(0, Math.floor(pts.length / 2)), b = pts.slice(Math.ceil(pts.length / 2)); const sr = (x, k) => x.reduce((p, q) => p + q[k], 0) / x.length; const dS = sr(b, 0) / Math.max(1, sr(a, 0)) - 1, dC = sr(b, 1) - sr(a, 1); const w = dS > 0.03 ? 'Sprzedaż rośnie' : dS < -0.03 ? 'Sprzedaż spada' : 'Sprzedaż stabilna'; const c = dC < -0.5 ? 'udział kosztu maleje' : dC > 0.5 ? 'udział kosztu rośnie' : 'udział kosztu bez zmian'; return `${w}, ${c} (${dC > 0 ? '+' : ''}${dC.toFixed(1).replace('.', ',')} pkt proc.)`; })()}</h2></div><div className="forecast-legend"><span><i className="sales-key" />Sprzedaż tys.</span><span><i className="hours-key" />COL %</span></div></div>
           <div className="dual-chart">
             {agreg.map(([k, o], i) => (
               <div key={k} title={`${k}: ${fmtA(o.sprzedaz || 0)} zł • COL ${colD[i] != null ? colD[i].toFixed(1) : '—'}%`}>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal, Sparkles, Menu, Eye, EyeOff, ShieldCheck, ArrowRight, Zap, ArrowLeftRight, Gauge, CircleDollarSign, Bot } from 'lucide-react';
+import { Cloud, Lock, Upload, Printer, Calendar, Users, LayoutGrid, RefreshCw, LogOut, Check, X, AlertCircle, FileSpreadsheet, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Home, Settings, Download, Clock, AlertTriangle, CalendarCheck2, Clock3, ExternalLink, Filter, MessageSquare, Search, Smartphone, UserCheck, Coffee, CreditCard, LogIn, Monitor, Wifi, CheckCircle2, Bell, LayoutDashboard, TrendingUp, Activity, BookOpen, TimerReset, Smartphone as SmartphoneIcon, MoreHorizontal, Sparkles, Menu, Eye, EyeOff, ShieldCheck, ArrowRight, Zap, ArrowLeftRight, Gauge, CircleDollarSign, Bot, ClipboardList, GraduationCap } from 'lucide-react';
 import { NSLOT as V4_NSLOT, slotLabel as v4SlotLabel, addCoverage as v4AddCoverage } from './planning/timeSlots.js';
 import { coverageSummary as v4Coverage, upsample48to96 as v4Up96, mgrRequirement96, splitSchedule96, coverageSplit } from './planning/coverageEngine.js';
 import { parseGrafik, exportPoziomy } from './parseGrafik.js';
@@ -16,11 +16,13 @@ import { ForecastPlan } from './views/DemandModel.jsx';
 import { BudgetPlan } from './views/BudgetPlan.jsx';
 import { PlanObsada } from './views/Staffing.jsx';
 import { AutoplanAOP } from './views/Autoplan.jsx';
+import { WorkModelView } from './views/WorkModel.jsx';
+import { QualificationsView } from './views/Qualifications.jsx';
 import { MonthPlan } from './views/MonthPlan.jsx';
 import { ForecastQualityPage } from './views/ForecastQuality.jsx';
 import { API_BASE, HUB_URL, api, store } from './lib/api.js';
 import { D3, NS, SZAB, f0, optRozbicie } from './lib/demandEngine.js';
-import { FUNKCJE, WT_TICKS, colors, dayNames, dniMiesiaca, dniPelne, etykietaStacji, funkcjaLabel, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, months, monthsGen, ocenOknoDyspozycji, opisZmiany, paraOpis, scalParyPlan, stationColor, stationColors, statusZamiany, wtAct, wtDur, wtHours, wtKey, wtMonday, wtRel, ymd } from './lib/domain.js';
+import { FUNKCJE, WT_TICKS, colors, dayNames, dniMiesiaca, dniPelne, etykietaStacji, funkcjaLabel, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, months, monthsGen, ocenOknoDyspozycji, opisZmiany, paraOpis, scalParyPlan, stationColor, stationColors, statusZamiany, wtAct, wtDur, wtHours, wtKey, wtMonday, wtRel, ymd, stationTone, stationFill, stationAccent } from './lib/domain.js';
 import { publikujMiesiac, setComplianceHandler, setDyspoHandler, potwierdzDyspozycje } from './lib/publish.js';
 import { UNIT, mgrReqOpts, setPlanParams, setProfDow, setUnit, unitLabel } from './lib/runtime.js';
 import { Btn, DNI_KROTKIE, DialogS, Header, MHead, MMetric, Toast, opisDnia } from './ui/primitives.jsx';
@@ -528,11 +530,11 @@ const ComplianceGate = () => {
   if (!st) return null;
   const zamknij = () => { st.cancel(); setSt(null); };
   return (
-    <DialogS title="Grafik narusza reguły prawa pracy" kicker={`PUBLIKACJA • ${st.ym} • ${st.summary.block || 0} BLOKAD`} description={st.error} onClose={zamknij}
+    <DialogS title={st.tryb === 'audyt' ? 'Grafik jest niekompletny operacyjnie' : 'Grafik narusza reguły prawa pracy'} kicker={`PUBLIKACJA • ${st.ym} • ${st.summary.block || 0} ${st.tryb === 'audyt' ? 'LUK KRYTYCZNYCH' : 'BLOKAD'}`} description={st.error} onClose={zamknij}
       actions={<><button onClick={zamknij}>Wróć do grafiku</button><button className="dialog-primary" disabled={busy || reason.trim().length < 5} onClick={async () => { setBusy(true); await st.retry(reason.trim()); setBusy(false); setSt(null); }}><Check size={15} /> Opublikuj mimo to</button></>}>
       <div className="dialog-list">{st.violations.slice(0, 40).map((v, i) => <div key={i}><i>!</i><span><strong>{v.name} • {v.date}</strong><small>{v.rule}: {v.message}</small></span><em>{v.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div>
       <label className="dialog-field full" style={{ marginTop: 12 }}>Uzasadnienie wyjątku (trafi do dziennika audytu)<textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="np. pisemna zgoda pracownika na dodatkową zmianę, nagła absencja" /></label>
-      <div className="dialog-notice" style={{ marginTop: 12 }}><ShieldCheck size={16} /><span>Lepsza droga: wróć do siatki i popraw zmiany. Wymuszenie publikacji jest odnotowane z autorem, czasem i powodem.</span></div>
+      <div className="dialog-notice" style={{ marginTop: 12 }}><ShieldCheck size={16} /><span>{st.tryb === 'audyt' ? 'Luka krytyczna to brak kierownika, przerwa w obsadzie stanowiska krytycznego względem zatwierdzonego modelu pracy, zmiana ponad 12 h albo zmiana wbrew dyspozycji. Eksport roboczy jest możliwy bez publikacji; publikacja z uzasadnieniem trafia do dziennika audytu.' : 'Lepsza droga: wróć do siatki i popraw zmiany. Wymuszenie publikacji jest odnotowane z autorem, czasem i powodem.'}</span></div>
     </DialogS>
   );
 };
@@ -540,7 +542,7 @@ const ComplianceGate = () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Powłoka Studio: obszary (menu boczne) → moduły (pasek poziomy) → widok. Katalog w navigation.js.
 // ═══════════════════════════════════════════════════════════════════════════════
-const NAV_ICONS = { Sparkles, LayoutDashboard, TrendingUp, Calendar, Activity, Gauge, Users, Settings, Zap, CircleDollarSign, LayoutGrid, Bot, BookOpen, TimerReset, Clock3, CheckCircle2, Clock, ShieldCheck, Printer, CalendarCheck2, RefreshCw, Upload };
+const NAV_ICONS = { Sparkles, LayoutDashboard, TrendingUp, Calendar, Activity, Gauge, Users, Settings, Zap, CircleDollarSign, LayoutGrid, Bot, BookOpen, TimerReset, Clock3, CheckCircle2, Clock, ShieldCheck, Printer, CalendarCheck2, RefreshCw, Upload, ClipboardList, GraduationCap };
 const NavIcon = ({ name, size = 18 }) => { const I = NAV_ICONS[name] || LayoutGrid; return <I size={size} />; };
 
 const Sidebar = ({ moduleId, go, logout, role, badges = {}, userName, mini, setMini, open, onClose }) => {
@@ -638,11 +640,12 @@ const ModuleSearch = ({ role, go }) => {
   );
 };
 
+// Pasek pod metryką tylko wtedy, gdy ma licznik i mianownik (progress = { pct, opis }); bez danych — brak paska, nie atrapa.
 const MetricCard = ({ icon: Icon, label, value, helper, tone, progress }) => (
   <article className="metric-card">
     <span className={`metric-icon ${tone}`}><Icon size={18} /></span>
     <div className="metric-copy"><span>{label}</span><strong>{value}</strong><small>{helper}</small></div>
-    <span className="metric-progress"><i style={{ width: `${Math.max(4, Math.min(100, progress || 0))}%` }} /></span>
+    {progress && Number.isFinite(progress.pct) ? <span className="metric-progress" title={progress.opis}><i style={{ width: `${Math.max(2, Math.min(100, progress.pct))}%` }} /><em>{progress.opis}</em></span> : <span className="metric-progress empty"><em>brak danych do porównania</em></span>}
   </article>
 );
 
@@ -730,7 +733,12 @@ const Dashboard = ({ data, setPage, userName }) => {
   const fPokrycie = Math.round(cv.coveragePct);
   const fKoszt = sprzedazDzis ? Math.max(0, Math.min(100, Math.round(100 - Math.max(0, colDzis - 20) * 6))) : 100;
   const fCzas = rozpoczete.length ? Math.round(naCzas / rozpoczete.length * 100) : 100;
-  const score = Math.round(fPokrycie * 0.4 + fKoszt * 0.3 + fCzas * 0.3);
+  // puls liczony tylko z realnych składników: pokrycie (gdy jest plan dnia), koszt (gdy jest sprzedaż), punktualność (gdy są rozpoczęte zmiany)
+  const skladniki = [dzienne.length ? ['Pokrycie popytu', fPokrycie, 'blue'] : null, sprzedazDzis ? ['Plan kosztów', fKoszt, 'mint'] : null, rozpoczete.length ? ['Punktualność', fCzas, 'violet'] : null].filter(Boolean);
+  const score = skladniki.length ? Math.round(skladniki.reduce((a, x) => a + x[1], 0) / skladniki.length) : null;
+  // porównanie prognozy dnia ze średnią tego dnia tygodnia z ostatnich 4 tygodni (POS)
+  const sredniaDow = (() => { const sd = ((data.salesData || {}).sales || {}); const dw = new Date(dzis + 'T12:00:00').getDay(); const v = Object.entries(sd).filter(([d, x]) => d < dzis && new Date(d + 'T12:00:00').getDay() === dw && Number(x) > 0).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 4).map(([, x]) => Number(x)); return v.length >= 2 ? v.reduce((a, b) => a + b, 0) / v.length : null; })();
+  const popytH = demand.reduce((a, v) => a + v, 0);
   const KOLORY_AV = ['blue', 'mint', 'violet', 'coral'];
   const sw = (data.salesData || {}).swiezosc;
   const decyzje = (data.swaps || []).filter((x) => x.status === 'open' && x.volunteers.length > 0).length + (data.absences || []).filter((x) => x.status === 'open').length + (data.availPending || 0);
@@ -751,10 +759,10 @@ const Dashboard = ({ data, setPage, userName }) => {
       <div className="page-wrap" style={{ paddingTop: 10 }}>
         <PosFreshness sw={(data.salesData || {}).swiezosc} onImport={() => setPage('import-eksport')} />
         <section className="metrics-grid">
-          <MetricCard icon={TrendingUp} label="SPRZEDAŻ · PROGNOZA DZIŚ" value={sprzedazDzis ? `${Math.round(sprzedazDzis).toLocaleString('pl-PL')} zł` : '—'} helper={fcDzis ? 'prognoza ORDO Forecast' : 'brak danych prognozy'} tone="blue" progress={72} />
-          <MetricCard icon={Clock} label="PLAN GODZIN DZIŚ" value={`${planH.toFixed(1).replace('.', ',')} h`} helper={`${dzienne.length} zmian · ${new Set(dzienne.map((x) => x.name)).size} osób`} tone="mint" progress={Math.min(100, planH / 1.6)} />
-          <MetricCard icon={Activity} label="POKRYCIE POPYTU" value={`${fPokrycie}%`} helper={lukaIdx >= 0 ? `luka o ${HOURS[lukaIdx]}:00` : 'bez luk obsadowych'} tone="violet" progress={fPokrycie} />
-          <MetricCard icon={CreditCard} label="COST OF LABOUR" value={sprzedazDzis ? `${colDzis.toFixed(1).replace('.', ',')}%` : '—'} helper={`koszt ${Math.round(kosztDzis).toLocaleString('pl-PL')} zł · target ≤ 20%`} tone="coral" progress={sprzedazDzis ? Math.min(100, colDzis * 4) : 10} />
+          <MetricCard icon={TrendingUp} label="SPRZEDAŻ · PROGNOZA DZIŚ" value={sprzedazDzis ? `${Math.round(sprzedazDzis).toLocaleString('pl-PL')} zł` : '—'} helper={fcDzis ? 'prognoza dzienna (P4)' : sprzedazDzis ? 'sprzedaż z POS' : 'brak prognozy — zaimportuj POS'} tone="blue" progress={sprzedazDzis && sredniaDow ? { pct: sprzedazDzis / sredniaDow * 100, opis: `${Math.round(sprzedazDzis / sredniaDow * 100)} % średniej tego dnia tygodnia (4 tyg.)` } : null} />
+          <MetricCard icon={Clock} label="PLAN GODZIN DZIŚ" value={`${planH.toFixed(1).replace('.', ',')} h`} helper={`${dzienne.length} zmian · ${new Set(dzienne.map((x) => x.name)).size} osób`} tone="blue" progress={popytH ? { pct: planH / popytH * 100, opis: `${planH.toFixed(0)} h planu / ${popytH} h zapotrzebowania` } : null} />
+          <MetricCard icon={Activity} label="POKRYCIE POPYTU" value={dzienne.length ? `${fPokrycie}%` : '—'} helper={!dzienne.length ? 'brak zmian w grafiku na dziś' : lukaIdx >= 0 ? `luka o ${HOURS[lukaIdx]}:00` : 'bez luk obsadowych'} tone={!dzienne.length ? 'blue' : fPokrycie >= 95 ? 'mint' : fPokrycie >= 85 ? 'amber' : 'coral'} progress={dzienne.length ? { pct: fPokrycie, opis: `${fPokrycie} % slotów 15 min z pełną obsadą` } : null} />
+          <MetricCard icon={CreditCard} label="KOSZT PRACY (COL)" value={sprzedazDzis && kosztDzis ? `${colDzis.toFixed(1).replace('.', ',')}%` : '—'} helper={sprzedazDzis && kosztDzis ? `koszt ${Math.round(kosztDzis).toLocaleString('pl-PL')} zł · cel ≤ 20 %` : !kosztDzis ? 'brak stawek — koszt nieznany' : 'brak sprzedaży do porównania'} tone={sprzedazDzis && kosztDzis ? (colDzis <= 20 ? 'mint' : colDzis <= 24 ? 'amber' : 'coral') : 'blue'} progress={sprzedazDzis && kosztDzis ? { pct: colDzis / 20 * 100, opis: `${colDzis.toFixed(1).replace('.', ',')} % z celu 20 %` } : null} />
         </section>
 
         <section className="dashboard-grid">
@@ -800,13 +808,12 @@ const Dashboard = ({ data, setPage, userName }) => {
           </article>
 
           <article className="panel pulse-panel">
-            <div className="panel-head"><div><span className="section-kicker">DZISIAJ</span><h2>Puls operacyjny</h2></div><div className="score-chip"><Sparkles size={14} /> {score} / 100</div></div>
-            <div className="pulse-ring"><div><strong>{score}</strong><span>{score >= 85 ? 'dobrze' : score >= 70 ? 'uwaga' : 'reaguj'}</span></div></div>
+            <div className="panel-head"><div><span className="section-kicker">DZISIAJ</span><h2>Puls operacyjny</h2></div><div className="score-chip">{score == null ? 'brak danych' : <><Sparkles size={14} /> {score} / 100</>}</div></div>
+            <div className={`pulse-ring${score == null ? ' empty' : score >= 85 ? ' ok' : score >= 70 ? ' warn' : ' bad'}`}><div><strong>{score == null ? '—' : score}</strong><span>{score == null ? 'brak zmian i sprzedaży' : score >= 85 ? 'dobrze' : score >= 70 ? 'uwaga' : 'reaguj'}</span></div></div>
             <div className="pulse-factors">
-              <div><span><i className="dot mint" />Plan kosztów</span><strong>{fKoszt}%</strong></div>
-              <div><span><i className="dot blue" />Pokrycie popytu</span><strong>{fPokrycie}%</strong></div>
-              <div><span><i className="dot coral" />Zgodność czasu</span><strong>{fCzas}%</strong></div>
-              <div><span><i className="dot violet" />Gotowość stacji</span><strong>100%</strong></div>
+              {skladniki.map(([n, v, t]) => <div key={n}><span><i className={`dot ${t}`} />{n}</span><strong>{v}%</strong></div>)}
+              {!skladniki.length && <div><span>Puls liczy się z pokrycia popytu, kosztu pracy i punktualności — dziś brak tych danych.</span></div>}
+              {skladniki.length > 0 && <div><span style={{ color: 'var(--muted)' }}>średnia z {skladniki.length} {skladniki.length === 1 ? 'składnika' : 'składników'}</span><strong /></div>}
             </div>
           </article>
         </section>
@@ -935,12 +942,12 @@ const ImportPage = ({ data, setPage }) => {
   const obsadaDzienna = () => {
     const dzis2 = new Date().toISOString().slice(0, 10);
     const zm2 = (data.shifts || []).filter((x) => x.date === dzis2 && !jestInstruktor(x)).sort((a2, b2) => String(a2.start).localeCompare(b2.start));
-    pobierzCSV(`ordo-obsada-${dzis2}.csv`, ['Godziny;Pracownik;Stanowisko', ...zm2.map((x) => `${x.start}–${x.end};${x.name};${x.station || ''}`)]);
+    pobierzCSV(`atmosphere-obsada-${dzis2}.csv`, ['Godziny;Pracownik;Stanowisko', ...zm2.map((x) => `${x.start}–${x.end};${x.name};${x.station || ''}`)]);
     data.show('Pobrano zestawienie dziennej obsady');
   };
   const planSzkolen = () => {
     const zm2 = (data.shifts || []).filter((x) => x.date && x.date.slice(0, 7) === mcNow && (x.rola === 'training' || x.szkoli));
-    pobierzCSV(`ordo-szkolenia-${mcNow}.csv`, ['Data;Pracownik;Rola;Partner;Stanowisko;Godziny', ...zm2.map((x) => `${x.date};${x.name};${x.szkoli ? 'instruktor' : 'uczeń'};${x.partnerSzk || x.partner || ''};${x.station || ''};${x.start}–${x.end}`)]);
+    pobierzCSV(`atmosphere-szkolenia-${mcNow}.csv`, ['Data;Pracownik;Rola;Partner;Stanowisko;Godziny', ...zm2.map((x) => `${x.date};${x.name};${x.szkoli ? 'instruktor' : 'uczeń'};${x.partnerSzk || x.partner || ''};${x.station || ''};${x.start}–${x.end}`)]);
     data.show('Pobrano plan szkoleń');
   };
 
@@ -1266,6 +1273,10 @@ const PublishCard = ({ data }) => {
     else data.show(r.error || 'Błąd publikacji', 'error');
   };
   const rozn = info && info.roznice;
+  // Audyt operacyjny miesiąca (kompletność): luki krytyczne blokują publikację, „do decyzji” — nie
+  const [aud, setAud] = useState(null);
+  const [audOpen, setAudOpen] = useState(false);
+  useEffect(() => { if (!ym) return; setAud(null); api(`/schedule-audit?month=${ym}`).then((r) => { if (r && r.success && r.podsumowanie && Array.isArray(r.problemy)) setAud(r); }).catch(() => {}); }, [ym, data.shifts]);
   return (
     <div className="bg-white rounded-xl p-4 shadow-sm border mb-3" style={{ borderColor: colors.primary.bg }}>
       <div className="flex flex-wrap items-center gap-3">
@@ -1278,10 +1289,17 @@ const PublishCard = ({ data }) => {
           : <span className="text-xs font-medium" style={{ color: '#2674B8' }}>nieopublikowany — pracownicy nie widzą tego miesiąca po pierwszej publikacji systemu</span>)}
         {rozn && rozn.razem > 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>zmiany od publikacji: +{rozn.dodane} / ±{rozn.zmienione} / −{rozn.usuniete}</span>}
         {rozn && rozn.razem === 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>zgodny z publikacją</span>}
-        <button disabled={busy || !ym} onClick={publikuj} className="ml-auto px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.darkest }}>
+        {aud && <button onClick={() => setAudOpen((o) => !o)} title={aud.streszczenie} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: aud.podsumowanie.krytyczne ? '#FAE9ED' : aud.podsumowanie.wazne ? '#FBF1DC' : '#E8F3EE', color: aud.podsumowanie.krytyczne ? '#A94455' : aud.podsumowanie.wazne ? '#886929' : '#407362', border: 0, cursor: 'pointer' }}>audyt: {aud.podsumowanie.krytyczne ? `${aud.podsumowanie.krytyczne} luk krytycznych` : 'bez luk krytycznych'}{aud.podsumowanie.wazne ? ` • ${aud.podsumowanie.wazne} do decyzji` : ''}{audOpen ? ' ▴' : ' ▾'}</button>}
+        <button disabled={busy || !ym} onClick={publikuj} className="ml-auto px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>
           {busy ? 'Publikuję…' : info && info.opublikowany ? (rozn && rozn.razem > 0 ? 'Opublikuj nową wersję' : 'Opublikuj ponownie') : 'Opublikuj miesiąc'}
         </button>
       </div>
+      {audOpen && aud && (
+        <div className="mt-3">
+          <p className="text-xs mb-2" style={{ color: colors.primary.light }}>{aud.streszczenie} {aud.podsumowanie.blokujace != null && aud.podsumowanie.blokujace !== aud.podsumowanie.krytyczne ? `Publikację blokuje ${aud.podsumowanie.blokujace} z nich (bez zatwierdzonego modelu pracy przerwy stanowisk i brak kierownika są tylko informacją).` : ''}</p>
+          {aud.problemy.filter((p) => p.waga !== 'info').length ? <div className="dialog-list">{aud.problemy.filter((p) => p.waga !== 'info').slice(0, 60).map((p, i) => <div key={i}><i style={p.waga === 'krytyczna' ? { color: '#fff', background: '#A94455' } : undefined}>{p.waga === 'krytyczna' ? '!' : 'i'}</i><span><strong>{p.nazwa} • {p.date}{p.od ? ` ${p.od}–${p.do}` : ''}</strong><small>{p.opis}{p.naprawa ? ` → ${p.naprawa}` : ''}</small></span><em>{p.waga}</em></div>)}</div> : <div className="dialog-empty" style={{ padding: 12 }}>Brak problemów krytycznych i do decyzji.{aud.podsumowanie.info ? ` ${aud.podsumowanie.info} informacji (np. brak deklaracji dyspozycji).` : ''}</div>}
+        </div>
+      )}
     </div>
   );
 };
@@ -1451,7 +1469,7 @@ const TaLive = ({ data }) => {
   const raport = () => {
     const rows = ['Pracownik;Plan;Wejście;Wyjście;Łącznie;Różnica;Status', ...wierszeTA.map((w) => `${w.name};${w.planLbl};${w.inLbl};${w.outLbl};${w.lacznie};${w.roznica};${w.status}`)];
     const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = `czas-pracy-${day}.csv`; a2.click(); URL.revokeObjectURL(u);
+    const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = `atmosphere-czas-pracy-${day}.csv`; a2.click(); URL.revokeObjectURL(u);
   };
   const wejsc = wierszeTA.filter((w) => w.inLbl !== '—').length;
   const przerwLacz = wierszeTA.reduce((a2, w) => a2 + w.przer, 0);
@@ -1607,7 +1625,7 @@ const TerminalsCard = ({ data }) => {
           {terms.map((t) => (
             <div key={t.id} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}>
               <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate" style={{ color: colors.primary.darkest }}>{t.id}</p><p className="text-[11px] truncate" style={{ color: colors.primary.light }}>{t.name}{t.lastSeen ? ` · ostatnio: ${new Date(t.lastSeen).toLocaleString('pl-PL')}` : ' · jeszcze nie użyty'}</p></div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: t.active === false ? '#FAE9ED' : '#E8F0F7', color: t.active === false ? '#A94455' : '#2674B8' }}>{t.active === false ? 'wycofany' : 'aktywny'}</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: t.active === false ? '#FAE9ED' : '#E8F0F7', color: t.active === false ? '#A94455' : '#407362' }}>{t.active === false ? 'wycofany' : 'aktywny'}</span>
               <button onClick={() => przelacz(t)} className="text-xs font-medium" style={{ color: colors.primary.medium }}>{t.active === false ? 'przywróć' : 'wycofaj'}</button>
               <button onClick={() => usun(t)} className="text-red-300 hover:text-red-500"><Trash2 size={14} /></button>
             </div>
@@ -1706,11 +1724,11 @@ const SettingsPage = ({ data }) => {
 
         {resetReqs.length > 0 && (
           <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl" style={{ borderLeft: `4px solid #2674B8` }}>
-            <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Zgłoszenia resetu hasła <span className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white ml-1" style={{ backgroundColor: '#d87b52' }}>{resetReqs.length}</span></h3>
+            <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Zgłoszenia resetu hasła <span className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white ml-1" style={{ backgroundColor: '#886929' }}>{resetReqs.length}</span></h3>
             <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Zgłoszone z ekranu logowania. Reset generuje tymczasowe hasło do przekazania — pracownik ustawi własne przy pierwszym logowaniu.</p>
             <div className="space-y-2">
               {resetReqs.map((rq) => (
-                <div key={rq.login} className="flex items-center gap-3 px-3 py-2 rounded-lg flex-wrap" style={{ backgroundColor: '#fff2e8' }}>
+                <div key={rq.login} className="flex items-center gap-3 px-3 py-2 rounded-lg flex-wrap" style={{ backgroundColor: '#FBF4E5' }}>
                   <div className="min-w-0 flex-1"><p className="text-sm font-mono font-bold" style={{ color: colors.primary.darkest }}>{rq.login}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{rq.name || '—'} · {new Date(rq.at).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p></div>
                   <button onClick={() => zresetujHaslo(rq)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: '#292D32' }}>Resetuj hasło</button>
                   <button onClick={() => zamknijReq(rq)} className="text-xs font-semibold" style={{ color: '#A94455' }}>Odrzuć</button>
@@ -1755,7 +1773,7 @@ const SettingsPage = ({ data }) => {
 // ===================== PLAN GODZIN =====================
 
 // ===================== PRACOWNICY (konta użytkowników) =====================
-const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false, grafikName: '', aliasy: '', wymiarTygH: '', maxDobaH: '', stanowiska: '' };
+const emptyForm = { name: '', funkcja: 'CREW', umowa: 'UZ', stawka: 30, zus: false, instruktor: false, grafikName: '', aliasy: '', wymiarTygH: '', maxDobaH: '', stanowiska: '', godzMin: '', godzCel: '', godzMax: '' };
 
 const CopyField = ({ label, value }) => {
   const [ok, setOk] = useState(false);
@@ -1809,7 +1827,13 @@ const EmpForm = ({ init, onSave, onClose }) => {
               <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Wymiar tygodniowy (h)</label><input type="number" value={f.wymiarTygH ?? ''} onChange={(e) => set({ wymiarTygH: e.target.value })} placeholder="np. 40 (puste = brak)" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
               <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Maks. na dobę (h)</label><input type="number" value={f.maxDobaH ?? ''} onChange={(e) => set({ maxDobaH: e.target.value })} placeholder="np. 12" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
             </div>
-            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dozwolone stanowiska (po przecinku; puste = wszystkie)</label><input value={f.stanowiska || ''} onChange={(e) => set({ stanowiska: e.target.value })} placeholder="np. FRYTKI, PREP, ZMYWAK" className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} /></div>
+            <p className="text-[11px] font-semibold" style={{ color: colors.primary.dark, marginTop: 4 }}>Godziny w miesiącu (uzgodnione) — autoplan trzyma się ich zamiast „wymiar ÷ 7 × dni” i tolerancji 15 %</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Minimum (h)</label><input type="number" value={f.godzMin ?? ''} onChange={(e) => set({ godzMin: e.target.value })} placeholder={f.umowa === 'UOP' ? 'etat' : '0'} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Cel (h)</label><input type="number" value={f.godzCel ?? ''} onChange={(e) => set({ godzCel: e.target.value })} placeholder={f.umowa === 'UOP' ? 'z etatu' : 'brak'} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+              <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Maksimum (h)</label><input type="number" value={f.godzMax ?? ''} onChange={(e) => set({ godzMax: e.target.value })} placeholder={f.umowa === 'UOP' ? '= cel' : '160'} className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: colors.primary.bg }} /></div>
+            </div>
+            <div><label className="block text-xs mb-1" style={{ color: colors.primary.light }}>Dozwolone stanowiska (po przecinku; puste = wg macierzy kwalifikacji)</label><input value={f.stanowiska || ''} onChange={(e) => set({ stanowiska: e.target.value })} placeholder="np. FRYTKI, PREP, ZMYWAK" className="w-full px-3 py-2 rounded-lg border font-mono text-sm" style={{ borderColor: colors.primary.bg }} /></div>
           </div>
           </>)}
           {f.funkcja === 'CREW' && <label className="flex items-center gap-2 text-sm" style={{ color: colors.primary.dark }}><input type="checkbox" checked={!!f.instruktor} onChange={(e) => set({ instruktor: e.target.checked })} />Instruktor (szkoli innych pracowników)</label>}
@@ -1862,7 +1886,7 @@ const AdminEmployees = ({ data }) => {
     const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = 'zespol-i-konta.csv'; a2.click(); URL.revokeObjectURL(u);
   };
-  const edytuj = (e) => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', '), wymiarTygH: e.wymiarTygH || '', maxDobaH: e.maxDobaH || '', stanowiska: (e.stanowiska || []).join(', ') });
+  const edytuj = (e) => setForm({ id: e.id, name: e.name, funkcja: e.funkcja, umowa: e.umowa, stawka: e.stawka, zus: e.zus, instruktor: !!e.instruktor, grafikName: e.grafikName || '', aliasy: (e.aliasy || []).join(', '), wymiarTygH: e.wymiarTygH || '', maxDobaH: e.maxDobaH || '', stanowiska: (e.stanowiska || []).join(', '), godzMin: e.godzMin ?? '', godzCel: e.godzCel ?? '', godzMax: e.godzMax ?? '' });
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
@@ -2059,10 +2083,10 @@ const WTBreaks = ({ actual, onSave, locked, onClose }) => {
 // ===================== SHIFTCYCLES — cykle rotacyjne (rota) na bazie Blueprints =====================
 // ═════════ WORKRHYTHM · SHIFTCYCLES — rotacje cykliczne wg wzorca ═════════
 const ROT_ZESPOLY = [
-  { id: 'A', nazwa: 'Zespół A', kat: 'Kuchnia', kol: '#E8F0F7', ram: '#DFC9D1', tekst: '#2674B8' },
+  { id: 'A', nazwa: 'Zespół A', kat: 'Kuchnia', kol: '#E8F0F7', ram: '#DCE3E9', tekst: '#2674B8' },
   { id: 'B', nazwa: 'Zespół B', kat: 'Front', kol: '#EFEDEE', ram: '#D6D1D3', tekst: '#3A3438' },
-  { id: 'C', nazwa: 'Zespół C', kat: 'Dispatch', kol: '#F7EDF1', ram: '#E4CDD6', tekst: '#2674B8' },
-  { id: 'y', nazwa: 'Liderzy', kat: 'Manager', kol: '#3F4A55', ram: '#472934', tekst: '#F5ECEF' },
+  { id: 'C', nazwa: 'Zespół C', kat: 'Dispatch', kol: '#E8F0F7', ram: '#DCE3E9', tekst: '#2674B8' },
+  { id: 'y', nazwa: 'Liderzy', kat: 'Manager', kol: '#3F4A55', ram: '#292D32', tekst: '#E8F0F7' },
 ];
 const RotacjeWzor = ({ data, naGrafik }) => {
   const [tplId, setTplId] = useState('');
@@ -2139,7 +2163,7 @@ const RotacjeWzor = ({ data, naGrafik }) => {
         <div className="flex items-center gap-2">
           <button onClick={naGrafik} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><Calendar size={15} /> Wróć do grafiku</button>
           <button onClick={duplikuj} disabled={!det} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2 disabled:opacity-50" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}>Duplikuj cykl</button>
-          <button onClick={aktywuj} disabled={!det || robi} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><Check size={15} /> {robi ? 'Aktywuję…' : 'Aktywuj ShiftCycles'}</button>
+          <button onClick={aktywuj} disabled={!det || robi} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}><Check size={15} /> {robi ? 'Aktywuję…' : 'Aktywuj ShiftCycles'}</button>
         </div>
       </div>
       {/* pasek rotacji */}
@@ -2165,8 +2189,8 @@ const RotacjeWzor = ({ data, naGrafik }) => {
       <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: `repeat(${Math.min(ileCykli, 4)}, minmax(0, 1fr))` }}>
         {cykle.map((c, i) => (
           <button key={c.start} onClick={() => setAktCykl(i)} className="rounded-2xl border px-4 py-3 text-left" style={{ borderColor: aktCykl === i ? colors.primary.darkest : '#DCE3E9', backgroundColor: 'white', boxShadow: aktCykl === i ? `0 0 0 1px ${colors.primary.darkest}` : 'none' }}>
-            <p className="flex items-center gap-2 text-[13px] font-bold" style={{ color: colors.primary.darkest }}><span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] text-white" style={{ backgroundColor: aktCykl === i ? colors.primary.darkest : '#C7B4BB' }}>{i + 1}</span> Cykl {i + 1} · {c.label}</p>
-            <p className="text-[10.5px] mt-1 ml-8" style={{ color: colors.primary.light }}>{i === 0 ? 'Preliminary' : 'Draft'}</p>
+            <p className="flex items-center gap-2 text-[13px] font-bold" style={{ color: colors.primary.darkest }}><span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] text-white" style={{ backgroundColor: aktCykl === i ? colors.primary.darkest : '#9DA4AA' }}>{i + 1}</span> Cykl {i + 1} · {c.label}</p>
+            <p className="text-[10.5px] mt-1 ml-8" style={{ color: colors.primary.light }}>{i === 0 ? 'wstępny' : 'roboczy'}</p>
           </button>
         ))}
       </div>
@@ -2191,10 +2215,10 @@ const RotacjeWzor = ({ data, naGrafik }) => {
                   {z.wzorzec.map((w, i) => (
                     <td key={i} className="px-1.5 py-2.5 text-center">
                       {w ? <div className="rounded-xl border px-2 py-2" style={{ backgroundColor: z.kol, borderColor: z.ram }}><p className="text-[12px] font-bold" style={{ color: z.tekst }}>{w.zakres}</p><p className="text-[9.5px]" style={{ color: z.tekst }}>{w.etykieta}{w.n > 1 ? ` · ${w.n} os.` : ''}</p></div>
-                        : <div className="rounded-xl border px-2 py-2" style={{ backgroundColor: '#F1F6FA', borderColor: '#E4E8EC' }}><p className="text-[12px] font-bold" style={{ color: '#C7B4BB' }}>OFF</p><p className="text-[9.5px]" style={{ color: '#C7B4BB' }}>Regeneracja</p></div>}
+                        : <div className="rounded-xl border px-2 py-2" style={{ backgroundColor: '#F1F6FA', borderColor: '#E4E8EC' }}><p className="text-[12px] font-bold" style={{ color: '#9DA4AA' }}>OFF</p><p className="text-[9.5px]" style={{ color: '#9DA4AA' }}>Regeneracja</p></div>}
                     </td>
                   ))}
-                  <td className="px-3 py-2.5 text-center"><p className="text-[14px] font-bold" style={{ color: colors.primary.darkest }}>{Math.round(z.h)} h</p><p className="text-[9.5px]" style={{ color: z.osob && z.h / z.osob > 48 ? '#A94455' : '#2674B8' }}>{z.osob && z.h / z.osob > 48 ? `−${Math.round(z.h / z.osob - 48)} h` : 'w limicie'}</p></td>
+                  <td className="px-3 py-2.5 text-center"><p className="text-[14px] font-bold" style={{ color: colors.primary.darkest }}>{Math.round(z.h)} h</p><p className="text-[9.5px]" style={{ color: z.osob && z.h / z.osob > 48 ? '#A94455' : '#407362' }}>{z.osob && z.h / z.osob > 48 ? `−${Math.round(z.h / z.osob - 48)} h` : 'w limicie'}</p></td>
                 </tr>
               ))}
               {!zespoly.length && <tr><td colSpan={9} className="text-center py-8 text-sm" style={{ color: colors.primary.light }}>Wybierz Blueprint, aby zbudować rotację.</td></tr>}
@@ -2371,7 +2395,7 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={naGrafik} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><Calendar size={15} /> Wróć do grafiku</button>
-          <button onClick={otworzApply} disabled={!det} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><Check size={15} /> Zastosuj do tygodnia</button>
+          <button onClick={otworzApply} disabled={!det} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}><Check size={15} /> Zastosuj do tygodnia</button>
         </div>
       </div>
       <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(280px, 360px) minmax(0, 1fr)' }}>
@@ -2383,7 +2407,7 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
             {[...lista].sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0)).map((t) => (
               <button key={t.id} onClick={() => setSelId(t.id)} className="w-full text-left rounded-2xl border p-3.5 transition-shadow hover:shadow-sm" style={{ borderColor: selId === t.id ? colors.primary.medium : '#e8edef', boxShadow: selId === t.id ? '0 0 0 1px ' + colors.primary.medium : 'none' }}>
                 <div className="flex items-center gap-2.5 mb-2.5">
-                  <span className="w-9 h-9 rounded-xl border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#C7B4BB', color: colors.primary.medium }}><LayoutGrid size={16} /></span>
+                  <span className="w-9 h-9 rounded-xl border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#9DA4AA', color: colors.primary.medium }}><LayoutGrid size={16} /></span>
                   <div className="min-w-0 flex-1"><p className="text-[13.5px] font-bold truncate" style={{ color: colors.primary.darkest }}>{t.name}</p><p className="text-[10.5px] truncate" style={{ color: colors.primary.light }}>{t.notes || (t.fav ? 'Ulubiony' : `${t.sloty} slotów`)}</p></div>
                   {t.fav && <span title="Ulubiony" style={{ color: '#2674B8' }}>★</span>}
                 </div>
@@ -2407,7 +2431,7 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
             </select>
             <div className="flex gap-2">
               <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Nazwa nowego szablonu" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} />
-              <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}>Zapisz</button>
+              <button disabled={saving} onClick={zapisz} className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>Zapisz</button>
             </div>
           </div>
         </div>
@@ -2434,7 +2458,7 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
                   {Object.keys(otwarteDni).length > 0 && (
                     <tr className="border-b" style={{ borderColor: '#F7F8FA' }}>
                       <td className="px-4 py-3 text-[11px] font-bold whitespace-nowrap" style={{ color: '#2674B8' }}>Open Shift</td>
-                      {bpDowKol.map((dw) => { const n = otwarteDni[dw] || 0; return <td key={dw} className="px-2 py-3 text-center">{n ? <span className="inline-block px-3 py-1.5 rounded-lg text-[11px] font-semibold border-2 border-dashed" style={{ borderColor: '#C7A9B3', color: '#2674B8' }}>{n} open</span> : <span className="text-slate-300">—</span>}</td>; })}
+                      {bpDowKol.map((dw) => { const n = otwarteDni[dw] || 0; return <td key={dw} className="px-2 py-3 text-center">{n ? <span className="inline-block px-3 py-1.5 rounded-lg text-[11px] font-semibold border-2 border-dashed" style={{ borderColor: '#9DA4AA', color: '#2674B8' }}>{n} open</span> : <span className="text-slate-300">—</span>}</td>; })}
                     </tr>
                   )}
                 </tbody>
@@ -2448,8 +2472,8 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
             <div className="px-5 py-3 flex flex-wrap justify-end gap-2 border-t" style={{ borderColor: '#E4E8EC' }}>
               <button onClick={() => przelaczFav(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#DCE3E9', color: '#2674B8' }}>{sel.fav ? '★ Usuń z ulubionych' : '☆ Dodaj do ulubionych'}</button>
               <button onClick={() => duplikuj(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}>Duplikuj</button>
-              <button onClick={() => usun(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#EFC7D0', color: '#A94455' }}>Usuń</button>
-              <button onClick={otworzApply} className="px-5 h-10 rounded-xl text-sm font-bold text-white" style={{ backgroundColor: colors.primary.darkest }}>Zastosuj</button>
+              <button onClick={() => usun(sel)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold" style={{ borderColor: '#79A2C0', color: '#A94455' }}>Usuń</button>
+              <button onClick={otworzApply} className="px-5 h-10 rounded-xl text-sm font-bold text-white" style={{ backgroundColor: colors.primary.medium }}>Zastosuj</button>
             </div>
           </>) : <div className="p-10 text-center text-sm" style={{ color: colors.primary.light }}>{lista.length ? 'Wybierz szablon z biblioteki.' : 'Zapisz pierwszy Blueprint z istniejącego tygodnia grafiku.'}</div>}
         </div>
@@ -2474,7 +2498,7 @@ const BlueprintyWzor = ({ data, weeks, naGrafik }) => {
               ))}
               <datalist id="bp-konta">{(data.accounts || []).map((a) => <option key={a.id} value={a.grafikName || a.name}>{a.name}</option>)}</datalist>
             </div>
-            <div className="flex justify-end gap-2"><button onClick={() => setApplyT(null)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button><button disabled={applying} onClick={wyslijApply} className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}>{applying ? 'Stosuję…' : 'Zastosuj do tygodnia'}</button></div>
+            <div className="flex justify-end gap-2"><button onClick={() => setApplyT(null)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: colors.primary.bgLight, color: colors.primary.dark }}>Anuluj</button><button disabled={applying} onClick={wyslijApply} className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{ backgroundColor: colors.primary.medium }}>{applying ? 'Stosuję…' : 'Zastosuj do tygodnia'}</button></div>
           </div>
         </div>
       )}
@@ -2567,7 +2591,7 @@ const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
   const KIER = new Set(['RGM', 'ASM', 'SM', 'JSM']);
   const stTyg = ((data.ts || {}).weekStatus || {})[days[0]] || {};
   const doneTyg = days.every((d) => ((data.ts || {}).completed || {})[d]);
-  const toneZm = (st2) => { const S = String(st2 || '').toUpperCase(); if (S.includes('KONTROLER')) return 'outline'; const k = BP_KATEGORIA(st2); return k === 'Manager' ? 'deep' : k === 'Kuchnia' ? 'soft' : 'mid'; };
+  const toneZm = (st2) => stationTone(st2);
   const dniKr = ['PON', 'WT', 'ŚR', 'CZW', 'PT', 'SOB', 'ND'];
   const widoczniW = wiersze.filter((w) => {
     const q = qOsoba.toLowerCase();
@@ -2829,7 +2853,7 @@ const DayPlanner = ({ data, day, locked, szukaj = '', stacjaF = '', zoom = '60',
   const gPts = (vals) => vals.map((v, i) => `${(i / 19) * 1000},${72 - (v / gMax) * 58}`).join(' ');
   const gPos = (t) => { let x = plnMin(t) - 360; return Math.max(0, Math.min(x, G_MIN)); };
   const gBar = (x) => { let a2 = plnMin(x.start), b2 = plnMin(x.end); if (b2 <= a2) b2 += 1440; a2 -= 360; b2 -= 360; a2 = Math.max(0, a2); b2 = Math.min(b2, G_MIN); return { left: `${a2 / G_MIN * 100}%`, width: `${Math.max(b2 - a2, 20) / G_MIN * 100}%` }; };
-  const gTone = (st2) => { const S = String(st2 || '').toUpperCase(); if (S.includes('KONTROLER')) return 'outline'; const k = BP_KATEGORIA(st2); return k === 'Manager' ? 'deep' : k === 'Kuchnia' ? 'soft' : 'mid'; };
+  const gTone = (st2) => stationTone(st2);;
   const dyspoD = useDyspoZatw([day]);
   const wierszeG = wiersze.filter((w) => (!szukaj || String(w.label).toLowerCase().includes(szukaj.toLowerCase())) && (!stacjaF || w.moje.some((x) => String(x.station || '').toUpperCase() === String(stacjaF).toUpperCase())));
   // ── tryb Actual: odbicia z karty czasu (ts.actuals) na tle planu ──
@@ -3051,7 +3075,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       if (sa < 6) sa += 24;
       if (sb <= sa) sb += 24;
       const S2 = String(x.station || '').toUpperCase();
-      const tone2 = S2.includes('KONTROLER') ? 'outline' : BP_KATEGORIA(x.station) === 'Manager' ? 'deep' : BP_KATEGORIA(x.station) === 'Kuchnia' ? 'soft' : 'mid';
+      const tone2 = stationTone(x.station);
       o.segments.push({ start: sa, end: Math.min(sb, 26), tone: tone2, role: (x.station || 'OBSADA').toUpperCase() + (x.szkoli ? ' 🎓' : ''), time: `${x.start}–${x.end}` });
       o.h += godzZ(x);
       osobyM.set(key, o);
@@ -3168,7 +3192,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       const rf = await fetch(`${API_BASE}/timesheets?action=payroll&week=${weekStart}&format=csv`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {} });
       if (!rf.ok) { const j = await rf.json().catch(() => ({})); return data.show(j.error || 'Eksport nieudany', 'error'); }
       const blob = await rf.blob();
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `payroll_${weekStart}.csv`; a.click(); URL.revokeObjectURL(a.href);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `atmosphere-lista-plac-${weekStart}.csv`; a.click(); URL.revokeObjectURL(a.href);
       data.show(`Payroll ${weekStart} pobrany (CSV)`);
     } catch { data.show('Eksport nieudany', 'error'); }
   };
@@ -3521,8 +3545,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                 <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#E4E8EC' }}>
                   <div className="w-64 shrink-0 px-3 py-2">
                     <p title={`W grafiku: ${s.name}`} className="text-sm font-semibold truncate flex items-center gap-1.5" style={{ color: colors.primary.darkest }}>{pelnaNazwa(s)}{s.dodana && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>ręczna</span>}{s.dodana && !locked && <button title="Usuń zmianę" onClick={() => data.removeShiftManual({ sid: s.sid, date: s.date, name: s.name, start: s.start, end: s.end })} className="text-red-300 hover:text-red-500"><Trash2 size={13} /></button>}</p>
-                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className="text-[11px] font-medium" style={{ color: tol ? '#2674B8' : '#A94455' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="text-[11px] font-medium" style={{ color: '#2674B8' }}>brak odbić</span>}</div>
-                    <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Shift <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Actual <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
+                    <div className="flex items-center justify-between mt-0.5"><span className="text-[11px]" style={{ color: stationColor(s.station) }}>{etykietaStacji(s)}</span>{ma ? <span className="text-[11px] font-medium" style={{ color: tol ? '#407362' : '#A94455' }}>{dMin >= 0 ? '+' : ''}{dMin}m</span> : <span className="text-[11px] font-medium" style={{ color: '#2674B8' }}>brak odbić</span>}</div>
+                    <div className="flex gap-3 mt-1 text-[11px] text-slate-500"><span>Plan <b style={{ color: colors.primary.dark }}>{wtHours(wtDur(s.start, s.end))}</b></span><span>Wykonanie <b style={{ color: colors.primary.dark }}>{ma ? wtHours(actualNet(s)) : '—'}</b></span></div>
                   </div>
                   <div className="relative flex-1 py-2"><WTGrid />
                     <div className="relative h-3.5 mb-1 rounded" style={{ backgroundColor: '#F1F6FA' }}><WTBar start={s.start} end={s.end} color={colors.primary.bg} /><div className="absolute inset-0 flex items-center pl-1 text-[9px] font-medium" style={{ color: colors.primary.dark }}>Shift {s.start}–{s.end}</div></div>
@@ -3550,7 +3574,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                 <p className="text-[11px]" style={{ color: colors.primary.light }}>Odbicia z REX Clock bez zaplanowanej zmiany — dodaj do grafiku, aby weszły do rozliczenia.</p>
               </div>
               {bezPlanu.map((pr) => { const konto = (data.accounts || []).find((a) => a.id === pr.accountId); return (
-                <div key={pr.accountId || pr.name} className="px-4 py-2.5 flex flex-wrap items-center gap-3 border-b last:border-0" style={{ borderColor: '#faf3ea' }}>
+                <div key={pr.accountId || pr.name} className="px-4 py-2.5 flex flex-wrap items-center gap-3 border-b last:border-0" style={{ borderColor: '#FBF4E5' }}>
                   <p className="text-sm font-semibold" style={{ color: colors.primary.darkest }}>{(konto && konto.name) || pr.name}</p>
                   <span className="text-xs font-mono font-semibold" style={{ color: colors.primary.dark }}>{pr.in}–{pr.out || '…'}</span>
                   {pr.out
@@ -3877,6 +3901,8 @@ export default function App() {
     'wt': () => <WorkingTime key="wt" data={data} canEdit={role === 'asm'} wrTab={wrTab} setWrTab={setWrTab} wrNonce={wrNonce} />,
     'staffing': () => <PlanObsada data={data} setPage={setPage} />,
     'autoplan': () => <AutoplanAOP data={data} setPage={setPage} />,
+    'work-model': () => <WorkModelView data={data} setPage={setPage} />,
+    'qualifications': () => <QualificationsView data={data} setPage={setPage} />,
     'month-plan': () => <MonthPlan data={data} setPage={setPage} />,
     'live': () => <ObsadaLive data={data} setPage={setPage} />,
     'analytics': () => <AnalyticsPage data={data} setPage={setPage} />,
