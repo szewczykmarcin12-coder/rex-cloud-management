@@ -2,7 +2,7 @@ import { getProfDow } from './runtime.js';
 // ── Silnik popytu (sloty 30 min): profil doby, krzywa celu, szablony zmian, zapotrzebowanie ──
 export const toISOdate = (v) => { if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`; const s = String(v); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`; const d = new Date(v); return isNaN(d) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 // ===================== OPTYMALIZACJA (silnik MAPAL-style, sloty 30 min) =====================
-export const OC = { cel: "#741334", silnik: "#A7465F", obsada: "#5A3542", ok: "#5A3542", warn: "#A7465F", bad: "#B94352" };
+export const OC = { cel: "#2674B8", silnik: "#79A2C0", obsada: "#3F4A55", ok: "#407362", warn: "#886929", bad: "#A94455" };
 export const S0 = 6;
 export const NS = 48;                       // doba operacyjna 06:00 → 06:00
 export const sl = (h) => (h - S0) * 2;
@@ -24,13 +24,13 @@ const KC = {
   22: [3,3,3,3,4,3,4], 23: [3,3,3,3,3,3,3], 24: [3,3,3,3,3,3,3], 25: [1,1,1,1,1,1,1],
 };
 export const SZAB = [
-  { n: "OTWARCIE 06–16", od: 6, do: 16, kol: "#5A3542" }, { n: "OTWARCIE 06–15", od: 6, do: 15, kol: "#5A3542" },
-  { n: "KONTROLER I 07–15", od: 7, do: 15, kol: "#A7465F" }, { n: "DOSTAWA 07–12", od: 7, do: 12, kol: "#A7465F" },
-  { n: "DOSTAWA+SMAŻ 07–17", od: 7, do: 17, kol: "#A7465F" }, { n: "DOSTAWA 07–15", od: 7, do: 15, kol: "#A7465F" },
-  { n: "SMAŻENIE I 10–18", od: 10, do: 18, kol: "#B5482F" }, { n: "ŚRODEK 11–21", od: 11, do: 21, kol: "#A7465F" },
-  { n: "ŚRODEK 12–22", od: 12, do: 22, kol: "#A7465F" }, { n: "FLEX SZCZYT 12–20", od: 12, do: 20, kol: "#C0392B" },
-  { n: "ZAMKNIĘCIE 15–01", od: 15, do: 25, kol: "#741334" }, { n: "WSPARCIE WIECZ 16–24", od: 16, do: 24, kol: "#5A3542" },
-  { n: "ZAMKNIĘCIE 16–01", od: 16, do: 25, kol: "#741334" }, { n: "ZAMKNIĘCIE 17–02", od: 17, do: 26, kol: "#741334" },
+  { n: "OTWARCIE 06–16", od: 6, do: 16, kol: "#3F4A55" }, { n: "OTWARCIE 06–15", od: 6, do: 15, kol: "#3F4A55" },
+  { n: "KONTROLER I 07–15", od: 7, do: 15, kol: "#2674B8" }, { n: "DOSTAWA 07–12", od: 7, do: 12, kol: "#2674B8" },
+  { n: "DOSTAWA+SMAŻ 07–17", od: 7, do: 17, kol: "#2674B8" }, { n: "DOSTAWA 07–15", od: 7, do: 15, kol: "#2674B8" },
+  { n: "SMAŻENIE I 10–18", od: 10, do: 18, kol: "#A94455" }, { n: "ŚRODEK 11–21", od: 11, do: 21, kol: "#2674B8" },
+  { n: "ŚRODEK 12–22", od: 12, do: 22, kol: "#2674B8" }, { n: "FLEX SZCZYT 12–20", od: 12, do: 20, kol: "#A94455" },
+  { n: "ZAMKNIĘCIE 15–01", od: 15, do: 25, kol: "#2674B8" }, { n: "WSPARCIE WIECZ 16–24", od: 16, do: 24, kol: "#3F4A55" },
+  { n: "ZAMKNIĘCIE 16–01", od: 16, do: 25, kol: "#2674B8" }, { n: "ZAMKNIĘCIE 17–02", od: 17, do: 26, kol: "#2674B8" },
   { n: "PREP 18–24", od: 18, do: 24, kol: "#8A8880" }, { n: "ZMYWAK 22–06", od: 22, do: 30, kol: "#4A4A48" },
 ];
 

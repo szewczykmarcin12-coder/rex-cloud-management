@@ -17,8 +17,8 @@ const KOLORY = {
 };
 const kolor = (s) => KOLORY[(s||'').toUpperCase()] || [89,128,124];
 
-const NAVY = [16,24,21], NAVY2 = [38,52,48], STAL = [89,128,124], LIGHT = [234,239,237];   // onyks + butelkowa zieleń
-const PEACH = [89,128,124], INK = [24,30,28], GREY = [118,130,126];   // akcent = szałwia (brzoskwinia usunięta)
+const NAVY = [41,45,50], NAVY2 = [63,74,85], STAL = [38,116,184], LIGHT = [237,240,243];   // Atmosphere: grafit + action blue
+const PEACH = [38,116,184], INK = [41,45,50], GREY = [101,113,124];   // akcent = action blue
 
 const UWAGI = [
   'Wbicia i wybicia kartą o planowanych godzinach rozpoczęcia i zakończenia.',
@@ -274,7 +274,7 @@ function renderDzien(doc, shifts, dateStr, location, dodatkiMgr = 0) {
 
   // ── STOPKA ──
   doc.setTextColor(...GREY); doc.setFont('Lib','normal'); doc.setFontSize(6.8);
-  doc.text(`REX Cloud · wygenerowano ${new Date().toLocaleString('pl-PL')}`, M, H - 3);
+  doc.text(`Atmosphere Studio · wygenerowano ${new Date().toLocaleString('pl-PL')}`, M, H - 3);
   doc.text('A4 · orientacja pozioma', W - M, H - 3, { align:'right' });
 }
 
@@ -354,7 +354,7 @@ export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = '
   F(1, 17, [255, 255, 255]); pion(tytul, 17, H - 78);
   F(0, 7, [183, 212, 208]); pion(`Doba operacyjna 06:00–06:00 · ${wersja}`, 23.5, H - 78);
   doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.5); doc.circle(16, 14, 5.2, 'S');
-  F(1, 8.5, [255, 255, 255]); pion('REX Cloud', 14.5, 24);
+  F(1, 8.5, [255, 255, 255]); pion('Atmosphere', 14.5, 24);
   F(0, 5.4, [145, 173, 169]); pion('WORKRHYTHM · DAILY ROSTER', 19.5, 24, { charSpace: 0.5 });
 
   // ── pasek KPI ──
@@ -507,7 +507,7 @@ export function generateDailyRoster({ dateStr, shifts, accounts, cov, wersja = '
   // stopka
   doc.setDrawColor(...LINIA); doc.setLineWidth(0.3); doc.line(X0, H - 9, W - 8, H - 9);
   F(0, 5.6, GREY);
-  doc.text('REX Cloud · WorkRhythm', X0, H - 5);
+  doc.text('Atmosphere Studio · Workforce Management', X0, H - 5);
   const teraz = new Date();
   doc.text(`Wygenerowano ${String(teraz.getDate()).padStart(2, '0')}.${String(teraz.getMonth() + 1).padStart(2, '0')}.${teraz.getFullYear()} · ${String(teraz.getHours()).padStart(2, '0')}:${String(teraz.getMinutes()).padStart(2, '0')}`, X0 + KW / 2, H - 5, { align: 'center' });
   doc.text('Dokument operacyjny · K003 · strona 1/1', W - 8, H - 5, { align: 'right' });

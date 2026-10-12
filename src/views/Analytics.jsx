@@ -41,7 +41,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
   const crewS = pod.crew, mgrS = pod.mgr, funkS = pod.funk, szkS = pod.szkol;
   const tot = Math.max(1, crewS + mgrS + funkS + szkS);
   const pc = (v) => `${Math.round(v / tot * 100)}%`;
-  const donut = `conic-gradient(#741334 0 ${crewS / tot * 360}deg, #5A3542 ${crewS / tot * 360}deg ${(crewS + mgrS) / tot * 360}deg, #A7465F ${(crewS + mgrS) / tot * 360}deg ${(crewS + mgrS + funkS) / tot * 360}deg, #B86D82 ${(crewS + mgrS + funkS) / tot * 360}deg 360deg)`;
+  const donut = `conic-gradient(#9CCBF0 0 ${crewS / tot * 360}deg, #BDB2E5 ${crewS / tot * 360}deg ${(crewS + mgrS) / tot * 360}deg, #A5D8C5 ${(crewS + mgrS) / tot * 360}deg ${(crewS + mgrS + funkS) / tot * 360}deg, #F3BF9F ${(crewS + mgrS + funkS) / tot * 360}deg 360deg)`;
 
   // wnioski heurystyczne z danych
   const dow = profilTygodnia({ shifts: data.shifts, sales: salesMap, months: okres });
@@ -98,7 +98,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
           <div className="panel-title"><div><span>KOSZT WEDŁUG GRUP • SZACUNEK</span><h2>Struktura roboczogodzin</h2></div><strong title={`Szacunek: UZ = stawka × h, UOP = wynagrodzenie / 160 h × h. ${kosztInfo || 'komplet stawek'}`}>{fmtA(sumK)} zł</strong></div>
           <div className="donut-layout">
             <div className="cost-donut" style={{ background: donut }}><div><strong>{fmtA(sumH)} h</strong><span>total</span></div></div>
-            <div>{[['Crew', pc(crewS), '#741334'], ['Manager', pc(mgrS), '#5A3542'], ['Mgr funkcyjny', pc(funkS), '#A7465F'], ['Szkolenia', pc(szkS), '#B86D82']].map(([label, value, color]) => <div className="donut-key" key={label}><span><i style={{ background: color }} />{label}</span><strong>{value}</strong></div>)}</div>
+            <div>{[['Crew', pc(crewS), '#9CCBF0'], ['Manager', pc(mgrS), '#BDB2E5'], ['Mgr funkcyjny', pc(funkS), '#A5D8C5'], ['Szkolenia', pc(szkS), '#F3BF9F']].map(([label, value, color]) => <div className="donut-key" key={label}><span><i style={{ background: color }} />{label}</span><strong>{value}</strong></div>)}</div>
           </div>
         </article>
         <article className="panel forecast-quality-panel">

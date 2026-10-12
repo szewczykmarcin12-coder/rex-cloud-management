@@ -1,19 +1,23 @@
 // ── Wspólne definicje dziedzinowe: paleta, stanowiska, czas pracy, miesiące, koszt godzin ──
 export const colors = {
-  primary: { darkest: '#3F0B1C', dark: '#741334', medium: '#A7465F', light: '#B86D82', bg: '#F1E4E8', bgLight: '#F7F5F5' },
-  accent: { dark: '#3F0B1C', medium: '#741334', light: '#A7465F', bg: '#F1E4E8' }
+  // Atmosphere: grafit na treści, błękit na interakcji, jasne powierzchnie
+  primary: { darkest: '#292D32', dark: '#3F4A55', medium: '#2674B8', light: '#65717C', bg: '#E8F0F7', bgLight: '#F7F8FA' },
+  accent: { dark: '#292D32', medium: '#2674B8', light: '#79A2C0', bg: '#E8F0F7' }
 };
 
 export const stationColors = {
-  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#B94352', 'KANAPKI / WRAPY': '#00A3E0',
+  'PANIEROWANIE': '#7CB342', 'SMAŻENIE': '#A94455', 'KANAPKI / WRAPY': '#00A3E0',
   'KONTROLER': '#2F5D8A', 'WSPARCIE WIECZORNE / FLEX': '#9C27B0', 'DISPATCHER': '#FF7043',
-  'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#71656A',
-  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#2B171E', 'MGR FUNKCYJNE': '#5A3542',
-  'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#5A3542'
+  'PHU': '#00897B', 'DESERY / NAPOJE': '#EC407A', 'FRYTKI': '#FBC02D', 'ZMYWAK': '#65717C',
+  'PREP': '#8D6E63', 'DOSTAWA': '#5C6BC0', 'MANAGER': '#292D32', 'MGR FUNKCYJNE': '#3F4A55',
+  'SZKOLENIA': '#26A69A', 'TRAINING': '#26A69A', 'INSTRUKTOR': '#3F4A55'
 };
 export const stationColor = (s) => stationColors[(s || '').toUpperCase()] || colors.primary.medium;
 export const godzZ = (s) => (s.hours != null ? s.hours : 0);
 const jestMgr = (st) => ['MANAGER', 'MGR FUNKCYJNE'].includes((st || '').toUpperCase());
+export const MGR_FUNKCJE = new Set(['RGM', 'ASM', 'SM', 'JSM']);
+// zmiana managerska: po stanowisku albo po funkcji konta (kierownik na stanowisku crew nadal jest managerem na zmianie)
+export const jestZmianaMgr = (x, konto) => jestMgr(x && x.station) || !!(konto && MGR_FUNKCJE.has(String(konto.funkcja || '').toUpperCase()));
 // Rola szkoleniowa: nowy model (s.rola) albo stary (station 'training'/'instruktor')
 const rolaSzk = (s) => {
   const r = (s.rola || '').toLowerCase();
@@ -91,10 +95,10 @@ export const podsumowanieMiesiaca = (shifts, planowanie, ym) => {
 const dfmt = (ds) => { const d = new Date(ds); const dni = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb']; return `${dni[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`; };
 export const opisZmiany = (s) => `${dfmt(s.date)} · ${s.station} · ${s.start}–${s.end} (${s.hours}h)`;
 export const statusZamiany = (s) => {
-  if (s.status === 'approved') return { txt: `Zatwierdzona — przejmuje: ${s.approvedVolunteerDisplay || s.approvedVolunteer}`, kol: '#741334', bg: '#F1E4E8' };
-  if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#B94352', bg: '#F5E3E8' };
-  if (s.status === 'cancelled') return { txt: 'Anulowana', kol: '#A38D95', bg: '#EDE3E6' };
-  return s.volunteers.length ? { txt: `Zgłoszeń: ${s.volunteers.length}`, kol: '#B86D82', bg: '#F5E9ED' } : { txt: 'Otwarta', kol: colors.primary.medium, bg: colors.primary.bgLight };
+  if (s.status === 'approved') return { txt: `Zatwierdzona — przejmuje: ${s.approvedVolunteerDisplay || s.approvedVolunteer}`, kol: '#2674B8', bg: '#E8F0F7' };
+  if (s.status === 'rejected') return { txt: 'Odrzucona', kol: '#A94455', bg: '#FAE9ED' };
+  if (s.status === 'cancelled') return { txt: 'Anulowana', kol: '#65717C', bg: '#E4E8EC' };
+  return s.volunteers.length ? { txt: `Zgłoszeń: ${s.volunteers.length}`, kol: '#79A2C0', bg: '#E8F0F7' } : { txt: 'Otwarta', kol: colors.primary.medium, bg: colors.primary.bgLight };
 };
 export const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
 
@@ -129,3 +133,16 @@ export const scalParyPlan = (arr) => {
   });
   return out;
 };
+
+// ── Okno dyspozycji (identyczna logika jak backend lib/availability.js ocenOknoDyspozycji): doba 06→06, przedziały przez północ ──
+const opMinD = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); let x = (h || 0) * 60 + (m || 0) - 360; if (x < 0) x += 1440; return x; };
+export function ocenOknoDyspozycji(rq, start, end) {
+  if (!rq) return null;
+  if (rq.type === 'unavailable') return { kod: 'niedostepny' };
+  if (rq.type === 'available') return null;
+  const s = opMinD(start); let e = opMinD(end); if (e <= s) e += 1440;
+  if (rq.type === 'from_time') return s < opMinD(rq.startTime) ? { kod: 'od' } : null;
+  if (rq.type === 'until_time') { let we = opMinD(rq.endTime); if (we === 0) we = 1440; return e > we ? { kod: 'do' } : null; }
+  if (rq.type === 'specific_shift') { const ws = opMinD(rq.startTime); let we = opMinD(rq.endTime); if (we <= ws) we += 1440; return (s < ws || e > we) ? { kod: 'okno' } : null; }
+  return null;
+}

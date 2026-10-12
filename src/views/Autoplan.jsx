@@ -35,10 +35,11 @@ export const AutoplanAOP = ({ data, setPage }) => {
   };
   const zastosuj = async () => {
     if (!prop) return;
-    if (!confirm(`Dopisać ${prop.podsumowanie.obsadzone} zmian do grafiku ${prop.okres.from} – ${prop.okres.to} jako wersję roboczą? Istniejące zmiany (np. MGR) zostają, duplikaty są pomijane.`)) return;
+    const niekompletna = !(prop.statusy && prop.statusy.kompletna);
+    if (!confirm(`Dopisać ${prop.podsumowanie.obsadzone} zmian do grafiku ${prop.okres.from} – ${prop.okres.to} jako wersję roboczą?${niekompletna ? `\n\nUWAGA: propozycja jest NIEKOMPLETNA (${prop.podsumowanie.nieobsadzone} zmian bez osoby${Object.keys(prop.podsumowanie.deficytStanowisk || {}).length ? ', deficyt stanowiskowy' : ''}${prop.podsumowanie.naruszenia.block ? ', blokady KP' : ''}). Zmiany zostaną oznaczone jako niekompletny draft — nie publikuj bez uzupełnienia.` : ''}\n\nIstniejące zmiany (np. MGR) zostają, duplikaty są pomijane.`)) return;
     setBusy(true);
     const r = await api('/autoplan?action=apply', 'POST', { id: prop.id });
-    if (r && r.success) { const ok = await data.addHoursBulk(r.shifts); if (ok) { data.show(`Grafik roboczy uzupełniony (${r.zmian} zmian). Sprawdź go w Schedule i opublikuj.`); setProp({ ...prop, applied: true }); } }
+    if (r && r.success) { const ok = await data.addHoursBulk(r.shifts); if (ok) { data.show(r.kompletna ? `Grafik roboczy uzupełniony (${r.zmian} zmian). Sprawdź go w Grafiku i opublikuj.` : `Dopisano ${r.zmian} zmian jako NIEKOMPLETNY draft (${r.nieobsadzone} bez osoby). Uzupełnij w Grafiku przed publikacją.`, r.kompletna ? 'success' : 'error'); setProp({ ...prop, applied: true }); } }
     else data.show((r && r.error) || 'Błąd zastosowania', 'error');
     setBusy(false); zaladuj();
   };
@@ -70,11 +71,11 @@ export const AutoplanAOP = ({ data, setPage }) => {
           <div style={{ display: 'grid', gap: 6 }}>
             {wym.map((w, i) => (
               <div key={i} className="panel" style={{ padding: 8, display: 'grid', gridTemplateColumns: '1fr 64px 64px 24px', gap: 6, alignItems: 'center' }}>
-                <select value={w.station} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, station: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #E3DCDD', borderRadius: 8, padding: '6px 6px' }}>{stacje.map((st) => <option key={st}>{st}</option>)}</select>
-                <input type="time" value={w.start} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, start: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #E3DCDD', borderRadius: 8, padding: '4px' }} />
-                <input type="time" value={w.end} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, end: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #E3DCDD', borderRadius: 8, padding: '4px' }} />
-                <button onClick={() => setWym((l) => l.filter((_, j) => j !== i))} title="Usuń" style={{ border: 0, background: 'transparent', color: '#B94352', cursor: 'pointer' }}><X size={14} /></button>
-                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 3 }}>{[1, 2, 3, 4, 5, 6, 0].map((dw) => <button key={dw} onClick={() => setWym((l) => l.map((x, j) => j === i ? { ...x, dni: x.dni.includes(dw) ? x.dni.filter((y) => y !== dw) : [...x.dni, dw] } : x))} style={{ flex: 1, fontSize: 11, fontWeight: 800, padding: '3px 0', borderRadius: 6, border: '1px solid #E3DCDD', background: !w.dni.length || w.dni.includes(dw) ? '#E9E4F4' : '#fff', color: !w.dni.length || w.dni.includes(dw) ? '#3E3760' : '#A38D95', cursor: 'pointer' }} title={w.dni.length ? '' : 'codziennie'}>{DNI[dw]}</button>)}</div>
+                <select value={w.station} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, station: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #DCE3E9', borderRadius: 8, padding: '6px 6px' }}>{stacje.map((st) => <option key={st}>{st}</option>)}</select>
+                <input type="time" value={w.start} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, start: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #DCE3E9', borderRadius: 8, padding: '4px' }} />
+                <input type="time" value={w.end} onChange={(e) => setWym((l) => l.map((x, j) => j === i ? { ...x, end: e.target.value } : x))} style={{ fontSize: 11, border: '1px solid #DCE3E9', borderRadius: 8, padding: '4px' }} />
+                <button onClick={() => setWym((l) => l.filter((_, j) => j !== i))} title="Usuń" style={{ border: 0, background: 'transparent', color: '#A94455', cursor: 'pointer' }}><X size={14} /></button>
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 3 }}>{[1, 2, 3, 4, 5, 6, 0].map((dw) => <button key={dw} onClick={() => setWym((l) => l.map((x, j) => j === i ? { ...x, dni: x.dni.includes(dw) ? x.dni.filter((y) => y !== dw) : [...x.dni, dw] } : x))} style={{ flex: 1, fontSize: 11, fontWeight: 800, padding: '3px 0', borderRadius: 6, border: '1px solid #DCE3E9', background: !w.dni.length || w.dni.includes(dw) ? '#E9E4F4' : '#fff', color: !w.dni.length || w.dni.includes(dw) ? '#3E3760' : '#65717C', cursor: 'pointer' }} title={w.dni.length ? '' : 'codziennie'}>{DNI[dw]}</button>)}</div>
               </div>
             ))}
             <button className="secondary-action" onClick={() => setWym((l) => [...l, { station: stacje[0], start: '14:00', end: '22:00', dni: [] }])}><Plus size={14} /> Dodaj wymaganą zmianę</button>
@@ -95,14 +96,25 @@ export const AutoplanAOP = ({ data, setPage }) => {
           <section className="forecast-kpis">
             <MMetric icon={Users} label="Obsadzone zmiany" value={ps ? `${ps.obsadzone} / ${ps.zmian}` : '—'} helper={ps ? (ps.nieobsadzone ? `${ps.nieobsadzone} bez osoby — patrz powody` : 'komplet') : 'wygeneruj propozycję'} tone={ps && ps.nieobsadzone ? 'coral' : 'mint'} />
             <MMetric icon={Clock3} label="Godziny CREW" value={ps ? `${fmt(ps.godzinyCrew)} h` : '—'} helper={ps && ps.limitCrew ? `limit AOP ${fmt(ps.limitCrew)} h • MGR w grafiku ${fmt(ps.godzinyMgrIstniejace)} h` : '—'} tone="violet" />
-            <MMetric icon={CircleDollarSign} label="Koszt / COL szac." value={ps ? `${fmt(ps.kosztSzac)} zł` : '—'} helper={ps && ps.colSzac != null ? `${ps.colSzac.toFixed(1).replace('.', ',')}% sprzedaży AOP` : '—'} tone="blue" />
+            <MMetric icon={CircleDollarSign} label="Koszt / COL szac." value={!ps ? '—' : ps.kosztSzac == null ? 'brak stawek' : `${fmt(ps.kosztSzac)} zł`} helper={!ps ? '—' : ps.kosztSzac == null ? `${(ps.bezStawki || []).length} osób bez stawki • ${ps.pokrycieStawekPct} % godzin ze stawką (${fmt(ps.kosztCzesciowy)} zł policzone)` : ps.colSzac != null ? `${ps.colSzac.toFixed(1).replace('.', ',')}% sprzedaży AOP` : '—'} tone={ps && ps.kosztSzac == null ? 'coral' : 'blue'} />
             <MMetric icon={ShieldCheck} label="Zgodność" value={ps ? `${ps.naruszenia.block} blok. • ${ps.naruszenia.warn} uwag` : '—'} helper={ps ? `wymagane zmiany: ${ps.pokrycieWymagan}% • śr. afiniczność ${ps.sredniaAfinicznosc}` : '—'} tone={ps && ps.naruszenia.block ? 'coral' : 'mint'} />
           </section>
+          {prop && prop.statusy && (
+            <div className="dialog-stat-grid" style={{ marginTop: 10 }}>
+              <div className="dialog-stat"><span>Budżet</span><strong style={{ color: prop.statusy.budzet === 'przekroczony' ? '#A94455' : '#292D32' }}>{prop.statusy.budzet === 'ok' ? 'w limicie' : prop.statusy.budzet === 'przekroczony' ? 'przekroczony' : 'bez limitu'}</strong></div>
+              <div className="dialog-stat"><span>Obsada</span><strong style={{ color: prop.statusy.obsada === 'pelna' ? '#292D32' : '#886929' }}>{prop.statusy.obsada === 'pelna' ? 'pełna' : `częściowa (${ps.pokrycieWymagan} % wymaganych)`}</strong></div>
+              <div className="dialog-stat"><span>Dane</span><strong style={{ color: prop.statusy.dane.stawki === 'ok' ? '#292D32' : '#886929', fontSize: 12 }}>{prop.statusy.dane.stawki === 'ok' ? 'stawki ok' : prop.statusy.dane.stawki} • {prop.statusy.dane.kwalifikacje}</strong></div>
+              <div className="dialog-stat"><span>Reguły KP</span><strong style={{ color: prop.statusy.reguly === 'blokady' ? '#A94455' : prop.statusy.reguly === 'ostrzezenia' ? '#886929' : '#292D32' }}>{prop.statusy.reguly === 'ok' ? 'bez uwag' : prop.statusy.reguly === 'blokady' ? `${ps.naruszenia.block} blokad` : `${ps.naruszenia.warn} ostrzeżeń`}</strong></div>
+            </div>
+          )}
+          {ps && ps.deficytStanowisk && Object.keys(ps.deficytStanowisk).length > 0 && (
+            <div className="dialog-notice" style={{ marginTop: 10 }}><Sparkles size={16} /><span><b>Deficyt stanowiskowy:</b> {Object.entries(ps.deficytStanowisk).map(([st, d]) => `${st}: ${d.nieobsadzoneH ? `${d.nieobsadzoneH} h bez osoby` : ''}${d.nieobsadzoneH && d.bezKwalifikacjiH ? ', ' : ''}${d.bezKwalifikacjiH ? `${d.bezKwalifikacjiH} h obsadzone osobą bez historii na tym stanowisku` : ''} (${d.dni} dni)`).join(' • ')}. Brak kwalifikowanej osoby nie znika w sumie godzin — uzupełnij kwalifikacje w Pracownikach albo przeszkol.</span></div>
+          )}
 
           {!prop ? (
             <article className="panel" style={{ padding: 24 }}>
               <div className="panel-title"><div><span>JAK TO DZIAŁA</span><h2>Od AOP do gotowego grafiku roboczego</h2></div></div>
-              <ol style={{ margin: '8px 0 0 18px', color: '#71656A', fontSize: 12.5, lineHeight: 1.7 }}>
+              <ol style={{ margin: '8px 0 0 18px', color: '#65717C', fontSize: 12.5, lineHeight: 1.7 }}>
                 <li>Sprzedaż AOP rozkładamy na dni według udziału dnia tygodnia z Twojej historii (bez historii: profil QSR).</li>
                 <li>Budżet godzin CREW dnia ∝ sprzedaż dnia, z podłogą wynikającą z wymaganych zmian.</li>
                 <li>Krzywa doby (profil godzinowy z importu POS lub standardowy) ÷ SPLH daje obsadę co 30 min; wymagane zmiany wchodzą jako twarde, reszta dopełnia popyt blokami 8/6/4 h.</li>
@@ -134,9 +146,9 @@ export const AutoplanAOP = ({ data, setPage }) => {
                 <div className="table-header"><span>Osoba</span><span>Godziny w propozycji</span><span>Nominał (UOP)</span><span>Dni pracy</span><span>Wypełnienie</span></div>
                 {Object.entries(prop.godzOsob).sort((a, b) => b[1].godz - a[1].godz).map(([id, o]) => <div className="table-row" key={id}><span><b>{o.name}</b></span><span>{o.godz} h</span><span>{o.nominal != null ? `${o.nominal} h` : '—'}</span><span>{o.dni}</span><span><i className="coverage-bar"><b style={{ width: `${o.nominal ? Math.min(100, o.godz / o.nominal * 100) : (o.godz ? 60 : 0)}%` }} /></i>{o.nominal ? `${Math.round(o.godz / o.nominal * 100)}%` : '—'}</span></div>)}
               </div>}
-              {widok === 'kp' && (prop.naruszenia.length ? <div className="dialog-list" style={{ marginTop: 8 }}>{prop.naruszenia.map((v, i) => <div key={i}><i style={v.level === 'block' ? { color: '#fff', background: '#B94352' } : undefined}>{v.level === 'block' ? '!' : 'i'}</i><span><strong>{v.name} • {v.date}</strong><small>{v.rule}: {v.message}</small></span><em>{v.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div> : <div className="dialog-empty" style={{ padding: 20 }}>Brak naruszeń prawa pracy w propozycji.</div>)}
+              {widok === 'kp' && (prop.naruszenia.length ? <div className="dialog-list" style={{ marginTop: 8 }}>{prop.naruszenia.map((v, i) => <div key={i}><i style={v.level === 'block' ? { color: '#fff', background: '#A94455' } : undefined}>{v.level === 'block' ? '!' : 'i'}</i><span><strong>{v.name} • {v.date}</strong><small>{v.rule}: {v.message}</small></span><em>{v.level === 'block' ? 'blokada' : 'uwaga'}</em></div>)}</div> : <div className="dialog-empty" style={{ padding: 20 }}>Brak naruszeń prawa pracy w propozycji.</div>)}
               <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#71656A', marginRight: 'auto' }}>Nie podoba się układ? Zmień założenia lub wygeneruj ponownie — każde przeliczenie losuje inny porządek remisów.</span>
+                <span style={{ fontSize: 11, color: '#65717C', marginRight: 'auto' }}>Nie podoba się układ? Zmień założenia lub wygeneruj ponownie — każde przeliczenie losuje inny porządek remisów.</span>
                 <button className="secondary-action" disabled={busy} onClick={generuj}><RefreshCw size={15} /> Przelicz ponownie</button>
                 <button className="primary-action" disabled={busy || prop.applied} onClick={zastosuj}><Check size={15} /> {prop.applied ? 'Zastosowano' : 'Zastosuj do grafiku roboczego'}</button>
               </div>

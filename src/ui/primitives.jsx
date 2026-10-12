@@ -6,21 +6,21 @@ export const Btn = ({ children, variant = 'primary', icon: Icon, onClick, disabl
   const vars = {
     primary: { bg: colors.primary.dark, text: 'white' },
     secondary: { bg: colors.primary.bg, text: colors.primary.dark },
-    danger: { bg: '#B94352', text: 'white' },
+    danger: { bg: '#A94455', text: 'white' },
     ghost: { bg: 'transparent', text: colors.primary.light },
     accent: { bg: colors.accent.medium, text: 'white' },
-    success: { bg: '#A7465F', text: 'white' }
+    success: { bg: '#2674B8', text: 'white' }
   };
   const v = vars[variant] || vars.primary;
   return <button onClick={onClick} disabled={disabled || loading} className={`px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-all hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-sm ${className}`} style={{ background: v.bg, color: v.text }}>{loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : Icon && <Icon className="w-4 h-4" />}{children}</button>;
 };
 
-export const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]); const bg = { success: '#741334', error: '#B94352', info: '#5A3542' }[type] || colors.primary.medium; return <div className="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-lg z-50 flex items-center gap-2" style={{ backgroundColor: bg }}>{type === 'success' ? <Check className="w-5 h-5" /> : type === 'error' ? <X className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}{message}</div>; };
+export const Toast = ({ message, type, onClose }) => { useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]); const bg = { success: '#2674B8', error: '#A94455', info: '#3F4A55' }[type] || colors.primary.medium; return <div className="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-lg z-50 flex items-center gap-2" style={{ backgroundColor: bg }}>{type === 'success' ? <Check className="w-5 h-5" /> : type === 'error' ? <X className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}{message}</div>; };
 
 const StatCard = ({ label, value, icon: Icon, color }) => (
   <article className="metric-card">
     <span className="metric-icon" style={{ color, background: `${color}1a` }}><Icon size={18} /></span>
-    <div className="metric-copy"><span>{String(label).toUpperCase()}</span><strong>{value}</strong><small>ORDO Workforce Studio</small></div>
+    <div className="metric-copy"><span>{String(label).toUpperCase()}</span><strong>{value}</strong><small>Atmosphere Studio</small></div>
     <span className="metric-progress"><i style={{ width: '62%' }} /></span>
   </article>
 );
@@ -29,7 +29,7 @@ export const Header = ({ title, subtitle, children }) => (
   <div className="page-wrap" style={{ paddingTop: 24, paddingBottom: 0 }}>
     <div className="page-heading" style={{ marginBottom: 6 }}>
       <div>
-        <div className="eyebrow"><span className="status-pulse" /> ORDO WORKFORCE STUDIO</div>
+        <div className="eyebrow"><span className="status-pulse" /> ATMOSPHERE STUDIO</div>
         <h1>{title}</h1>
         {subtitle && <p>{subtitle}</p>}
       </div>

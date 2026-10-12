@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Calendar, CheckCircle2, ChevronLeft, ChevronRight, FileSpreadsheet, LayoutGrid, Plus, RefreshCw, Upload, X } from 'lucide-react';
 import { NSLOT as V4_NSLOT, addCoverage as v4AddCoverage } from '../planning/timeSlots.js';
-import { coverageSummary as v4Coverage, upsample48to96 as v4Up96 } from '../planning/coverageEngine.js';
+import { upsample48to96 as v4Up96, mgrRequirement96, splitSchedule96, coverageSplit } from '../planning/coverageEngine.js';
 import { api } from '../lib/api.js';
 import { SZAB, optKsztaltuj, optRozbicie } from '../lib/demandEngine.js';
-import { colors, godzZ, jestInstruktor, kosztGodzin, stationColor, wtMonday, ymd } from '../lib/domain.js';
+import { colors, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, stationColor, wtMonday, ymd } from '../lib/domain.js';
+import { mgrReqOpts } from '../lib/runtime.js';
 import { publikujMiesiac } from '../lib/publish.js';
 // ── Planowanie → Zapotrzebowanie i obsada ──
 // ===================== PLANOWANIE: OPTYMALIZACJA + BUDŻET w jednym module =====================
@@ -54,11 +55,13 @@ export const PlanObsada = ({ data, setPage }) => {
     const tryb = sprzedaz > 0 ? 'silnik' : 'krzywa';
     const { dir, ind } = optRozbicie(sprzedaz, splh, podloga, tryb, dow);
     const req48 = dir.map((v, i) => Math.max(v, ind[i]) * mnoznik);
-    const req96 = v4Up96(req48);
-    const sch96 = new Float64Array(V4_NSLOT);
+    const reqCrew96 = v4Up96(req48);
     const zmiany = data.shifts.filter((x) => x.date === d && !jestInstruktor(x));
-    zmiany.forEach((x) => v4AddCoverage(sch96, x.start, x.end));
-    return { req48, req96, sch96, zmiany, pods: v4Coverage(req96, sch96), tryb };
+    const poIdS = new Map((data.accounts || []).map((a) => [a.id, a]));
+    // crew porównujemy z popytem, managerów z wymogiem obecności — godziny MGR nie są nadmiarem
+    const { crew96, mgr96 } = splitSchedule96(zmiany, (x) => jestZmianaMgr(x, x.accountId ? poIdS.get(x.accountId) : null));
+    const pods = coverageSplit(reqCrew96, crew96, mgr96, mgrRequirement96(mgrReqOpts()));
+    return { req48, req96: pods.req96, sch96: pods.sch96, reqCrew96, crew96, mgr96, zmiany, pods, tryb };
   }, [data.shifts, fcDni, splh, podloga, mnoznik]);
 
   const dniS = useMemo(() => { const m = {}; days.forEach((d) => { m[d] = silnikDnia(d); }); return m; }, [days, silnikDnia]);
@@ -95,7 +98,7 @@ export const PlanObsada = ({ data, setPage }) => {
     for (let i = 0; i < V4_NSLOT; i++) {
       const ok = warunek(D.pods.perSlot[i]);
       if (ok && a < 0) a = i;
-      if ((!ok || i === V4_NSLOT - 1) && a >= 0) { const b = ok ? i + 1 : i; if (b - a >= 2) out.push({ od: a, do: b, h: D.pods.perSlot.slice(a, b).reduce((x, y) => x + (warunek === undefined ? 0 : Math.abs(y.req - y.sch)), 0) / 4 }); a = -1; }
+      if ((!ok || i === V4_NSLOT - 1) && a >= 0) { const b = ok ? i + 1 : i; if (b - a >= 2) out.push({ od: a, do: b, h: D.pods.perSlot.slice(a, b).reduce((x, y) => x + Math.max(y.exc, y.def), 0) / 4 }); a = -1; }
     }
     return out;
   };
@@ -143,7 +146,7 @@ export const PlanObsada = ({ data, setPage }) => {
   // dopasuj zmianę do skrócenia: kończy się wewnątrz największego nadmiaru
   const doSkrocenia = useMemo(() => {
     for (const zak of nadmiary) {
-      const kand = D.zmiany.filter((x) => { const e = pobOp(x.end) / 15; return e > zak.od && e <= zak.do + 1 && (pobOp(x.end) - pobOp(x.start)) / 60 - (zak.do - zak.od) / 4 >= 3; })
+      const kand = D.zmiany.filter((x) => !jestZmianaMgr(x, kontoZm(x))).filter((x) => { const e = pobOp(x.end) / 15; return e > zak.od && e <= zak.do + 1 && (pobOp(x.end) - pobOp(x.start)) / 60 - (zak.do - zak.od) / 4 >= 3; })
         .sort((a, b) => pobOp(b.end) - pobOp(a.end))[0];
       if (kand) { const k = kontoZm(kand); return { x: kand, osoba: (k && k.name) || kand.name, zakres: zak }; }
     }
@@ -154,50 +157,50 @@ export const PlanObsada = ({ data, setPage }) => {
   const maxY = Math.max(4, ...D.req96, ...D.sch96);
   const dayLabel = (d) => { const dt = new Date(d + 'T12:00:00'); return { dn: ['Nd', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'][dt.getDay()], nr: `${dt.getDate()} ${['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'][dt.getMonth()]}` }; };
   const KPI_KARTA = ({ label, val, sub, kol }) => (
-    <div className="bg-white rounded-2xl border p-4 min-w-0" style={{ borderColor: '#E3DCDD' }}>
+    <div className="bg-white rounded-2xl border p-4 min-w-0" style={{ borderColor: '#DCE3E9' }}>
       <p className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>{label}</p>
       <p className="text-[22px] font-bold mt-1 leading-none" style={{ color: kol || colors.primary.darkest }}>{val}</p>
-      <p className="text-[10.5px] mt-1.5 truncate" style={{ color: '#71656A' }}>{sub}</p>
+      <p className="text-[10.5px] mt-1.5 truncate" style={{ color: '#65717C' }}>{sub}</p>
     </div>
   );
   const tydzienLabel = `${days[0].slice(8)}–${days[6].slice(8)} ${['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'][new Date(days[6] + 'T12:00:00').getMonth()]} ${days[6].slice(0, 4)}`;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-8" style={{ backgroundColor: '#F7F5F5' }}>
+    <div className="flex-1 min-h-0 overflow-y-auto p-8" style={{ backgroundColor: '#F7F8FA' }}>
       {/* nagłówek */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
-          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#741334' }}>WORKRHYTHM PLANNING · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
+          <p className="text-[11px] font-extrabold tracking-[0.14em]" style={{ color: '#2674B8' }}>WORKRHYTHM PLANNING · TYDZIEŃ {pobTydzien(new Date(weekStart))}</p>
           <h1 className="text-[30px] font-bold mt-1" style={{ color: colors.primary.darkest, letterSpacing: '-.03em' }}>Planowanie obsady</h1>
           <p className="text-sm mt-0.5" style={{ color: colors.primary.light }}>Układaj grafik w oparciu o popyt, kompetencje i koszt pracy.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setPage('import')} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}><Upload size={15} /> Importuj</button>
-          <button onClick={() => setPorownaj((v) => !v)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}><RefreshCw size={15} /> Porównaj</button>
+          <button onClick={() => setPage('import')} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><Upload size={15} /> Importuj</button>
+          <button onClick={() => setPorownaj((v) => !v)} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><RefreshCw size={15} /> Porównaj</button>
           <button onClick={opublikuj} disabled={busy} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-50" style={{ backgroundColor: colors.primary.darkest }}><CheckCircle2 size={15} /> Opublikuj grafik</button>
         </div>
       </div>
 
       {/* pasek tygodnia + scenariusz */}
-      <div className="bg-white rounded-2xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: '#E3DCDD' }}>
-        <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(ymd(d)); }} className="w-9 h-9 rounded-full border flex items-center justify-center" style={{ borderColor: '#E3DCDD' }}><ChevronLeft size={16} /></button>
+      <div className="bg-white rounded-2xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: '#DCE3E9' }}>
+        <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(ymd(d)); }} className="w-9 h-9 rounded-full border flex items-center justify-center" style={{ borderColor: '#DCE3E9' }}><ChevronLeft size={16} /></button>
         <span className="flex items-center gap-2 text-[15px] font-bold" style={{ color: colors.primary.darkest }}><Calendar size={16} style={{ color: colors.primary.medium }} /> {tydzienLabel}</span>
-        <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(ymd(d)); }} className="w-9 h-9 rounded-full border flex items-center justify-center" style={{ borderColor: '#E3DCDD' }}><ChevronRight size={16} /></button>
-        <button onClick={() => { setWeekStart(wtMonday(dzisIso)); setDay(dzisIso); }} className="px-3 h-9 rounded-xl border text-sm font-semibold" style={{ borderColor: '#E3DCDD', color: colors.primary.dark }}>Dzisiaj</button>
+        <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(ymd(d)); }} className="w-9 h-9 rounded-full border flex items-center justify-center" style={{ borderColor: '#DCE3E9' }}><ChevronRight size={16} /></button>
+        <button onClick={() => { setWeekStart(wtMonday(dzisIso)); setDay(dzisIso); }} className="px-3 h-9 rounded-xl border text-sm font-semibold" style={{ borderColor: '#DCE3E9', color: colors.primary.dark }}>Dzisiaj</button>
         <span className="ml-auto flex items-center gap-2 text-xs" style={{ color: colors.primary.light }}>
           Scenariusz
-          <select value={scenariusz} onChange={(e) => setScenariusz(e.target.value)} className="px-3 h-9 rounded-xl border text-sm font-semibold" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}>
+          <select value={scenariusz} onChange={(e) => setScenariusz(e.target.value)} className="px-3 h-9 rounded-xl border text-sm font-semibold" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}>
             <option value="bazowy">Bazowy · zbalansowany</option>
             <option value="oszczedny">Oszczędny · −10% popytu</option>
             <option value="bezpieczny">Bezpieczny · +10% popytu</option>
           </select>
-          <span className="px-3 h-9 rounded-xl border text-xs font-bold flex items-center gap-1.5" style={{ borderColor: '#E3DCDD', color: wszystkieOpublikowane ? '#741334' : '#A7465F', backgroundColor: wszystkieOpublikowane ? '#F1E4E8' : '#fff6e4' }}>
-            <i className="w-2 h-2 rounded-full" style={{ backgroundColor: wszystkieOpublikowane ? '#741334' : '#B86D82' }} />{wszystkieOpublikowane ? 'Published' : 'Preliminary'}
+          <span className="px-3 h-9 rounded-xl border text-xs font-bold flex items-center gap-1.5" style={{ borderColor: '#DCE3E9', color: wszystkieOpublikowane ? '#2674B8' : '#2674B8', backgroundColor: wszystkieOpublikowane ? '#E8F0F7' : '#fff6e4' }}>
+            <i className="w-2 h-2 rounded-full" style={{ backgroundColor: wszystkieOpublikowane ? '#2674B8' : '#79A2C0' }} />{wszystkieOpublikowane ? 'Published' : 'Preliminary'}
           </span>
         </span>
       </div>
       {porownaj && (
-        <div className="bg-white rounded-2xl border px-4 py-3 mb-4 text-sm flex flex-wrap gap-x-6 gap-y-1" style={{ borderColor: '#E3DCDD', color: colors.primary.dark }}>
+        <div className="bg-white rounded-2xl border px-4 py-3 mb-4 text-sm flex flex-wrap gap-x-6 gap-y-1" style={{ borderColor: '#DCE3E9', color: colors.primary.dark }}>
           {mieszki.map((ym) => { const pi = pubInfo[ym]; return <span key={ym}><b>{ym}</b>: {pi ? (pi.opublikowany ? `v${pi.wersjaPub} · potwierdzenia ${(pi.potwierdzenia || []).length}/${pi.osobOczekiwane}${pi.roznice ? ` · zmiany od publikacji +${pi.roznice.dodane}/±${pi.roznice.zmienione}/−${pi.roznice.usuniete}` : ''}` : 'nieopublikowany') : '…'}</span>; })}
         </div>
       )}
@@ -206,100 +209,100 @@ export const PlanObsada = ({ data, setPage }) => {
       <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
         <KPI_KARTA label="Plan Hours" val={pobH1(kpi.plan)} sub={`${kpi.plan - kpi.req >= 0 ? '+' : ''}${pobH1(kpi.plan - kpi.req)} vs Required`} />
         <KPI_KARTA label="Required Hours" val={pobH1(kpi.req)} sub="prognoza slotowa" />
-        <KPI_KARTA label="Excess" val={pobH1(kpi.exc)} sub={`${kpi.plan ? (kpi.exc / kpi.plan * 100).toFixed(1).replace('.', ',') : 0}% godzin`} kol="#A7465F" />
-        <KPI_KARTA label="Deficit" val={pobH1(kpi.def)} sub={`${niedobory.length} krytyczne sloty (dzień)`} kol="#B94352" />
+        <KPI_KARTA label="Excess" val={pobH1(kpi.exc)} sub={`${kpi.plan ? (kpi.exc / kpi.plan * 100).toFixed(1).replace('.', ',') : 0}% godzin`} kol="#2674B8" />
+        <KPI_KARTA label="Deficit" val={pobH1(kpi.def)} sub={`${niedobory.length} krytyczne sloty (dzień)`} kol="#A94455" />
         <KPI_KARTA label="SPLH" val={kpi.splhP ? Math.round(kpi.splhP).toLocaleString('pl-PL') : '—'} sub={`cel ${splh}`} />
-        <KPI_KARTA label="COL" val={kpi.colP ? `${kpi.colP.toFixed(1).replace('.', ',')}%` : '—'} sub="target ≤ 20%" kol={kpi.colP > 20 ? '#B94352' : '#741334'} />
+        <KPI_KARTA label="COL" val={kpi.colP ? `${kpi.colP.toFixed(1).replace('.', ',')}%` : '—'} sub="target ≤ 20%" kol={kpi.colP > 20 ? '#A94455' : '#2674B8'} />
         <KPI_KARTA label="Labor Cost" val={`${Math.round(kpi.koszt).toLocaleString('pl-PL')} zł`} sub="wg stawek kont" />
-        <KPI_KARTA label="Schedule Score" val={kpi.score} sub={kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Do poprawy' : 'Wymaga zmian'} kol={kpi.score >= 85 ? '#741334' : kpi.score >= 70 ? '#A7465F' : '#B94352'} />
+        <KPI_KARTA label="Schedule Score" val={kpi.score} sub={kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Do poprawy' : 'Wymaga zmian'} kol={kpi.score >= 85 ? '#2674B8' : kpi.score >= 70 ? '#2674B8' : '#A94455'} />
       </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: rekomOn ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr)' }}>
         <div className="min-w-0 space-y-4">
           {/* wykres Demand vs Coverage */}
-          <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#E3DCDD' }}>
+          <div className="bg-white rounded-2xl border p-5" style={{ borderColor: '#DCE3E9' }}>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <div><p className="text-[15px] font-bold" style={{ color: colors.primary.darkest }}>Demand vs Coverage</p><p className="text-[11px]" style={{ color: colors.primary.light }}>wymagana i zaplanowana obsada · interwał 15 min · {day} {D.tryb === 'krzywa' ? '· krzywa (brak prognozy sprzedaży)' : ''}</p></div>
               <span className="flex items-center gap-4 text-[11px]" style={{ color: colors.primary.dark }}>
-                <span className="flex items-center gap-1.5"><i className="w-4 h-0.5" style={{ backgroundColor: '#5A3542' }} /> Required</span>
-                <span className="flex items-center gap-1.5"><i className="w-4 border-t-2 border-dashed" style={{ borderColor: '#A7465F' }} /> Scheduled</span>
-                <button onClick={() => setPage('optymalizacja')} className="px-3 h-8 rounded-lg border text-xs font-bold" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}>Parametry popytu</button>
+                <span className="flex items-center gap-1.5"><i className="w-4 h-0.5" style={{ backgroundColor: '#3F4A55' }} /> Required</span>
+                <span className="flex items-center gap-1.5"><i className="w-4 border-t-2 border-dashed" style={{ borderColor: '#2674B8' }} /> Scheduled</span>
+                <button onClick={() => setPage('optymalizacja')} className="px-3 h-8 rounded-lg border text-xs font-bold" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}>Parametry popytu</button>
               </span>
             </div>
             <svg viewBox="0 0 970 190" className="w-full" style={{ height: 180 }}>
-              {[0, 0.5, 1].map((f) => <line key={f} x1="30" x2="960" y1={165 - f * 150} y2={165 - f * 150} stroke="#EDE3E6" />)}
-              {[0, 0.5, 1].map((f) => <text key={f} x="24" y={168 - f * 150} fontSize="9" fill="#A38D95" textAnchor="end">{Math.round(maxY * f)}</text>)}
-              <polygon points={`30,165 ${[...D.req96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} 960,165`} fill="rgba(116,19,52,.12)" />
-              <polyline points={[...D.req96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} fill="none" stroke="#5A3542" strokeWidth="2" />
-              <polyline points={[...D.sch96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} fill="none" stroke="#A7465F" strokeWidth="2" strokeDasharray="5 4" />
-              {[0, 12, 24, 36, 48, 60, 72, 84, 95].map((i) => <text key={i} x={30 + i * 9.7} y="182" fontSize="9" fill="#A38D95" textAnchor="middle">{pobHH(i * 15)}</text>)}
+              {[0, 0.5, 1].map((f) => <line key={f} x1="30" x2="960" y1={165 - f * 150} y2={165 - f * 150} stroke="#E4E8EC" />)}
+              {[0, 0.5, 1].map((f) => <text key={f} x="24" y={168 - f * 150} fontSize="9" fill="#65717C" textAnchor="end">{Math.round(maxY * f)}</text>)}
+              <polygon points={`30,165 ${[...D.req96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} 960,165`} fill="rgba(38,116,184,.12)" />
+              <polyline points={[...D.req96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} fill="none" stroke="#3F4A55" strokeWidth="2" />
+              <polyline points={[...D.sch96].map((v, i) => `${30 + i * 9.7},${165 - v / maxY * 150}`).join(' ')} fill="none" stroke="#2674B8" strokeWidth="2" strokeDasharray="5 4" />
+              {[0, 12, 24, 36, 48, 60, 72, 84, 95].map((i) => <text key={i} x={30 + i * 9.7} y="182" fontSize="9" fill="#65717C" textAnchor="middle">{pobHH(i * 15)}</text>)}
             </svg>
             {/* heatmapa pokrycia */}
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-[12px] font-bold" style={{ color: colors.primary.darkest }}>Coverage heatmap <span className="font-normal text-[10.5px]" style={{ color: colors.primary.light }}>· kliknij slot, aby zobaczyć szczegóły</span></p>
-                <span className="flex items-center gap-3 text-[10.5px]" style={{ color: colors.primary.dark }}><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#A7465F' }} /> Pokrycie</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#B86D82' }} /> Nadmiar</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#B94352' }} /> Niedobór</span></span>
+                <span className="flex items-center gap-3 text-[10.5px]" style={{ color: colors.primary.dark }}><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#2674B8' }} /> Pokrycie</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#79A2C0' }} /> Nadmiar</span><span className="flex items-center gap-1"><i className="w-3 h-2.5 rounded" style={{ backgroundColor: '#A94455' }} /> Niedobór</span></span>
               </div>
               <div className="flex gap-1">
                 {Array.from({ length: 24 }, (_, h) => {
                   let req = 0, sch = 0; for (let i = h * 4; i < h * 4 + 4; i++) { req += D.pods.perSlot[i].req; sch += D.pods.perSlot[i].sch; }
-                  const st2 = req - sch > 1 ? '#B94352' : sch - req > 2 && req > 0 ? '#B86D82' : '#A7465F';
+                  const st2 = req - sch > 1 ? '#A94455' : sch - req > 2 && req > 0 ? '#79A2C0' : '#2674B8';
                   return <button key={h} onClick={() => setSlotSel({ h, req: req / 4, sch: sch / 4 })} className="flex-1 h-5 rounded" title={`${pobHH(h * 60)}–${pobHH(h * 60 + 60)}`} style={{ backgroundColor: st2, outline: slotSel && slotSel.h === h ? `2px solid ${colors.primary.darkest}` : 'none' }} />;
                 })}
               </div>
-              {slotSel && <p className="text-[11.5px] mt-1.5" style={{ color: colors.primary.dark }}>Slot <b>{pobHH(slotSel.h * 60)}–{pobHH(slotSel.h * 60 + 60)}</b>: wymagane <b>{slotSel.req.toFixed(1).replace('.', ',')}</b> · plan <b>{slotSel.sch.toFixed(1).replace('.', ',')}</b> · {slotSel.req > slotSel.sch ? <span style={{ color: '#B94352' }}>niedobór {(slotSel.req - slotSel.sch).toFixed(1).replace('.', ',')}</span> : <span style={{ color: '#741334' }}>OK</span>} · na zmianie: {D.zmiany.filter((x) => { const a = pobOp(x.start), b = pobOp(x.end) <= a ? pobOp(x.end) + 1440 : pobOp(x.end); return a < (slotSel.h + 1) * 60 && b > slotSel.h * 60; }).map((x) => (kontoZm(x) || { name: x.name }).name.split(' ')[0]).join(', ') || '—'}</p>}
+              {slotSel && <p className="text-[11.5px] mt-1.5" style={{ color: colors.primary.dark }}>Slot <b>{pobHH(slotSel.h * 60)}–{pobHH(slotSel.h * 60 + 60)}</b>: wymagane <b>{slotSel.req.toFixed(1).replace('.', ',')}</b> · plan <b>{slotSel.sch.toFixed(1).replace('.', ',')}</b> · {slotSel.req > slotSel.sch ? <span style={{ color: '#A94455' }}>niedobór {(slotSel.req - slotSel.sch).toFixed(1).replace('.', ',')}</span> : <span style={{ color: '#2674B8' }}>OK</span>} · na zmianie: {D.zmiany.filter((x) => { const a = pobOp(x.start), b = pobOp(x.end) <= a ? pobOp(x.end) + 1440 : pobOp(x.end); return a < (slotSel.h + 1) * 60 && b > slotSel.h * 60; }).map((x) => (kontoZm(x) || { name: x.name }).name.split(' ')[0]).join(', ') || '—'}</p>}
             </div>
           </div>
 
           {/* zakładki dni */}
-          <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: '#E3DCDD' }}>
-            <div className="flex items-center border-b" style={{ borderColor: '#EDE3E6' }}>
+          <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: '#DCE3E9' }}>
+            <div className="flex items-center border-b" style={{ borderColor: '#E4E8EC' }}>
               {days.map((d) => { const L = dayLabel(d); const S = dniS[d]; const zle = S && S.pods.deficitH > 0.5; return (
-                <button key={d} onClick={() => { setDay(d); setSlotSel(null); setPropozycje(null); }} className="relative flex-1 px-2 py-2.5 text-center border-r last:border-0" style={{ borderColor: '#EDE3E6', backgroundColor: day === d ? '#F7F5F5' : 'white', borderBottom: day === d ? `3px solid ${colors.primary.darkest}` : '3px solid transparent' }}>
-                  {zle && <i className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#B94352' }} />}
+                <button key={d} onClick={() => { setDay(d); setSlotSel(null); setPropozycje(null); }} className="relative flex-1 px-2 py-2.5 text-center border-r last:border-0" style={{ borderColor: '#E4E8EC', backgroundColor: day === d ? '#F7F8FA' : 'white', borderBottom: day === d ? `3px solid ${colors.primary.darkest}` : '3px solid transparent' }}>
+                  {zle && <i className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#A94455' }} />}
                   <p className="text-[11px] font-semibold" style={{ color: colors.primary.light }}>{L.dn}</p>
                   <p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{L.nr}</p>
                 </button>
               ); })}
               <div className="px-4 text-[11.5px] whitespace-nowrap hidden xl:block" style={{ color: colors.primary.light }}>
-                Required <b style={{ color: colors.primary.darkest }}>{pobH1(D.pods.requiredH)}</b> · Plan <b style={{ color: colors.primary.darkest }}>{pobH1(D.pods.scheduledH)}</b> · Coverage <b style={{ color: D.pods.coveragePct >= 95 ? '#741334' : '#A7465F' }}>{Math.round(D.pods.coveragePct)}%</b>
+                Wymagane <b style={{ color: colors.primary.darkest }}>{pobH1(D.pods.requiredH)}</b> <small style={{ color: '#65717C' }}>(crew {pobH1(D.pods.requiredCrewH)} + MGR {pobH1(D.pods.requiredMgrH)})</small> · Plan <b style={{ color: colors.primary.darkest }}>{pobH1(D.pods.scheduledH)}</b> <small style={{ color: '#65717C' }}>(crew {pobH1(D.pods.scheduledCrewH)} + MGR {pobH1(D.pods.scheduledMgrH)})</small> · Pokrycie <b style={{ color: D.pods.coveragePct >= 95 ? '#2674B8' : '#2674B8' }}>{Math.round(D.pods.coveragePct)}%</b>{D.pods.deficitMgrH > 0.25 && <b style={{ color: '#A94455' }}> · brak managera {pobH1(D.pods.deficitMgrH)}</b>}
               </div>
             </div>
-            <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: '#EDE3E6' }}>
+            <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: '#E4E8EC' }}>
               <button onClick={() => setModal({ date: day, start: '08:00', end: '16:00', station: stacje[0], osoba: '' })} className="px-4 h-10 rounded-xl text-sm font-bold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.darkest }}><Plus size={15} /> Dodaj zmianę</button>
-              <button onClick={() => { setPage('wt'); }} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#E3DCDD', color: colors.primary.darkest }}><FileSpreadsheet size={15} /> Szablon dnia</button>
-              <button onClick={() => setRekomOn((v) => !v)} className="ml-auto px-4 h-10 rounded-xl text-sm font-bold flex items-center gap-2" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>{rekomOn ? 'Ukryj rekomendacje' : 'Pokaż rekomendacje'}</button>
+              <button onClick={() => { setPage('wt'); }} className="px-4 h-10 rounded-xl border bg-white text-sm font-bold flex items-center gap-2" style={{ borderColor: '#DCE3E9', color: colors.primary.darkest }}><FileSpreadsheet size={15} /> Szablon dnia</button>
+              <button onClick={() => setRekomOn((v) => !v)} className="ml-auto px-4 h-10 rounded-xl text-sm font-bold flex items-center gap-2" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>{rekomOn ? 'Ukryj rekomendacje' : 'Pokaż rekomendacje'}</button>
             </div>
             {/* gantt */}
             <div className="overflow-x-auto">
               <div style={{ minWidth: 860 }}>
-                <div className="flex border-b" style={{ borderColor: '#EDE3E6' }}>
+                <div className="flex border-b" style={{ borderColor: '#E4E8EC' }}>
                   <div className="w-56 shrink-0 px-4 py-2 text-[10.5px] font-extrabold tracking-wide" style={{ color: colors.primary.light }}>PRACOWNIK / ROLA</div>
-                  <div className="relative flex-1 h-7">{Array.from({ length: 12 }, (_, i) => <span key={i} className="absolute top-1.5 text-[9.5px]" style={{ left: `${i * 2 / 24 * 100}%`, color: '#A38D95' }}>{pobHH(i * 120)}</span>)}</div>
+                  <div className="relative flex-1 h-7">{Array.from({ length: 12 }, (_, i) => <span key={i} className="absolute top-1.5 text-[9.5px]" style={{ left: `${i * 2 / 24 * 100}%`, color: '#65717C' }}>{pobHH(i * 120)}</span>)}</div>
                 </div>
                 {wiersze.map((w) => (
-                  <div key={w.id} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F5F5' }}>
+                  <div key={w.id} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F8FA' }}>
                     <div className="w-56 shrink-0 px-4 py-3 flex items-center gap-2.5">
-                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>{w.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
+                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>{w.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
                       <div className="min-w-0"><p className="text-[13px] font-bold truncate" style={{ color: colors.primary.darkest }}>{w.name}</p><p className="text-[10.5px] truncate" style={{ color: colors.primary.light }}>{w.rola}{w.zm[0] ? ` · ${w.zm[0].station}` : ''}</p></div>
-                      {w.zm.some((x) => konfliktZmiany(x)) && <AlertTriangle size={14} className="shrink-0" style={{ color: '#B94352' }} title={w.zm.map((x) => konfliktZmiany(x)).filter(Boolean).join('; ')} />}
+                      {w.zm.some((x) => konfliktZmiany(x)) && <AlertTriangle size={14} className="shrink-0" style={{ color: '#A94455' }} title={w.zm.map((x) => konfliktZmiany(x)).filter(Boolean).join('; ')} />}
                     </div>
-                    <div className="relative flex-1 py-3" style={{ backgroundImage: 'repeating-#F7F5F5' }}>
+                    <div className="relative flex-1 py-3" style={{ backgroundImage: 'repeating-#F7F8FA' }}>
                       {w.zm.map((x, i) => { const a = pobOp(x.start); let b = pobOp(x.end); if (b <= a) b += 1440; const kfl = konfliktZmiany(x); return (
-                        <div key={i} title={`${x.start}–${x.end} · ${x.station}${kfl ? ` · ⚠ ${kfl}` : ''}`} className="absolute h-8 rounded-lg border flex items-center px-2 text-[11px] font-semibold truncate cursor-default" style={{ left: `${a / 1440 * 100}%`, width: `${Math.min(b - a, 1440 - a) / 1440 * 100}%`, top: 8, backgroundColor: kfl ? '#F5E3E8' : stationColor(x.station) + '22', borderColor: kfl ? '#E0B9C4' : stationColor(x.station) + '55', color: kfl ? '#B94352' : colors.primary.darkest, borderLeft: `3px solid ${kfl ? '#B94352' : stationColor(x.station)}` }}>{x.start}–{x.end} · {x.station}{kfl && <AlertTriangle size={11} className="ml-1 shrink-0" />}</div>
+                        <div key={i} title={`${x.start}–${x.end} · ${x.station}${kfl ? ` · ⚠ ${kfl}` : ''}`} className="absolute h-8 rounded-lg border flex items-center px-2 text-[11px] font-semibold truncate cursor-default" style={{ left: `${a / 1440 * 100}%`, width: `${Math.min(b - a, 1440 - a) / 1440 * 100}%`, top: 8, backgroundColor: kfl ? '#FAE9ED' : stationColor(x.station) + '22', borderColor: kfl ? '#EFC7D0' : stationColor(x.station) + '55', color: kfl ? '#A94455' : colors.primary.darkest, borderLeft: `3px solid ${kfl ? '#A94455' : stationColor(x.station)}` }}>{x.start}–{x.end} · {x.station}{kfl && <AlertTriangle size={11} className="ml-1 shrink-0" />}</div>
                       ); })}
                     </div>
                   </div>
                 ))}
                 {otwarte.map((o, i) => (
-                  <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F5F5' }}>
+                  <div key={i} className="flex items-stretch border-b last:border-0" style={{ borderColor: '#F7F8FA' }}>
                     <div className="w-56 shrink-0 px-4 py-3 flex items-center gap-2.5">
-                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#C7B4BB', color: '#71656A' }}><Plus size={15} /></button>
-                      <div><p className="text-[13px] font-bold" style={{ color: colors.primary.dark }}>Otwarta zmiana</p><p className="text-[10.5px]" style={{ color: '#B94352' }}>niedobór {pobH1(o.h)}</p></div>
-                      <AlertTriangle size={14} style={{ color: '#B94352' }} />
+                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center shrink-0" style={{ borderColor: '#C7B4BB', color: '#65717C' }}><Plus size={15} /></button>
+                      <div><p className="text-[13px] font-bold" style={{ color: colors.primary.dark }}>Otwarta zmiana</p><p className="text-[10.5px]" style={{ color: '#A94455' }}>niedobór {pobH1(o.h)}</p></div>
+                      <AlertTriangle size={14} style={{ color: '#A94455' }} />
                     </div>
                     <div className="relative flex-1 py-3">
-                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="absolute h-8 rounded-lg border-2 border-dashed flex items-center px-2 text-[11px] font-semibold" style={{ left: `${pobOp(o.od) / 1440 * 100}%`, width: `${((pobOp(o.do) <= pobOp(o.od) ? pobOp(o.do) + 1440 : pobOp(o.do)) - pobOp(o.od)) / 1440 * 100}%`, top: 8, borderColor: '#C7A9B3', color: '#A7465F', backgroundImage: 'repeating-#F5ECEF' }}>{o.od}–{o.do} · Nieprzypisana</button>
+                      <button onClick={() => setModal({ date: day, start: o.od, end: o.do, station: stacje[0], osoba: '' })} className="absolute h-8 rounded-lg border-2 border-dashed flex items-center px-2 text-[11px] font-semibold" style={{ left: `${pobOp(o.od) / 1440 * 100}%`, width: `${((pobOp(o.do) <= pobOp(o.od) ? pobOp(o.do) + 1440 : pobOp(o.do)) - pobOp(o.od)) / 1440 * 100}%`, top: 8, borderColor: '#C7A9B3', color: '#2674B8', backgroundImage: 'repeating-#F5ECEF' }}>{o.od}–{o.do} · Nieprzypisana</button>
                     </div>
                   </div>
                 ))}
@@ -312,54 +315,54 @@ export const PlanObsada = ({ data, setPage }) => {
         {/* Smart Scheduler */}
         {rekomOn && (
           <aside className="space-y-3">
-            <div className="bg-white rounded-2xl border p-4" style={{ borderColor: '#E3DCDD' }}>
+            <div className="bg-white rounded-2xl border p-4" style={{ borderColor: '#DCE3E9' }}>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] font-extrabold tracking-[0.12em]" style={{ color: '#741334' }}>⚡ SMART SCHEDULER</p>
-                <button onClick={() => setRekomOn(false)} className="w-7 h-7 rounded-lg border flex items-center justify-center" style={{ borderColor: '#E3DCDD' }}><X size={13} /></button>
+                <p className="text-[11px] font-extrabold tracking-[0.12em]" style={{ color: '#2674B8' }}>⚡ SMART SCHEDULER</p>
+                <button onClick={() => setRekomOn(false)} className="w-7 h-7 rounded-lg border flex items-center justify-center" style={{ borderColor: '#DCE3E9' }}><X size={13} /></button>
               </div>
               <p className="text-[16px] font-bold mb-3" style={{ color: colors.primary.darkest }}>Rekomendacje zmian</p>
-              <div className="rounded-xl p-3 flex items-center gap-3 mb-3" style={{ backgroundColor: '#F7F5F5' }}>
-                <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" fill="none" stroke="#E3DCDD" strokeWidth="5" /><circle cx="23" cy="23" r="19" fill="none" stroke={kpi.score >= 85 ? '#741334' : kpi.score >= 70 ? '#B86D82' : '#B94352'} strokeWidth="5" strokeDasharray={`${kpi.score / 100 * 119} 119`} strokeLinecap="round" transform="rotate(-90 23 23)" /><text x="23" y="27" fontSize="12" fontWeight="800" textAnchor="middle" fill="#2B171E">{kpi.score}</text></svg>
+              <div className="rounded-xl p-3 flex items-center gap-3 mb-3" style={{ backgroundColor: '#F7F8FA' }}>
+                <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" fill="none" stroke="#DCE3E9" strokeWidth="5" /><circle cx="23" cy="23" r="19" fill="none" stroke={kpi.score >= 85 ? '#2674B8' : kpi.score >= 70 ? '#79A2C0' : '#A94455'} strokeWidth="5" strokeDasharray={`${kpi.score / 100 * 119} 119`} strokeLinecap="round" transform="rotate(-90 23 23)" /><text x="23" y="27" fontSize="12" fontWeight="800" textAnchor="middle" fill="#292D32">{kpi.score}</text></svg>
                 <div><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Plan do poprawy' : 'Plan wymaga zmian'}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{(niedobory.length ? 1 : 0) + (doSkrocenia ? 1 : 0) + konflikty.length} sugestie mogą poprawić wynik</p></div>
               </div>
               <div className="space-y-3">
                 {niedobory.slice(0, 2).map((z, i) => (
                   <div key={i} className="border rounded-xl p-3" style={{ borderColor: '#E9D6DC' }}>
-                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>{pobHH(z.od * 15)}–{pobHH(z.do * 15)}</span>
+                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#FAE9ED', color: '#A94455' }}>{pobHH(z.od * 15)}–{pobHH(z.do * 15)}</span>
                     <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Uzupełnij niedobór obsady</p>
                     <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>Dodaj zmianę pokrywającą ten zakres albo wydłuż sąsiednią.</p>
                     <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Deficit −{pobH1((z.do - z.od) / 4)}</span></div>
-                    <button onClick={() => setModal({ date: day, start: pobHH(z.od * 15), end: pobHH(z.do * 15), station: stacje[0], osoba: '' })} className="text-[12px] font-bold mt-2" style={{ color: '#741334' }}>Dodaj zmianę →</button>
+                    <button onClick={() => setModal({ date: day, start: pobHH(z.od * 15), end: pobHH(z.do * 15), station: stacje[0], osoba: '' })} className="text-[12px] font-bold mt-2" style={{ color: '#2674B8' }}>Dodaj zmianę →</button>
                   </div>
                 ))}
                 {doSkrocenia && (
-                  <div className="border rounded-xl p-3" style={{ borderColor: '#E3DCDD' }}>
-                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F1E4E8', color: '#A7465F' }}>{pobHH(doSkrocenia.zakres.od * 15)}–{pobHH(doSkrocenia.zakres.do * 15)}</span>
+                  <div className="border rounded-xl p-3" style={{ borderColor: '#DCE3E9' }}>
+                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>{pobHH(doSkrocenia.zakres.od * 15)}–{pobHH(doSkrocenia.zakres.do * 15)}</span>
                     <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Usuń nadmiar obsady</p>
                     <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>Skróć zmianę {doSkrocenia.osoba} do {pobHH(doSkrocenia.zakres.od * 15)} — pokrycie pozostanie pełne.</p>
                     <div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Koszt −{Math.round(kosztGodzin(kontoZm(doSkrocenia.x), doSkrocenia.zakres.h))} zł</span><span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ borderColor: '#eee', color: colors.primary.dark }}>Excess −{pobH1(doSkrocenia.zakres.h)}</span></div>
-                    <button onClick={() => skroc(doSkrocenia)} className="text-[12px] font-bold mt-2" style={{ color: '#741334' }}>Zastosuj →</button>
+                    <button onClick={() => skroc(doSkrocenia)} className="text-[12px] font-bold mt-2" style={{ color: '#2674B8' }}>Zastosuj →</button>
                   </div>
                 )}
                 {konflikty.slice(0, 2).map((z, i) => (
                   <div key={`k${i}`} className="border rounded-xl p-3" style={{ borderColor: '#E9D6DC' }}>
-                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>{z.x.start}–{z.x.end}</span>
+                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#FAE9ED', color: '#A94455' }}>{z.x.start}–{z.x.end}</span>
                     <p className="text-[13px] font-bold mt-1.5" style={{ color: colors.primary.darkest }}>Konflikt: {(kontoZm(z.x) || { name: z.x.name }).name}</p>
                     <p className="text-[11.5px] mt-0.5" style={{ color: colors.primary.light }}>{z.k}.</p>
-                    <button onClick={() => setPage('dyspo')} className="text-[12px] font-bold mt-2" style={{ color: '#741334' }}>Otwórz dyspozycje →</button>
+                    <button onClick={() => setPage('dyspo')} className="text-[12px] font-bold mt-2" style={{ color: '#2674B8' }}>Otwórz dyspozycje →</button>
                   </div>
                 ))}
                 {!niedobory.length && !doSkrocenia && !konflikty.length && <p className="text-[12px] text-center py-2" style={{ color: colors.primary.light }}>Brak sugestii — plan wygląda dobrze. ✓</p>}
               </div>
               <button onClick={uruchomOptymalizator} className="w-full mt-3 h-11 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2" style={{ backgroundColor: colors.primary.darkest }}><LayoutGrid size={15} /> Uruchom optymalizator</button>
               {propozycje && (
-                <div className="mt-3 border-t pt-3" style={{ borderColor: '#EDE3E6' }}>
+                <div className="mt-3 border-t pt-3" style={{ borderColor: '#E4E8EC' }}>
                   <p className="text-[12px] font-bold mb-2" style={{ color: colors.primary.darkest }}>Propozycje ({propozycje.length}) · {pobH1(propozycje.reduce((a, x) => a + x.h, 0))}</p>
                   {propozycje.length === 0 && <p className="text-[11.5px]" style={{ color: colors.primary.light }}>Popyt jest pokryty — nic nie trzeba dokładać.</p>}
                   {propozycje.map((pr, i) => (
-                    <div key={i} className="flex items-center gap-2 py-1.5 border-b last:border-0" style={{ borderColor: '#F7F5F5' }}>
+                    <div key={i} className="flex items-center gap-2 py-1.5 border-b last:border-0" style={{ borderColor: '#F7F8FA' }}>
                       <span className="text-[11.5px] flex-1" style={{ color: colors.primary.dark }}><b>{pr.od}–{pr.do}</b> · {pr.n}</span>
-                      <button onClick={() => setModal({ date: day, start: pr.od, end: pr.do, station: stacje[0], osoba: '' })} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#F1E4E8', color: '#741334' }}>Użyj</button>
+                      <button onClick={() => setModal({ date: day, start: pr.od, end: pr.do, station: stacje[0], osoba: '' })} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#E8F0F7', color: '#2674B8' }}>Użyj</button>
                     </div>
                   ))}
                 </div>

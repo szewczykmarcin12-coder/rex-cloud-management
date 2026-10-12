@@ -1,0 +1,42 @@
+/* Atmosphere: tokens only. Load before the application theme. */
+:root {
+  --at-brand-primary: #2674B8;
+  --at-brand-primary-hover: #21659F;
+  --at-brand-graphite: #292D32;
+  --at-brand-white: #FFFFFF;
+  --at-ui-text: #292D32;
+  --at-ui-text-secondary: #65717C;
+  --at-ui-canvas: #F7F8FA;
+  --at-ui-surface: #FFFFFF;
+  --at-ui-sidebar: #F5F7F9;
+  --at-ui-border: #E4E8EC;
+  --at-ui-input-border: #DCE3E9;
+  --at-ui-selected: #E8F0F7;
+  --at-ui-subtle-blue: #F1F6FA;
+  --at-ui-disabled-bg: #EDF0F3;
+  --at-ui-disabled-text: #65717C;
+  --at-ui-scrim: rgba(31, 53, 72, 0.22);
+  --at-station-lead-fill: #E9E4F4;
+  --at-station-lead-accent: #9C92BC;
+  --at-station-operations-fill: #DCEBF5;
+  --at-station-operations-accent: #79A2C0;
+  --at-station-production-fill: #F8F1D2;
+  --at-station-production-accent: #C9B45E;
+  --at-station-control-fill: #E4E8F2;
+  --at-station-control-accent: #8C9AC0;
+  --at-station-text: #292D32;
+  --at-chart-blue: #9CCBF0;
+  --at-chart-mint: #A5D8C5;
+  --at-chart-peach: #F3BF9F;
+  --at-chart-lavender: #BDB2E5;
+  --at-chart-sand: #F0DFA3;
+  --at-chart-slate: #BAC9DC;
+  --at-chart-plan-line: #2674B8;
+  --at-chart-actual-line: #8B7FAE;
+  --at-status-success-text: #407362;
+  --at-status-success-fill: #E8F3EE;
+  --at-status-warning-text: #886929;
+  --at-status-warning-fill: #FBF4E5;
+  --at-status-danger-text: #A94455;
+  --at-status-danger-fill: #FAE9ED;
+}

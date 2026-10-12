@@ -1,9 +1,9 @@
 .rex-print-overlay {
   --rex-print-ink: #241218;
   --rex-print-line: #e4dcdf;
-  --rex-print-muted: #71656a;
-  --rex-print-teal-900: #3a0718;
-  --rex-print-teal-700: #6f102f;
+  --rex-print-muted: #65717C;
+  --rex-print-teal-900: #292D32;
+  --rex-print-teal-700: #21659F;
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -89,7 +89,7 @@
   gap: 24px;
   padding: 17px 25px;
   color: #fff;
-  background: #6f102f;
+  background: #21659F;
 }
 
 .rex-print-brand,
@@ -196,7 +196,7 @@
 .rex-print-flags,
 .rex-print-flags span { display: flex; align-items: center; }
 .rex-print-flags { gap: 10px; }
-.rex-print-flags span { gap: 4px; color: #71656a; font-size: 7.5px; }
+.rex-print-flags span { gap: 4px; color: #65717C; font-size: 7.5px; }
 .rex-print-flags i,
 .rex-print-coverage-legend i { width: 7px; height: 7px; border-radius: 2px; }
 .rex-print-flags i.trainer { background: #942d4f; }
@@ -213,7 +213,7 @@
 .rex-print-station {
   overflow: hidden;
   border: 1px solid var(--rex-print-line);
-  border-left: 3px solid var(--station-color, #a7465f);
+  border-left: 3px solid var(--station-color, #2674B8);
   border-radius: 7px;
   break-inside: avoid;
 }
@@ -242,7 +242,7 @@
   place-items: center;
   border-radius: 4px;
   color: #fff;
-  background: var(--station-color, #a7465f);
+  background: var(--station-color, #2674B8);
   font-size: 5.5px;
   font-weight: 800;
 }
@@ -321,7 +321,7 @@
 .rex-print-coverage-row.planned span.deficit { color: #a63f39; background: #f7d9d6; }
 .rex-print-coverage-row.planned span.excess { color: #9b5c27; background: #f4d0dc; }
 .rex-print-coverage-legend { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
-.rex-print-coverage-legend span { display: flex; align-items: center; gap: 4px; color: #71656a; font-size: 6.5px; }
+.rex-print-coverage-legend span { display: flex; align-items: center; gap: 4px; color: #65717C; font-size: 6.5px; }
 .rex-print-coverage-legend i.ok { background: #9b6e7d; }
 .rex-print-coverage-legend i.deficit { background: #cf6259; }
 .rex-print-coverage-legend i.excess { background: #db668d; }

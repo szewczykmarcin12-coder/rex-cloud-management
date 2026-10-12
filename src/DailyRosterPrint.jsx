@@ -40,7 +40,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
 
       <article className={`ordo-print-page opv3${gesto}`}>
         <header className="opv3-head">
-          <div className="opv3-brand"><b>ORDO</b><span>WORKFORCE STUDIO</span></div>
+          <div className="opv3-brand"><img src="/brand/atmosphere-studio-logo-graphite.svg" alt="Atmosphere Studio" /></div>
           <div className="opv3-title"><span>WORKFORCE / SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong>{/^wersja robocza/i.test(d.versionLabel || '') && <small className="opv3-draft">wersja robocza — przed publikacją</small>}</div>
           <div className="opv3-loc"><span>LOKAL</span><strong>{d.restaurantName} – {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
         </header>
@@ -110,7 +110,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
           </div>
         </section>
 
-        <footer className="opv3-foot"><span>ORDO Workforce Studio • Schedule</span><span>{d.generatedAt}</span><span>{d.documentLabel}</span></footer>
+        <footer className="opv3-foot"><span>Atmosphere Studio • Workforce Management</span><span>{d.generatedAt}</span><span>{d.documentLabel}</span></footer>
       </article>
     </div>
   );

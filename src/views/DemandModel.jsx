@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { parseSalesDayByDay } from '../import/posReports.js';
 import { D3, NS, OC, PIK, S0, SZAB, ZLH, f0, fH1, hmS, optKsztaltuj, optRozbicie, optZapotrzebowanie, sl, toISOdate } from '../lib/demandEngine.js';
-import { colors, funkcjaLabel, godzZ, jestInstruktor, kosztGodzin, months, wtDur, wtRel, ymd } from '../lib/domain.js';
+import { colors, funkcjaLabel, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, months, wtDur, wtRel, ymd } from '../lib/domain.js';
 import { Header, Sekcja } from '../ui/primitives.jsx';
 import { BPBars, BPLine } from './BudgetPlan.jsx';
 // ── Prognozy i estymacja → Model popytu (historia, sezonowość, krzywa dnia, symulacja) ──
@@ -10,7 +10,7 @@ const OptKpi = ({ label, value, sub, tone }) => (
   <div className="rounded-xl p-3 bg-white shadow-sm border" style={{ borderColor: colors.primary.bg }}>
     <div className="text-[11px]" style={{ color: colors.primary.light }}>{label}</div>
     <div className="font-mono text-lg mt-0.5" style={{ color: tone || colors.primary.darkest }}>{value}</div>
-    {sub && <div className="text-[10px]" style={{ color: "#A38D95" }}>{sub}</div>}
+    {sub && <div className="text-[10px]" style={{ color: "#65717C" }}>{sub}</div>}
   </div>
 );
 const OptSuw = ({ label, value, min, max, step, unit, onChange }) => (
@@ -29,13 +29,13 @@ const OptWidokDnia = ({ dem, kc, cover, shifts }) => {
     <div className="w-full overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 700 }}>
         {[...Array(NS)].map((_, i) => { const h = S0 + Math.floor(i / 2); return PIK.includes(h) ? <rect key={i} x={PL + i * cw} y={0} width={cw} height={8} fill={OC.bad} opacity=".7" /> : null; })}
-        <text x={2} y={7} fontSize="7.5" fill="#A38D95">Szczyt 13–20</text>
-        {[...Array(NS)].map((_, i) => i % 4 === 0 ? <text key={i} x={PL + i * cw} y={18} fontSize="7" fill="#A38D95">{hmS(i).slice(0, 2)}</text> : null)}
+        <text x={2} y={7} fontSize="7.5" fill="#65717C">Szczyt 13–20</text>
+        {[...Array(NS)].map((_, i) => i % 4 === 0 ? <text key={i} x={PL + i * cw} y={18} fontSize="7" fill="#65717C">{hmS(i).slice(0, 2)}</text> : null)}
         {rows.map((r, ri) => (<g key={ri}>
           <text x={2} y={22 * (ri + 1) + 17} fontSize="8.5" fill={r.c}>{r.l}</text>
           {r.a.map((v, i) => (<g key={i}>
             <rect x={PL + i * cw} y={22 * (ri + 1) + 7} width={cw - .3} height={13} fill={r.c} opacity={v > 0 ? Math.min(.1 + v * .1, .85) : .04} />
-            <text x={PL + i * cw + cw / 2} y={22 * (ri + 1) + 17} fontSize="6.5" textAnchor="middle" fill={v > 3 ? "#fff" : "#A38D95"}>{v > 0 ? v : ""}</text>
+            <text x={PL + i * cw + cw / 2} y={22 * (ri + 1) + 17} fontSize="6.5" textAnchor="middle" fill={v > 3 ? "#fff" : "#65717C"}>{v > 0 ? v : ""}</text>
           </g>))}
         </g>))}
         <text x={2} y={22 * (rows.length + 1) + 17} fontSize="8.5" fill={colors.primary.darkest}>Różnica</text>
@@ -138,6 +138,7 @@ export const ForecastPlan = ({ data, setPage }) => {
   const hasReal = wdAvg.some((x) => x != null);
 
   const R = useMemo(() => {
+    const poIdDM = new Map((data.accounts || []).map((a) => [a.id, a]));
     const dim = new Date(year, mIdx + 1, 0).getDate();
     const dni = Array.from({ length: dim }, (_, k) => {
       const d = k + 1, ds = ymd(new Date(year, mIdx, d));
@@ -154,8 +155,10 @@ export const ForecastPlan = ({ data, setPage }) => {
       const he = out.reduce((a, c) => a + c.len, 0) / 2;
       const { dir, ind } = optRozbicie(sprzedaz, splh, podloga, tryb, dow);
       // pokrycie wynikające z REALNEGO grafiku (do porównania z obsadą idealną — jak Defecto/Exceso w MAPAL)
+      // pokrycie crew z REALNEGO grafiku — zmiany managerskie nie wchodzą do porównania z popytem (to wymóg obecności, nie nadmiar)
       const coverAkt = new Array(NS).fill(0);
-      data.shifts.filter((x) => x.date === ds && !jestInstruktor(x)).forEach((x) => {
+      const mgrAkt = data.shifts.filter((x) => x.date === ds && !jestInstruktor(x) && jestZmianaMgr(x, x.accountId ? poIdDM.get(x.accountId) : null)).reduce((a, x) => a + godzZ(x), 0);
+      data.shifts.filter((x) => x.date === ds && !jestInstruktor(x) && !jestZmianaMgr(x, x.accountId ? poIdDM.get(x.accountId) : null)).forEach((x) => {
         const a = wtRel(x.start); const dl = Math.round(wtDur(x.start, x.end) / 30);
         for (let i = 0; i < dl; i++) { const p = Math.floor(a / 30) + i; if (p >= 0 && p < NS) coverAkt[p]++; }
       });
@@ -172,7 +175,7 @@ export const ForecastPlan = ({ data, setPage }) => {
         else if (r < 0) { const t = dir[i] + ind[i] || 1; dDir += (-r) * (dir[i] / t); dInd += (-r) * (ind[i] / t); }
       }
       const ideal = dem.reduce((a, b) => a + b, 0) / 2;
-      return { d, ds, dow, sprzedaz, jestEst, checks, akt, dem, kc, cover, dir, ind, shifts: out, he, ideal, coverAkt, exc: exc / 2, dDir: dDir / 2, dInd: dInd / 2, excA: excA / 2, dDirA: dDirA / 2, dIndA: dIndA / 2,
+      return { d, ds, dow, sprzedaz, jestEst, checks, akt, mgrAkt, dem, kc, cover, dir, ind, shifts: out, he, ideal, coverAkt, exc: exc / 2, dDir: dDir / 2, dInd: dInd / 2, excA: excA / 2, dDirA: dDirA / 2, dIndA: dIndA / 2,
         splhA: akt ? sprzedaz / akt : 0, splhE: he ? sprzedaz / he : 0,
         mptA: checks ? (akt * 60) / checks : 0, mptE: checks ? (he * 60) / checks : 0 };
     });
@@ -182,7 +185,7 @@ export const ForecastPlan = ({ data, setPage }) => {
     data.shifts.filter((x) => String(x.date || '').startsWith(`${year}-${String(mIdx + 1).padStart(2, '0')}`) && !jestInstruktor(x)).forEach((x) => { const k = String(x.name || '').toUpperCase().trim(); zalogaMap[k] = (zalogaMap[k] || 0) + godzZ(x); });
     const byDow = [...Array(7)].map((_, i) => { const g = dni.filter((x) => x.dow === i); return { dow: i, n: g.length, s: g.length ? g.reduce((a, x) => a + x.sprzedaz, 0) / g.length : 0, a: g.length ? g.reduce((a, x) => a + x.akt, 0) / g.length : 0, e: g.length ? g.reduce((a, x) => a + x.he, 0) / g.length : 0 }; });
     return { dni, dim, sumS, sumA, sumE, sumC, byDow, zalogaMap, splhA: sumA ? sumS / sumA : 0, splhE: sumE ? sumS / sumE : 0, mgr: mgrDoba * dim };
-  }, [year, mIdx, realSales, realChecks, wdAvg, PRED, korekta, splh, podloga, tryb, wl, data.shifts, mgrDoba]);
+  }, [year, mIdx, realSales, realChecks, wdAvg, PRED, korekta, splh, podloga, tryb, wl, data.shifts, data.accounts, mgrDoba]);
 
   const D = R.dni[Math.min(dzien, R.dim) - 1] || R.dni[0];
   const roz = R.sumE - R.sumA;
@@ -211,7 +214,7 @@ export const ForecastPlan = ({ data, setPage }) => {
         </div>
       </Header>
       <div className="p-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#F7F5F5", color: colors.primary.dark }}>
+        <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#F7F8FA", color: colors.primary.dark }}>
           {importInfo ? <span className="text-sm">Historia POS: <b>{importInfo.n}</b> dni ({importInfo.from} → {importInfo.to}){importInfo.checks ? `, paragony: ${importInfo.checks} dni` : ""} • podstawa: <b>{(data.salesData && data.salesData.meta && data.salesData.meta.basis === 'gross') ? 'brutto' : 'netto'}</b>{data.salesData && data.salesData.intraday ? ` • profil dnia z POS ${data.salesData.intraday.from}–${data.salesData.intraday.to}` : ' • profil dnia: założenie QSR'}.</span> : <span className="text-sm">Brak historii sprzedaży — silnik używa średnich dni tygodnia z profilu standardowego.</span>}
           <button onClick={() => setPage && setPage('import-eksport')} className="ml-auto text-xs px-3 py-1.5 rounded-lg font-semibold text-white flex items-center gap-2" style={{ backgroundColor: colors.primary.medium }}><Upload size={13} /> Import POS (Administracja)</button>
           <button onClick={() => setPage && setPage('plan-miesiaca')} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ backgroundColor: 'white', color: colors.primary.dark }}>Plan miesiąca →</button>
@@ -222,7 +225,7 @@ export const ForecastPlan = ({ data, setPage }) => {
           <button onClick={() => setPage && setPage('plan')} className="px-3 py-1.5 rounded-full font-medium" style={{ backgroundColor: 'white', color: colors.primary.dark, border: `1px solid ${colors.primary.bg}` }}>Budżet i koszty pracy (COL) →</button>
         </div>
         {dniEst > 0 && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#F1E4E8", color: "#A7465F" }}>
+          <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: "#E8F0F7", color: "#2674B8" }}>
             <span className="text-sm"><b>Prognoza</b> — {dniEst} z {R.dim} dni tego miesiąca nie ma jeszcze danych sprzedaży, więc są <b>estymowane</b>{PRED ? ` na podstawie ${PRED.dni} dni historii (${PRED.od} → ${PRED.do})` : ""}.</span>
             <button onClick={() => setTab("prognoza")} className="ml-auto text-xs px-3 py-1.5 rounded-lg font-medium text-white" style={{ backgroundColor: colors.primary.medium }}>Ustawienia prognozy</button>
           </div>
@@ -246,14 +249,14 @@ export const ForecastPlan = ({ data, setPage }) => {
                 <span>Dzień</span><span className="text-right">Sprzedaż</span><span className="text-right">Grafik h</span><span className="text-right">Silnik h</span><span className="text-right">Δ h</span><span className="text-right">SPLH silnik</span><span className="text-center">Status</span>
               </div>
               {R.dni.map((x) => { const d = x.he - x.akt, over = d > 1.5, under = d < -1.5; return (
-                <div key={x.d} className="grid grid-cols-[54px_1fr_1fr_1fr_1fr_1fr_86px] gap-2 px-2 py-1.5 text-sm items-center border-b cursor-pointer hover:bg-slate-50" style={{ borderColor: "#EDE3E6" }} onClick={() => { setDzien(x.d); setTab("dzien"); }}>
+                <div key={x.d} className="grid grid-cols-[54px_1fr_1fr_1fr_1fr_1fr_86px] gap-2 px-2 py-1.5 text-sm items-center border-b cursor-pointer hover:bg-slate-50" style={{ borderColor: "#E4E8EC" }} onClick={() => { setDzien(x.d); setTab("dzien"); }}>
                   <span style={{ color: colors.primary.dark }}>{D3[x.dow]} {x.d}</span>
                   <span className="text-right" style={{ color: colors.primary.darkest }}>{f0(x.sprzedaz)}</span>
                   <span className="text-right" style={{ color: colors.primary.dark }}>{fH1(x.akt)}</span>
                   <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
-                  <span className="text-right font-medium" style={{ color: over ? OC.warn : under ? OC.ok : "#A38D95" }}>{d >= 0 ? "+" : ""}{d.toFixed(1)}</span>
+                  <span className="text-right font-medium" style={{ color: over ? OC.warn : under ? OC.ok : "#65717C" }}>{d >= 0 ? "+" : ""}{d.toFixed(1)}</span>
                   <span className="text-right" style={{ color: colors.primary.dark }}>{f0(x.splhE)}</span>
-                  <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: over ? "#F1E4E8" : under ? "#F1E4E8" : "#EDE3E6", color: over ? OC.warn : under ? OC.ok : "#71656A" }}>{over ? "dołóż" : under ? "oszczędność" : "OK"}</span></span>
+                  <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: over ? "#E8F0F7" : under ? "#E8F0F7" : "#E4E8EC", color: over ? OC.warn : under ? OC.ok : "#65717C" }}>{over ? "dołóż" : under ? "oszczędność" : "OK"}</span></span>
                 </div>); })}
             </div></div>
           </Sekcja>
@@ -279,7 +282,7 @@ export const ForecastPlan = ({ data, setPage }) => {
 
         {tab === "prognoza" && (<>
           {!PRED ? (
-            <Sekcja kolor="#A7465F" tytul="Brak historii sprzedaży">
+            <Sekcja kolor="#2674B8" tytul="Brak historii sprzedaży">
               <p className="text-sm" style={{ color: colors.primary.dark }}>Aby prognozować kolejny miesiąc, zaimportuj najpierw raport „Sales Day by Day" z co najmniej kilku tygodni. Im dłuższa historia, tym stabilniejszy profil dni tygodnia i trend.</p>
             </Sekcja>
           ) : (<>
@@ -292,7 +295,7 @@ export const ForecastPlan = ({ data, setPage }) => {
               </div>
             </Sekcja>
 
-            <Sekcja kolor="#2B171E" tytul="Sterowanie prognozą">
+            <Sekcja kolor="#292D32" tytul="Sterowanie prognozą">
               <div className="grid md:grid-cols-2 gap-6">
                 <OptSuw label="Okno historii" value={oknoTyg} min={2} max={26} step={1} unit="tyg." onChange={setOknoTyg} />
                 <OptSuw label="Ręczna korekta (np. wydarzenie, remont)" value={korekta} min={-30} max={30} step={1} unit="%" onChange={setKorekta} />
@@ -300,7 +303,7 @@ export const ForecastPlan = ({ data, setPage }) => {
               <p className="text-xs text-slate-400 mt-3">Krótsze okno szybciej reaguje na zmiany (nowe menu, sezon), dłuższe jest stabilniejsze. Korekta przesuwa całą prognozę w górę lub w dół.</p>
             </Sekcja>
 
-            <Sekcja kolor="#5A3542" tytul="Średnia sprzedaż wg dnia tygodnia (z okna historii)">
+            <Sekcja kolor="#3F4A55" tytul="Średnia sprzedaż wg dnia tygodnia (z okna historii)">
               <BPBars unit="zł" items={[1, 2, 3, 4, 5, 6, 0].map((js) => ({ label: D3[(js + 6) % 7], value: PRED.wd[js] || 0, n: 0, color: (js === 0 || js === 5 || js === 6) ? OC.silnik : colors.primary.medium }))} />
             </Sekcja>
 
@@ -309,12 +312,12 @@ export const ForecastPlan = ({ data, setPage }) => {
               <div className="overflow-x-auto mt-3"><div className="min-w-[560px]">
                 <div className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-[11px] font-bold uppercase" style={{ color: colors.primary.light, borderBottom: `1px solid ${colors.primary.bg}` }}><span>Dzień</span><span className="text-right">Sprzedaż zł</span><span className="text-right">Rekom. h</span><span className="text-right">Plan h</span><span className="text-center">Źródło</span></div>
                 {R.dni.map((x) => (
-                  <div key={x.d} className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-sm items-center border-b" style={{ borderColor: "#EDE3E6" }}>
+                  <div key={x.d} className="grid grid-cols-[70px_1fr_1fr_1fr_90px] gap-2 px-2 py-1.5 text-sm items-center border-b" style={{ borderColor: "#E4E8EC" }}>
                     <span style={{ color: colors.primary.dark }}>{D3[x.dow]} {x.d}</span>
                     <span className="text-right" style={{ color: colors.primary.darkest }}>{f0(x.sprzedaz)}</span>
                     <span className="text-right font-medium" style={{ color: OC.silnik }}>{fH1(x.he)}</span>
                     <span className="text-right" style={{ color: colors.primary.dark }}>{fH1(x.akt)}</span>
-                    <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: x.jestEst ? "#F1E4E8" : "#F1E4E8", color: x.jestEst ? "#A7465F" : "#5A3542" }}>{x.jestEst ? "prognoza" : "dane"}</span></span>
+                    <span className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: x.jestEst ? "#E8F0F7" : "#E8F0F7", color: x.jestEst ? "#2674B8" : "#3F4A55" }}>{x.jestEst ? "prognoza" : "dane"}</span></span>
                   </div>
                 ))}
               </div></div>

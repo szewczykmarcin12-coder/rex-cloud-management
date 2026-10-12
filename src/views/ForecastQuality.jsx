@@ -23,14 +23,14 @@ export const ForecastQuality = ({ data }) => {
       <div className="flex flex-wrap items-center gap-4 mb-3">
         <span className="text-sm font-bold" style={{ color: colors.primary.darkest }}>Jakość prognozy (baseline sezonowy)</span>
         {bt && bt.dni > 0 ? (<>
-          <span className="text-xs" style={{ color: colors.primary.medium }}>MAPE <b style={{ color: bt.mape > 15 ? '#B94352' : '#741334' }}>{String(bt.mape).replace('.', ',')}%</b></span>
-          <span className="text-xs" style={{ color: colors.primary.medium }}>WAPE <b style={{ color: bt.wape > 12 ? '#B94352' : '#741334' }}>{String(bt.wape).replace('.', ',')}%</b></span>
+          <span className="text-xs" style={{ color: colors.primary.medium }}>MAPE <b style={{ color: bt.mape > 15 ? '#A94455' : '#2674B8' }}>{String(bt.mape).replace('.', ',')}%</b></span>
+          <span className="text-xs" style={{ color: colors.primary.medium }}>WAPE <b style={{ color: bt.wape > 12 ? '#A94455' : '#2674B8' }}>{String(bt.wape).replace('.', ',')}%</b></span>
           <span className="text-xs text-slate-400">backtest: {bt.dni} zakończonych dni · prognoza liczona tylko z danych sprzed dnia</span>
           {dane.modele && <span className="text-xs" style={{ color: colors.primary.dark }} title="Silnik liczy oba modele na ostatnich 28 zamkniętych dniach i używa tego z niższym MAPE. Hybryda: poziom z ostatnich 7 dni × udział dnia tygodnia (szybko łapie zmianę sezonu). Mediana: mediana 8 tygodni tego samego dnia tygodnia × trend (odporna na pojedyncze promocje).">model: <b>{dane.modele.wybrany === 'hybryda' ? 'hybryda (poziom 7 dni × udział dnia)' : 'mediana dnia tygodnia × trend'}</b> · hybryda {dane.modele.hybryda.mape != null ? `${String(dane.modele.hybryda.mape).replace('.', ',')}%` : '—'} vs mediana {dane.modele.mediana.mape != null ? `${String(dane.modele.mediana.mape).replace('.', ',')}%` : '—'}</span>}
-        </>) : blad ? <span className="text-xs" style={{ color: '#B94352' }}>nie udało się pobrać prognozy: {blad} <button type="button" className="underline font-semibold" onClick={zaladuj}>ponów</button></span> : <span className="text-xs" style={{ color: '#A7465F' }}>za mało historii sprzedaży do pomiaru błędu — importuj dane dzienne</span>}
+        </>) : blad ? <span className="text-xs" style={{ color: '#A94455' }}>nie udało się pobrać prognozy: {blad} <button type="button" className="underline font-semibold" onClick={zaladuj}>ponów</button></span> : <span className="text-xs" style={{ color: '#2674B8' }}>za mało historii sprzedaży do pomiaru błędu — importuj dane dzienne</span>}
       </div>
       {dane && dane.dane && (
-        <p className="text-xs mb-2" style={{ color: dane.dane.przeterminowane ? '#B94352' : '#6e5a62' }}>
+        <p className="text-xs mb-2" style={{ color: dane.dane.przeterminowane ? '#A94455' : '#65717C' }}>
           {dane.dane.ostatniDzien ? `Historia POS do ${dane.dane.ostatniDzien} (${dane.dane.dniOdOstatniego} dni temu) • rytm: import we wtorek z ostatnich 8 tygodni • następny: ${dane.dane.nastepnyImport}` : 'Brak historii POS — prognoza dzienna nie ma na czym się oprzeć.'}{dane.dane.przeterminowane ? ' • ZALEGŁY — prognoza opiera się na starym poziomie sprzedaży.' : ''}
         </p>
       )}
@@ -39,10 +39,10 @@ export const ForecastQuality = ({ data }) => {
           {dane.days.map((d) => (
             <button key={d.date} onClick={() => setEdytuj({ date: d.date, value: d.override ? d.override.value : (d.baseline ?? ''), reason: d.override ? d.override.reason : '' })}
               className="shrink-0 w-[92px] rounded-lg border px-2 py-1.5 text-left hover:shadow-sm"
-              style={{ borderColor: d.override ? '#A7465F' : d.events && d.events.length ? '#B86D82' : colors.primary.bg, backgroundColor: d.override ? '#F1E4E8' : d.events && d.events.length ? '#FBF3F5' : 'white' }}>
+              style={{ borderColor: d.override ? '#2674B8' : d.events && d.events.length ? '#79A2C0' : colors.primary.bg, backgroundColor: d.override ? '#E8F0F7' : d.events && d.events.length ? '#F1F6FA' : 'white' }}>
               <p className="text-[10px] font-bold" style={{ color: colors.primary.light }}>{DK[d.dow]} {d.date.slice(8)}.{d.date.slice(5, 7)}</p>
               <p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{d.forecast != null ? d.forecast.toLocaleString('pl-PL') : '—'}</p>
-              <p className="text-[9.5px] truncate" style={{ color: d.override ? '#A7465F' : colors.primary.light }}>{d.override ? `korekta: ${d.override.reason}` : d.events && d.events.length ? `${d.eventFactor === 0 ? 'zamknięte' : `${d.eventFactor > 1 ? '+' : ''}${Math.round((d.eventFactor - 1) * 100)} %`}: ${d.events[0]}` : (d.baseline != null ? 'model' : 'brak historii')}</p>
+              <p className="text-[9.5px] truncate" style={{ color: d.override ? '#2674B8' : colors.primary.light }}>{d.override ? `korekta: ${d.override.reason}` : d.events && d.events.length ? `${d.eventFactor === 0 ? 'zamknięte' : `${d.eventFactor > 1 ? '+' : ''}${Math.round((d.eventFactor - 1) * 100)} %`}: ${d.events[0]}` : (d.baseline != null ? 'model' : 'brak historii')}</p>
             </button>
           ))}
         </div>
@@ -53,7 +53,7 @@ export const ForecastQuality = ({ data }) => {
           <div><label className="block text-[10px]" style={{ color: colors.primary.light }}>Prognoza (zł)</label><input type="number" value={edytuj.value} onChange={(e) => setEdytuj((x) => ({ ...x, value: e.target.value }))} className="w-28 px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
           <div className="flex-1 min-w-[180px]"><label className="block text-[10px]" style={{ color: colors.primary.light }}>Uzasadnienie (wymagane)</label><input value={edytuj.reason} onChange={(e) => setEdytuj((x) => ({ ...x, reason: e.target.value }))} placeholder="np. promocja, mecz, święto" className="w-full px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }} /></div>
           <button onClick={zapisz} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: colors.primary.medium }}>Zapisz</button>
-          <button onClick={() => { setEdytuj((x) => ({ ...x, value: '' })); }} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: '#F5E3E8', color: '#B94352' }}>Usuń korektę</button>
+          <button onClick={() => { setEdytuj((x) => ({ ...x, value: '' })); }} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: '#FAE9ED', color: '#A94455' }}>Usuń korektę</button>
           <button onClick={() => setEdytuj(null)} className="px-3 py-1.5 rounded-lg text-sm" style={{ backgroundColor: 'white', color: colors.primary.dark }}>Anuluj</button>
         </div>
       )}
@@ -70,6 +70,6 @@ export const ForecastQualityPage = ({ data, setPage }) => (
       <button className="secondary-action" onClick={() => setPage('prognoza-miesiaca')}><ShieldCheck size={16} /> Prognoza miesiąca</button>
     </MHead>
     <ForecastQuality data={data} />
-    <p className="text-xs" style={{ color: '#8C8A83', marginTop: 8 }}>Prognoza dzienna liczona jest wyłącznie z danych sprzed danego dnia. Plan miesięczny (AOP) i budżet mają osobne wersje — ten moduł mierzy trafność prognozy bazowej, nie zatwierdzonego planu.</p>
+    <p className="text-xs" style={{ color: '#65717C', marginTop: 8 }}>Prognoza dzienna liczona jest wyłącznie z danych sprzed danego dnia. Plan miesięczny (AOP) i budżet mają osobne wersje — ten moduł mierzy trafność prognozy bazowej, nie zatwierdzonego planu.</p>
   </div></div>
 );
