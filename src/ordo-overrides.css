@@ -134,7 +134,7 @@ small { font-size: 10.5px !important; }
 .ordo-print-page.opv3 { display: grid; grid-template-rows: 62px 48px minmax(0, 1fr) auto 22px; row-gap: 8px; padding: 0 14px 0; border-top-width: 5px; }
 .opv3 * { box-sizing: border-box; }
 /* nagłówek */
-.opv3-head { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto auto; align-items: center; gap: 18px; border-bottom: 1px solid var(--print-line); }
+.opv3-head { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; align-items: center; gap: 18px; border-bottom: 1px solid var(--print-line); }
 .opv3-status { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 4px 10px; border-radius: 8px; text-align: right; }
 .opv3-status span { font-size: 7px; font-weight: 800; letter-spacing: .18em; color: #65717C; } .opv3-status b { font-size: 10px; font-weight: 800; } .opv3-status small { font-size: 7.5px; max-width: 150px; }
 .opv3-status.draft { background: var(--at-status-warning-fill); } .opv3-status.draft b, .opv3-status.draft small { color: var(--at-status-warning-text); }
@@ -438,3 +438,25 @@ input[type="checkbox"], input[type="radio"] { accent-color: #2674B8; }
 .insight-item em { color: var(--at-ui-text-secondary); }
 .insight-item.ok em { color: var(--at-status-success-text); } .insight-item.warn em { color: var(--at-status-warning-text); } .insight-item.bad em { color: var(--at-status-danger-text); } .insight-item.neutral em { color: var(--at-ui-text-secondary); }
 .forecast-quality-panel .panel-title > em { padding: 3px 8px; border-radius: 8px; font-size: 11px; font-weight: 800; }
+
+/* v15.4 — dyspozycje w jednej semantyce: dostępny = zieleń, niedostępny = neutralny szary, częściowo = bursztyn, okno godzin = błękit */
+.dyspo-tag, .dy-kal-day { border-color: transparent; }
+.dyspo-tag.ok, .dy-kal-day.ok { color: var(--at-status-success-text); background: var(--at-status-success-fill); border-color: var(--at-status-success-fill); }
+.dyspo-tag.no, .dy-kal-day.no { color: var(--at-ui-text-secondary); background: var(--at-ui-disabled-bg); border-color: var(--at-ui-disabled-bg); }
+.dyspo-tag.part, .dy-kal-day.part { color: var(--at-status-warning-text); background: var(--at-status-warning-fill); border-color: var(--at-status-warning-fill); }
+.dyspo-tag.win, .dy-kal-day.win { color: var(--at-brand-primary); background: var(--at-ui-selected); border-color: var(--at-ui-selected); }
+.dy-kal-day:disabled { background: var(--at-ui-canvas); }
+/* etap tygodnia: chip nie może być węższy niż tekst; „w układaniu” to informacja (błękit), nie alarm */
+.rota-stage { width: auto; max-width: none; min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; justify-self: start; }
+.rota-list-head, .rota-list-row { grid-template-columns: minmax(225px, 1.4fr) 136px 96px 104px 96px 82px 96px 54px 48px; }
+.rota-stage.stage-in-progress i { background: var(--at-brand-primary); } .rota-stage.stage-completed i, .rota-stage.stage-reviewed i { background: var(--at-status-success-text); }
+.rota-stage.stage-completed, .rota-stage.stage-reviewed { color: var(--at-status-success-text); background: var(--at-status-success-fill); }
+/* przyciski drugorzędne z długim tekstem (np. w panelu bocznym) zawijają się w polu zamiast z niego wychodzić */
+.forecast-controls .secondary-action, .forecast-controls .primary-action { white-space: normal; text-align: left; line-height: 1.25; height: auto; min-height: 36px; padding-top: 7px; padding-bottom: 7px; }
+/* słownik stanowisk w Modelu pracy: nazwa z zawijaniem w swojej kolumnie, stałe kolumny przełączników */
+.wm-dict-row { display: grid; grid-template-columns: minmax(0, 1fr) 54px 56px 60px; gap: 6px; align-items: center; padding: 6px 8px; font-size: 11px; }
+.wm-dict-row > span:first-child { min-width: 0; display: flex; align-items: flex-start; gap: 6px; } .wm-dict-row > span:first-child b { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
+.wm-dict-row > span:first-child i { flex: 0 0 8px; margin-top: 3px; }
+.wm-dict-row label { display: flex; gap: 3px; align-items: center; white-space: nowrap; color: var(--at-ui-text-secondary); font-size: 10.5px; }
+.wm-dict-head { display: grid; grid-template-columns: minmax(0, 1fr) 54px 56px 60px; gap: 6px; padding: 0 8px 4px; font-size: 10px; letter-spacing: .08em; font-weight: 700; color: var(--at-ui-text-secondary); }
+.wm-dict-head span + span { text-align: left; }

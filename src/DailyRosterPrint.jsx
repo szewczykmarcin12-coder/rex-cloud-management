@@ -44,9 +44,8 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
       <article className={`ordo-print-page opv3${gesto}`}>
         <header className="opv3-head">
           <div className="opv3-brand"><img src="/brand/atmosphere-studio-logo-graphite.svg" alt="Atmosphere Studio" /></div>
-          <div className="opv3-title"><span>GRAFIK • DOKUMENT DNIA</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong></div>
-          <div className={`opv3-status ${/^wersja robocza/i.test(d.versionLabel || '') ? 'draft' : 'pub'}`}><span>STATUS</span><b>{/^wersja robocza/i.test(d.versionLabel || '') ? 'wersja robocza' : 'opublikowany'}</b><small>{/^wersja robocza/i.test(d.versionLabel || '') ? 'przed publikacją' : (d.versionLabel || 'obowiązuje zespół')}</small></div>
-          <div className="opv3-loc"><span>LOKAL</span><strong>{d.restaurantName} – {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
+          <div className="opv3-title"><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong></div>
+          <div className="opv3-loc"><strong>{d.restaurantName} – {d.restaurantDetail}</strong><small>{d.locationCode}</small></div>
         </header>
 
         <section className="opv3-kpis">
@@ -114,7 +113,7 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
           </div>
         </section>
 
-        <footer className="opv3-foot"><span>Atmosphere Studio • Workforce Management</span><span>{d.generatedAt}</span><span>{d.documentLabel}</span></footer>
+        <footer className="opv3-foot"><span>Atmosphere Studio</span><span>{d.generatedAt}{d.versionLabel ? ` • ${d.versionLabel}` : ''}</span><span>{d.documentLabel}</span></footer>
       </article>
     </div>
   );

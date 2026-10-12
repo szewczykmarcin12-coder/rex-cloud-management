@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stationStyle, STATION_FAMILIES, stationTone } from '../src/lib/stations.js';
+import { stationStyle, STATION_FAMILIES, stationTone, STATION_ACCENT as STATION_ACCENT_TEST } from '../src/lib/stations.js';
 
 // Regresja marki Atmosphere (audyt 12.10): jeden system kolorów, brak różowo-beżowych pozostałości,
 // brak nazw ORDO / WorkRhythm i angielskich etykiet w interfejsie, brak atrap, poprawne gradienty.
@@ -106,9 +106,17 @@ describe('Atmosphere — nazewnictwo, atrapy, uszkodzone style', () => {
     expect(st).toMatch(/const score = plan <= 0 \? null/);
     expect(st).toContain("val={kpi.score == null ? 'nieoceniony'");
     expect(pr).not.toMatch(/opv3-(chip|bar) \$\{s\.tone \|\| 'mid'\}/);
-    expect(pr).toContain('opv3-status');
+    expect(pr).not.toMatch(/WORKFORCE|DOKUMENT DNIA|<span>LOKAL<\/span>|opv3-status/);   // wydruk bez zbędnych napisów nad danymi
     expect(src(join(ROOT, 'src/ordo-overrides.css'))).not.toMatch(/\.opv3 \.outline|\.opv3-bar\.outline/);
     expect(src(join(ROOT, 'src/lib/domain.js'))).toMatch(/umowaLabel = /);
+  });
+  it('dyspozycje w jednej semantyce (dostępny zieleń, niedostępny neutralny, częściowo bursztyn, okno błękit); akcenty stanowisk tylko z rodzin', () => {
+    const ov = src(join(ROOT, 'src/ordo-overrides.css'));
+    expect(ov).toMatch(/\.dyspo-tag\.win, \.dy-kal-day\.win \{ color: var\(--at-brand-primary\)/);
+    expect(ov).toMatch(/\.dyspo-tag\.no, \.dy-kal-day\.no \{ color: var\(--at-ui-text-secondary\); background: var\(--at-ui-disabled-bg\)/);
+    expect(Object.keys(STATION_ACCENT_TEST).length).toBe(0);
+    expect(new Set(['MANAGER', 'KONTROLER', 'KANAPKI / WRAPY', 'PREP', 'SZKOLENIA'].map((st) => stationStyle(st).accent)).size).toBe(5);
+    expect(src(join(ROOT, 'src/views/WorkModel.jsx'))).toContain('className="panel wm-dict-row"');
   });
   it('logo Studio w menu ma pełną szerokość (nie 168 px), a hierarchia nagłówków jest jedna (24 px h1 modułu)', () => {
     const ov = src(join(ROOT, 'src/ordo-overrides.css'));

@@ -95,20 +95,21 @@ export const WorkModelView = ({ data, setPage }) => {
           <label className="input-label">Miesiąc z bazy<div className="number-input"><input type="month" value={zrodloM} onChange={(e) => setZrodloM(e.target.value)} /></div></label>
           <button className="secondary-action" disabled={busy} onClick={wyprowadzZBazy} style={{ width: '100%' }}><RefreshCw size={15} /> Wyprowadź z grafiku {zrodloM}</button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={(e) => { wyprowadzZPliku(e.target.files && e.target.files[0]); e.target.value = ''; }} />
-          <button className="secondary-action" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()} style={{ width: '100%', marginTop: 6 }}><Upload size={15} /> Z pliku XLSX (układ poziomy ze stanowiskami)</button>
+          <button className="secondary-action" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()} style={{ width: '100%', marginTop: 6 }}><Upload size={15} /> Z pliku XLSX ze stanowiskami</button>
           <div className="control-divider" />
           <div className="panel-title"><div><span>PARAMETRY</span><h2>Reguły obsady</h2></div></div>
           <label className="input-label">Czas przekazania stanowiska (tolerowana przerwa)<div className="number-input"><input type="number" min={0} max={60} value={model.przekazanieMin || 0} onChange={(e) => { setModel((m) => ({ ...m, przekazanieMin: Number(e.target.value) || 0 })); setDirty(true); }} /><span>min</span></div></label>
           <label className="input-label">Udział operacyjny godziny kierownika (w obsadzie produkcyjnej)<div className="number-input"><input type="number" min={0} max={100} value={Math.round((model.mgrOperacyjnyUdzial != null ? model.mgrOperacyjnyUdzial : 0.7) * 100)} onChange={(e) => { setModel((m) => ({ ...m, mgrOperacyjnyUdzial: Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100 })); setDirty(true); }} /><span>%</span></div></label>
           <div className="control-divider" />
           <div className="panel-title"><div><span>SŁOWNIK</span><h2>Stanowiska</h2></div></div>
+          <div className="wm-dict-head"><span>STANOWISKO</span><span title="Przerwa w obsadzie = luka krytyczna">KRYT.</span><span title="Czas administracyjny — nie liczy się jako obsada produkcyjna">ADMIN</span><span title="Zadanie okresowe (np. dostawa), nie stanowisko ciągłe">ZADANIE</span></div>
           <div style={{ display: 'grid', gap: 4 }}>
             {stacje.map((st) => { const d = (model.stanowiska || {})[st] || {}; const sl = slownik.find((x) => x.kod === st); return (
-              <div key={st} className="panel" style={{ padding: '6px 8px', display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><i style={{ width: 8, height: 8, borderRadius: 2, background: stationAccent(st), display: 'inline-block' }} /><b>{st}</b>{!sl && <em style={{ color: '#886929' }} title="poza słownikiem">?</em>}</span>
-                <label title="Przerwa w obsadzie = luka krytyczna" style={{ display: 'flex', gap: 3, alignItems: 'center' }}><input type="checkbox" checked={!!d.krytyczne} onChange={(e) => updSt(st, { krytyczne: e.target.checked })} />kryt.</label>
-                <label title="Czas administracyjny — nie liczy się jako obsada produkcyjna" style={{ display: 'flex', gap: 3, alignItems: 'center' }}><input type="checkbox" checked={!!d.admin} onChange={(e) => updSt(st, { admin: e.target.checked })} />admin</label>
-                <label title="Zadanie okresowe (np. dostawa), nie stanowisko ciągłe" style={{ display: 'flex', gap: 3, alignItems: 'center' }}><input type="checkbox" checked={!!d.zadanieOkresowe} onChange={(e) => updSt(st, { zadanieOkresowe: e.target.checked })} />zadanie</label>
+              <div key={st} className="panel wm-dict-row">
+                <span><i style={{ width: 8, height: 8, borderRadius: 2, background: stationAccent(st), display: 'inline-block' }} /><b title={st}>{st}</b>{!sl && <em style={{ color: '#886929' }} title="poza słownikiem">?</em>}</span>
+                <label title="Przerwa w obsadzie = luka krytyczna"><input type="checkbox" checked={!!d.krytyczne} onChange={(e) => updSt(st, { krytyczne: e.target.checked })} /></label>
+                <label title="Czas administracyjny — nie liczy się jako obsada produkcyjna"><input type="checkbox" checked={!!d.admin} onChange={(e) => updSt(st, { admin: e.target.checked })} /></label>
+                <label title="Zadanie okresowe (np. dostawa), nie stanowisko ciągłe"><input type="checkbox" checked={!!d.zadanieOkresowe} onChange={(e) => updSt(st, { zadanieOkresowe: e.target.checked })} /></label>
               </div>
             ); })}
           </div>

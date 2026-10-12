@@ -18,14 +18,9 @@ export const STATION_FAMILY = {
   'ZMYWAK': 'control', 'PREP': 'control', 'DOSTAWA': 'control', 'WSPARCIE WIECZORNE / FLEX': 'control',
   'SZKOLENIA': 'training', 'TRAINING': 'training', 'INSTRUKTOR': 'training',
 };
-// akcenty rozróżniające stanowiska w rodzinie (wszystkie z palety wykresów Brand Kitu)
-export const STATION_ACCENT = {
-  'MANAGER': '#9C92BC', 'MGR FUNKCYJNE': '#BDB2E5',
-  'KONTROLER': '#79A2C0', 'DISPATCHER': '#8C9AC0', 'PHU': '#BAC9DC', 'DESERY / NAPOJE': '#9CCBF0',
-  'KANAPKI / WRAPY': '#C9B45E', 'PANIEROWANIE': '#F3BF9F', 'SMAŻENIE': '#F3BF9F', 'FRYTKI': '#F0DFA3',
-  'ZMYWAK': '#BAC9DC', 'PREP': '#A5D8C5', 'DOSTAWA': '#8C9AC0', 'WSPARCIE WIECZORNE / FLEX': '#BDB2E5',
-  'SZKOLENIA': '#A5D8C5', 'TRAINING': '#A5D8C5', 'INSTRUKTOR': '#7FBFA6',
-};
+// akcent = akcent RODZINY (lawenda / błękit / piasek / stal / mięta). Stanowiska w rodzinie rozróżnia etykieta, nie kolor —
+// mniej barw na ekranie, żadna spoza tokenów --at-station-*.
+export const STATION_ACCENT = {};
 const norm = (s) => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
 export const stationFamily = (st) => STATION_FAMILY[norm(st)] || 'other';
 export const stationStyle = (st) => { const f = STATION_FAMILIES[stationFamily(st)]; return { family: stationFamily(st), tone: f.tone, fill: f.fill, accent: STATION_ACCENT[norm(st)] || f.accent, ink: f.ink, text: '#292D32' }; };
