@@ -113,7 +113,9 @@ export const FUNKCJE = [
   { id: 'ASM', label: 'Zastępca kierownika' },
   { id: 'RGM', label: 'Kierownik restauracji' },
 ];
-export const funkcjaLabel = (id) => (FUNKCJE.find((f) => f.id === id) || {}).label || id;
+export const funkcjaLabel = (id) => (FUNKCJE.find((f) => f.id === id) || {}).label || (!id || /^unknown$/i.test(String(id)) ? 'brak danych o funkcji' : id);
+// typ umowy do wyświetlenia — wartości techniczne (UNKNOWN, puste) pokazujemy jako czytelny brak danych
+export const umowaLabel = (u) => { const k = String(u || '').toUpperCase(); return k === 'UOP' ? 'UoP' : k === 'UZ' ? 'zlecenie' : k === 'B2B' ? 'B2B' : !k || k === 'UNKNOWN' ? 'brak danych o umowie' : u; };
 
 // Wspólne scalanie par praca+instruktor (doba operacyjna 06→06)
 const PLN_H0_DOBA = 6;   // doba operacyjna 06 → 06

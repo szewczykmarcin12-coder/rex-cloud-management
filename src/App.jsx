@@ -22,7 +22,7 @@ import { MonthPlan } from './views/MonthPlan.jsx';
 import { ForecastQualityPage } from './views/ForecastQuality.jsx';
 import { API_BASE, HUB_URL, api, store } from './lib/api.js';
 import { D3, NS, SZAB, f0, optRozbicie } from './lib/demandEngine.js';
-import { FUNKCJE, WT_TICKS, colors, dayNames, dniMiesiaca, dniPelne, etykietaStacji, funkcjaLabel, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, months, monthsGen, ocenOknoDyspozycji, opisZmiany, paraOpis, scalParyPlan, stationColor, stationColors, statusZamiany, wtAct, wtDur, wtHours, wtKey, wtMonday, wtRel, ymd, stationTone, stationFill, stationAccent } from './lib/domain.js';
+import { FUNKCJE, WT_TICKS, colors, dayNames, dniMiesiaca, dniPelne, etykietaStacji, funkcjaLabel, godzZ, jestInstruktor, jestZmianaMgr, kosztGodzin, months, monthsGen, ocenOknoDyspozycji, opisZmiany, paraOpis, scalParyPlan, stationColor, stationColors, statusZamiany, wtAct, wtDur, wtHours, wtKey, wtMonday, wtRel, ymd, stationTone, stationFill, stationAccent, umowaLabel } from './lib/domain.js';
 import { publikujMiesiac, setComplianceHandler, setDyspoHandler, potwierdzDyspozycje } from './lib/publish.js';
 import { UNIT, mgrReqOpts, setPlanParams, setProfDow, setUnit, unitLabel } from './lib/runtime.js';
 import { Btn, DNI_KROTKIE, DialogS, Header, MHead, MMetric, Toast, opisDnia } from './ui/primitives.jsx';
@@ -744,7 +744,7 @@ const Dashboard = ({ data, setPage, userName }) => {
   const decyzje = (data.swaps || []).filter((x) => x.status === 'open' && x.volunteers.length > 0).length + (data.absences || []).filter((x) => x.status === 'open').length + (data.availPending || 0);
   const mcN = new Intl.DateTimeFormat('pl-PL', { month: 'long' }).format(new Date(nastYm + '-01T12:00:00'));
   const kroki = [
-    { tytul: 'Dane POS', opis: sw && sw.ostatniDzien ? `do ${sw.ostatniDzien}${sw.przeterminowane ? ' — import wtorkowy zaległy' : ' — aktualne'}` : 'brak historii sprzedaży', akcja: sw && sw.przeterminowane ? 'Importuj' : 'OK', ok: !!(sw && !sw.przeterminowane), cel: 'import-eksport' },
+    { tytul: 'Dane POS', opis: sw && sw.ostatniDzien ? `do ${sw.ostatniDzien}${sw.przeterminowane ? ' — import wtorkowy zaległy' : ' — aktualne'}` : 'brak historii sprzedaży — bez niej nie ma prognozy ani planu miesiąca', akcja: !(sw && sw.ostatniDzien) ? 'Zaimportuj' : sw.przeterminowane ? 'Importuj' : 'OK', ok: !!(sw && sw.ostatniDzien && !sw.przeterminowane), stan: !(sw && sw.ostatniDzien) ? 'brak' : sw.przeterminowane ? 'warn' : 'ok', cel: 'import-eksport' },
     { tytul: `Plan ${mcN}`, opis: planNast === undefined ? 'sprawdzam…' : !planNast ? 'brak planu — zaproponuj sprzedaż i limit godzin AOP' : planNast.status === 'APPROVED' ? `zatwierdzony v${planNast.version}: ${Math.round(planNast.sales).toLocaleString('pl-PL')} zł${planNast.hoursAop != null ? `, ${planNast.hoursAop} h` : ''}` : `roboczy v${planNast.version} — do zatwierdzenia`, akcja: planNast && planNast.status === 'APPROVED' ? 'OK' : 'Zaplanuj', ok: !!(planNast && planNast.status === 'APPROVED'), cel: 'plan-miesiaca' },
     { tytul: 'Decyzje', opis: decyzje ? `${decyzje} wniosków czeka (zamiany, nieobecności, dyspozycje)` : 'brak oczekujących wniosków', akcja: decyzje ? 'Rozpatrz' : 'OK', ok: !decyzje, cel: 'zamiany' },
     { tytul: 'Grafik', opis: `${dzienne.length} zmian dziś • ${new Set(dzienne.map((x) => x.name)).size} osób`, akcja: 'Otwórz', ok: dzienne.length > 0, cel: 'grafik' },
@@ -789,11 +789,11 @@ const Dashboard = ({ data, setPage, userName }) => {
 
           <article className="panel alert-panel">
             <div className="panel-head"><div><span className="section-kicker">DO DECYZJI</span><h2>Ryzyka zmiany</h2></div><button className="more-button" onClick={() => setPage('swaps')} aria-label="Wnioski"><MoreHorizontal size={20} /></button></div>
-            <div className="risk-score"><div><AlertTriangle size={22} /></div><section><strong>{ryzyka} aktywne ryzyka</strong><span>{lukaIdx >= 0 ? 'luka wpływa na obsługę gości' : 'obsada zgodna z popytem'}</span></section><b>{ryzyka >= 2 ? 'ŚREDNIE' : ryzyka === 1 ? 'NISKIE' : 'BRAK'}</b></div>
+            <div className={`risk-score${!dzienne.length && popytH > 0 ? ' bad' : lukaIdx >= 0 && demand[lukaIdx] - planned[lukaIdx] >= 2 ? ' bad' : ryzyka ? ' warn' : ''}`}><div><AlertTriangle size={22} /></div><section><strong>{!dzienne.length ? 'Brak zmian w grafiku na dziś' : `${ryzyka} aktywne ryzyka`}</strong><span>{!dzienne.length ? (popytH > 0 ? 'prognoza przewiduje popyt, a nikt nie jest zaplanowany' : 'brak prognozy i brak grafiku') : lukaIdx >= 0 ? 'luka wpływa na obsługę gości' : 'obsada zgodna z popytem'}</span></section><b>{!dzienne.length && popytH > 0 ? 'WYSOKIE' : lukaIdx >= 0 && demand[lukaIdx] - planned[lukaIdx] >= 2 ? 'WYSOKIE' : ryzyka >= 2 ? 'ŚREDNIE' : ryzyka === 1 ? 'NISKIE' : !dzienne.length ? 'BRAK DANYCH' : 'BRAK'}</b></div>
             <div className="risk-list">
               {lukaIdx >= 0 && <button onClick={() => setPage('wt')}><i className="risk-red"><Users size={16} /></i><div><strong>Luka obsady</strong><span>{HOURS[lukaIdx]}:00 · −{demand[lukaIdx] - planned[lukaIdx]} os.</span></div><ChevronRight size={17} /></button>}
               {spoznieni.slice(0, 1).map((x) => { const k = kontoZm(x); return <button key={x.sid} onClick={() => setPage('wt')}><i className="risk-amber"><TimerReset size={16} /></i><div><strong>Brak odbicia po starcie</strong><span>{(k && k.name) || x.name} · plan {x.start}</span></div><ChevronRight size={17} /></button>; })}
-              <button onClick={() => setPage('wt')}><i className="risk-green"><Check size={16} /></i><div><strong>Odbicia zgodne z planem</strong><span>{naCzas} z {rozpoczete.length || 0} rozpoczętych zmian</span></div><ChevronRight size={17} /></button>
+              <button onClick={() => setPage('wt')}><i className={!rozpoczete.length ? 'risk-neutral' : naCzas === rozpoczete.length ? 'risk-green' : 'risk-amber'}>{!rozpoczete.length ? <Clock size={16} /> : <Check size={16} />}</i><div><strong>{!rozpoczete.length ? 'Odbicia — jeszcze brak rozpoczętych zmian' : naCzas === rozpoczete.length ? 'Odbicia zgodne z planem' : 'Odbicia z opóźnieniami'}</strong><span>{rozpoczete.length ? `${naCzas} z ${rozpoczete.length} rozpoczętych zmian na czas` : 'ocena pojawi się po pierwszym starcie zmiany'}</span></div><ChevronRight size={17} /></button>
             </div>
             <button className="text-button" onClick={() => setPage('settings')}>Dziennik audytu i reguły <ChevronRight size={16} /></button>
           </article>
@@ -802,7 +802,7 @@ const Dashboard = ({ data, setPage, userName }) => {
             <div className="panel-head"><div><span className="section-kicker">DZISIAJ DO ZROBIENIA</span><h2>Następne kroki</h2></div><button className="quiet-button" onClick={() => setPage('obsada-live')}>Obsada na żywo</button></div>
             <div className="duty-table">
               {kroki.map((k, i) => (
-                <button className="duty-row" key={i} onClick={() => setPage(k.cel)} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, cursor: 'pointer' }}><div className={`person-avatar ${k.ok ? 'mint' : KOLORY_AV[i % 4]}`}>{k.ok ? '✓' : '!'}</div><div><strong>{k.tytul}</strong><span>{k.opis}</span></div><em>{k.akcja}</em></button>
+                <button className="duty-row" key={i} onClick={() => setPage(k.cel)} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, cursor: 'pointer' }}><div className={`person-avatar ${k.ok ? 'mint' : k.stan === 'brak' ? 'blue' : k.stan === 'warn' ? 'amber' : 'coral'}`}>{k.ok ? '✓' : k.stan === 'brak' ? '·' : '!'}</div><div><strong>{k.tytul}</strong><span>{k.opis}</span></div><em>{k.akcja}</em></button>
               ))}
             </div>
           </article>
@@ -1349,7 +1349,6 @@ const AbsencesAdmin = ({ data }) => {
 };
 
 // ═════════ REX WorkRhythm Modules v1.0.0 — Dyspozycyjność (panel) ═════════
-const CLOCK_APP_URL = 'https://rex-clock.vercel.app';
 const DY_TYPY = {
   available: { short: 'Dostępny', label: 'Mogę pracować' },
   unavailable: { short: 'Niedost.', label: 'Nie mogę pracować' },
@@ -1603,7 +1602,7 @@ const AuditCard = () => {
   );
 };
 
-// ── Rejestr terminali REX Clock (SEC-04): odbicia tylko z urządzeń dodanych przez ASM ──
+// ── Rejestr terminali odbić (SEC-04): odbicia tylko z urządzeń dodanych przez ASM ──
 const TerminalsCard = ({ data }) => {
   const [terms, setTerms] = useState(null);
   const [tid, setTid] = useState('');
@@ -1620,7 +1619,7 @@ const TerminalsCard = ({ data }) => {
     <div className="bg-white rounded-2xl p-6 shadow-sm max-w-xl">
       <h3 className="font-bold mb-1" style={{ color: colors.primary.darkest }}>Terminale odbić</h3>
       <p className="text-xs mb-4" style={{ color: colors.primary.light }}>Odbicia przyjmowane są wyłącznie z zarejestrowanych, aktywnych terminali (identyfikator z adresu urządzenia: ?terminal=…).</p>
-      {terms === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : terms.length === 0 ? <p className="text-sm mb-3" style={{ color: '#2674B8' }}>Brak terminali — REX Clock nie przyjmie żadnych odbić, dopóki nie dodasz urządzenia.</p> : (
+      {terms === null ? <p className="text-sm text-slate-400">Ładowanie…</p> : terms.length === 0 ? <p className="text-sm mb-3" style={{ color: '#2674B8' }}>Brak zarejestrowanych terminali — odbicia przyjmowane są z Employee Hub; terminal stacjonarny jest opcjonalny.</p> : (
         <div className="space-y-2 mb-4">
           {terms.map((t) => (
             <div key={t.id} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: colors.primary.bgLight }}>
@@ -1912,7 +1911,7 @@ const AdminEmployees = ({ data }) => {
             {widT.map((e) => { const plan = planM.get(e.id) || 0; const cel = celM(e); const bil = bilansM(e); return (
               <div className="team-row" key={e.id}>
                 <span className="team-person"><i>{String(e.name || '?').split(/\s+/).map((c) => c[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{e.name}</strong><small>{funkcjaLabel(e.funkcja)}{e.instruktor ? ' • instruktor' : ''}</small></span></span>
-                <span><strong>{e.umowa || '—'}</strong><small>{e.umowa === 'UOP' ? `${e.wymiarTygH || 40} h` : 'elastyczna'}</small></span>
+                <span><strong>{umowaLabel(e.umowa)}</strong><small>{e.umowa === 'UOP' ? `${e.wymiarTygH || 40} h` : e.umowa ? 'elastyczna' : 'uzupełnij w karcie'}</small></span>
                 <span className="hours-cell"><div><b style={{ width: `${cel ? Math.min(100, plan / cel * 100) : plan ? 100 : 0}%` }} /></div><strong>{plan.toFixed(0)} / {cel || '—'} h</strong></span>
                 <span className={bil != null && Math.abs(bil) > 5 ? 'balance-alert' : 'balance-ok'}>{bil == null ? '—' : `${bil > 0 ? '+' : ''}${bil} h`}</span>
                 <span className="skill-list">{(e.stanowiska && e.stanowiska.length ? e.stanowiska : [funkcjaLabel(e.funkcja)]).slice(0, 3).map((sk) => <em key={sk}>{sk}</em>)}</span>
@@ -2084,7 +2083,7 @@ const WTBreaks = ({ actual, onSave, locked, onClose }) => {
 // ═════════ WORKRHYTHM · SHIFTCYCLES — rotacje cykliczne wg wzorca ═════════
 const ROT_ZESPOLY = [
   { id: 'A', nazwa: 'Zespół A', kat: 'Kuchnia', kol: '#E8F0F7', ram: '#DCE3E9', tekst: '#2674B8' },
-  { id: 'B', nazwa: 'Zespół B', kat: 'Front', kol: '#EFEDEE', ram: '#D6D1D3', tekst: '#3A3438' },
+  { id: 'B', nazwa: 'Zespół B', kat: 'Front', kol: '#EFEDEE', ram: '#DCE3E9', tekst: '#3A3438' },
   { id: 'C', nazwa: 'Zespół C', kat: 'Dispatch', kol: '#E8F0F7', ram: '#DCE3E9', tekst: '#2674B8' },
   { id: 'y', nazwa: 'Liderzy', kat: 'Manager', kol: '#3F4A55', ram: '#292D32', tekst: '#E8F0F7' },
 ];
@@ -2601,18 +2600,18 @@ const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
   });
   const osobDnia = (d) => new Set(zmianyTyg.filter((x) => x.date === d && !jestInstruktor(x)).map((x) => x.accountId || x.name)).size;
   const tglCompleted = () => { if (locked) return data.show('Tydzień zamknięty', 'error'); data.tsSetCompletedWeek(days, !doneTyg); };
-  const tglReviewed = () => { if (locked) return data.show('Tydzień zamknięty', 'error'); if (!doneTyg) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsSetWeek(days[0], { ...stTyg, reviewed: !stTyg.reviewed }); };
-  const tglClosed = () => { if (stTyg.closed) { data.tsReopenWeek(days[0]); return; } if (!doneTyg) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsCloseWeek(days[0]); };
+  const tglReviewed = () => { if (locked) return data.show('Tydzień zamknięty', 'error'); if (!doneTyg) return data.show('Najpierw oznacz wszystkie dni jako ukończone', 'error'); data.tsSetWeek(days[0], { ...stTyg, reviewed: !stTyg.reviewed }); };
+  const tglClosed = () => { if (stTyg.closed) { data.tsReopenWeek(days[0]); return; } if (!doneTyg) return data.show('Najpierw oznacz wszystkie dni jako ukończone', 'error'); data.tsCloseWeek(days[0]); };
   return (
     <section className="panel weekly-rota-panel">
       <header className="weekly-rota-toolbar">
         <div className="weekly-rota-title">{onBack && <button onClick={onBack} aria-label="Wróć do listy tygodni"><ChevronLeft size={17} /></button>}<span><small>TYDZIEŃ GRAFIKOWY</small><strong>{days[0].slice(8)}.{days[0].slice(5, 7)} – {days[6].slice(8)}.{days[6].slice(5, 7)}.{days[6].slice(0, 4)}</strong><em>{f0(sumaTygH)} h · koszt {f0(sumaKoszt)} zł{sprzedazTyg ? ` · sprzedaż ${f0(sprzedazTyg)} zł` : ''}</em></span></div>
         <div className="weekly-status-flow" aria-label="Status grafiku tygodniowego">
-          <button className={doneTyg ? 'done' : ''} onClick={tglCompleted}><i>{doneTyg ? <Check size={13} /> : '1'}</i><span><strong>Completed</strong><small>gotowy do review</small></span></button>
+          <button className={doneTyg ? 'done' : ''} onClick={tglCompleted}><i>{doneTyg ? <Check size={13} /> : '1'}</i><span><strong>Ukończony</strong><small>gotowy do zatwierdzenia</small></span></button>
           <b />
-          <button className={stTyg.reviewed ? 'done' : ''} onClick={tglReviewed}><i>{stTyg.reviewed ? <Check size={13} /> : '2'}</i><span><strong>Reviewed</strong><small>zatwierdzony</small></span></button>
+          <button className={stTyg.reviewed ? 'done' : ''} onClick={tglReviewed}><i>{stTyg.reviewed ? <Check size={13} /> : '2'}</i><span><strong>Zatwierdzony</strong><small>sprawdzony przez ASM</small></span></button>
           <b />
-          <button className={stTyg.closed ? 'done closed' : ''} onClick={tglClosed}><i>{stTyg.closed ? <Lock size={12} /> : '3'}</i><span><strong>Closed</strong><small>edycja zablokowana</small></span></button>
+          <button className={stTyg.closed ? 'done closed' : ''} onClick={tglClosed}><i>{stTyg.closed ? <Lock size={12} /> : '3'}</i><span><strong>Zamknięty</strong><small>edycja zablokowana</small></span></button>
         </div>
       </header>
 
@@ -2636,7 +2635,7 @@ const WeekPlanner = ({ data, days, locked, onDzien, onBack }) => {
 
             {widoczniW.map((w) => (
               <div className="weekly-row-fragment" key={w.key || w.id}>
-                <div className="weekly-employee-cell"><i>{String(w.label).split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{w.label}</strong><small>{w.funkcja || 'bez konta'}{w.konto && w.konto.umowa ? ` • ${w.konto.umowa}` : ''}</small></span></div>
+                <div className="weekly-employee-cell"><i>{String(w.label).split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{w.label}</strong><small>{w.funkcja || 'bez konta'}{w.konto ? ` • ${umowaLabel(w.konto.umowa)}` : ''}</small></span></div>
                 {days.map((d) => { const zs = w.moje.filter((x) => x.date === d); return (
                   <div className="weekly-shift-cell" key={d}>
                     {zs.length ? zs.map((x, xi) => (
@@ -3218,7 +3217,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
   const plannedActMin = rowsAct.reduce((x, s) => x + wtDur(s.start, s.end), 0);
   const eff = plannedActMin ? Math.round((actualMin / plannedActMin) * 100) : 0;
 
-  // R-03/TNA-01: wykonanie budowane AUTOMATYCZNIE z odbić REX Clock (projekcja event store).
+  // R-03/TNA-01: wykonanie budowane AUTOMATYCZNIE z odbić (Employee Hub / terminale) (projekcja event store).
   // Zasady: wpisy source:'clock' są odświeżane, ręczne korekty (source:'manual' lub starsze) NIGDY nie są nadpisywane.
   const [projDnia, setProjDnia] = useState([]);
   // hub Schedule wg wzorca ORDO
@@ -3248,8 +3247,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     });
     if (n) data.tsPutActualsBulk(map);
     if (!cichy) {
-      if (n) data.show(`Odbicia z REX Clock: ${n}${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} z ręczną korektą (bez zmian)` : ''}`);
-      else data.show(niepelne || chronione ? `Bez zmian${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} ręcznych` : ''}` : 'Brak odbić z REX Clock dla tego dnia', 'error');
+      if (n) data.show(`Odbicia: ${n}${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} z ręczną korektą (bez zmian)` : ''}`);
+      else data.show(niepelne || chronione ? `Bez zmian${niepelne ? ` · ${niepelne} bez wybicia` : ''}${chronione ? ` · ${chronione} ręcznych` : ''}` : 'Brak odbić dla tego dnia', 'error');
     }
   }, [day, locked, ts, data]);
   // auto-sync: przy wejściu w Wykonanie i co 60 s, dopóki widok otwarty
@@ -3269,7 +3268,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
     return () => { aktywne = false; };
   }, [view, weekStart, data.shifts, data.lastSync]);
   const zgodChip = (klasa) => (
-    <button className={klasa} title="Zgodność z prawem pracy w tym tygodniu" onClick={() => setZgodOpen(true)} style={zgod && zgod.summary.block ? { borderColor: '#A94455', color: '#A94455' } : undefined}><ShieldCheck size={16} /><span>{!zgod ? 'Zgodność' : zgod.summary.block || zgod.summary.warn ? `${zgod.summary.block} blok. • ${zgod.summary.warn} uwag` : 'Zgodne z KP'}</span></button>
+    <button className={klasa} title="Zgodność z prawem pracy w tym tygodniu" onClick={() => setZgodOpen(true)} style={!zgod ? undefined : zgod.summary.block ? { borderColor: '#FAE9ED', background: '#FAE9ED', color: '#A94455' } : zgod.summary.warn ? { borderColor: '#FBF4E5', background: '#FBF4E5', color: '#886929' } : { borderColor: '#E8F3EE', background: '#E8F3EE', color: '#407362' }}><ShieldCheck size={16} /><span>{!zgod ? 'Zgodność' : zgod.summary.block ? `${zgod.summary.block} ${zgod.summary.block === 1 ? 'blokada' : zgod.summary.block < 5 ? 'blokady' : 'blokad'} • ${zgod.summary.warn} uwag` : zgod.summary.warn ? `${zgod.summary.warn} uwag` : 'Zgodne z KP'}</span></button>
   );
 
   if (view === 'list') {
@@ -3285,6 +3284,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           
           
           {['schedule', 'actual'].includes(wrTab) && (() => {
+            const STAGE_PL = { 'In progress': 'W układaniu', Completed: 'Ukończony', Reviewed: 'Zatwierdzony', Closed: 'Zamknięty' };
             const stageOf = (w) => { const st = wsOf(w.start); if (st.closed) return 'Closed'; if (st.reviewed) return 'Reviewed'; if (weekDone(w)) return 'Completed'; return 'In progress'; };
             const godzTyg = (w) => data.shifts.filter((x) => w.days.includes(x.date) && !jestInstruktor(x)).reduce((a, x) => a + godzZ(x), 0);
             const kosztTyg = (w) => data.shifts.filter((x) => w.days.includes(x.date) && !jestInstruktor(x)).reduce((a, x) => a + kosztGodzin((x.accountId && (data.accounts || []).find((a2) => a2.id === x.accountId)) || null, godzZ(x)), 0);
@@ -3295,8 +3295,8 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
               return okS && (!q || range(w).toLowerCase().includes(q));
             });
             const toggleCompletedTydzien = (w) => { if (!canEdit) return; const st = wsOf(w.start); if (st.closed) return data.show('Tydzień zamknięty — najpierw otwórz (ASM)', 'error'); data.tsSetCompletedWeek(w.days, !weekDone(w)); };
-            const toggleReviewedTydzien = (w) => { if (!canEdit) return; const st = wsOf(w.start); if (st.closed) return data.show('Tydzień zamknięty', 'error'); if (!weekDone(w)) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsSetWeek(w.start, { ...st, reviewed: !st.reviewed }); };
-            const toggleClosedTydzien = (w) => { if (!canEdit) return; const st = wsOf(w.start); if (st.closed) { data.tsReopenWeek(w.start); return; } if (!weekDone(w)) return data.show('Najpierw wszystkie dni Completed', 'error'); data.tsCloseWeek(w.start); };
+            const toggleReviewedTydzien = (w) => { if (!canEdit) return; const st = wsOf(w.start); if (st.closed) return data.show('Tydzień zamknięty', 'error'); if (!weekDone(w)) return data.show('Najpierw oznacz wszystkie dni jako ukończone', 'error'); data.tsSetWeek(w.start, { ...st, reviewed: !st.reviewed }); };
+            const toggleClosedTydzien = (w) => { if (!canEdit) return; const st = wsOf(w.start); if (st.closed) { data.tsReopenWeek(w.start); return; } if (!weekDone(w)) return data.show('Najpierw oznacz wszystkie dni jako ukończone', 'error'); data.tsCloseWeek(w.start); };
             const utworzTydzien = async () => {
               if (!nowyData) return data.show('Wybierz tydzień', 'error');
               const pon = wtMonday(nowyData);
@@ -3328,18 +3328,18 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             <section className="panel rota-list-panel">
               <div className="rota-list-toolbar">
                 <div className="rota-location-select"><span>WORK CENTER</span><label><LayoutGrid size={15} /><select aria-label="Centrum pracy"><option>{unitLabel()}</option></select><ChevronDown size={14} /></label></div>
-                <div className="rota-list-summary"><span><b>{weeks.filter((w) => stageOf(w) === 'In progress').length}</b> do ułożenia</span><span><b>{weeks.filter((w) => stageOf(w) === 'Reviewed').length}</b> do zamknięcia</span><span><b>{weeks.filter((w) => stageOf(w) === 'Closed').length}</b> closed</span></div>
-                <div className="rota-list-filters"><label><Search size={14} /><input value={rotaQuery} onChange={(e) => setRotaQuery(e.target.value)} placeholder="Szukaj tygodnia" /></label><label><Filter size={14} /><select value={rotaStatus} onChange={(e) => setRotaStatus(e.target.value)}><option>Wszystkie statusy</option><option>Do ułożenia</option><option>Completed</option><option>Reviewed</option><option>Closed</option></select></label></div>
+                <div className="rota-list-summary"><span><b>{weeks.filter((w) => stageOf(w) === 'In progress').length}</b> do ułożenia</span><span><b>{weeks.filter((w) => stageOf(w) === 'Reviewed').length}</b> do zamknięcia</span><span><b>{weeks.filter((w) => stageOf(w) === 'Closed').length}</b> zamkniętych</span></div>
+                <div className="rota-list-filters"><label><Search size={14} /><input value={rotaQuery} onChange={(e) => setRotaQuery(e.target.value)} placeholder="Szukaj tygodnia" /></label><label><Filter size={14} /><select value={rotaStatus} onChange={(e) => setRotaStatus(e.target.value)}><option value="Wszystkie statusy">Wszystkie statusy</option><option value="Do ułożenia">Do ułożenia</option><option value="Completed">Ukończone</option><option value="Reviewed">Zatwierdzone</option><option value="Closed">Zamknięte</option></select></label></div>
               </div>
 
               <div className="rota-list-table" role="table">
-                <div className="rota-list-head" role="row"><span>TYDZIEŃ</span><span>STAN PLANU</span><span>COMPLETED</span><span>REVIEWED</span><span>CLOSED</span><span>GODZINY</span><span>KOSZT</span><span>OPCJE</span><span aria-hidden="true" /></div>
+                <div className="rota-list-head" role="row"><span>TYDZIEŃ</span><span>STAN PLANU</span><span>UKOŃCZONY</span><span>ZATWIERDZONY</span><span>ZAMKNIĘTY</span><span>GODZINY</span><span>KOSZT</span><span>OPCJE</span><span aria-hidden="true" /></div>
                 {widoczneRoty.map((w) => { const st = wsOf(w.start); const stg = stageOf(w); return (
                   <div className={`rota-list-row ${rotaMenu === w.start ? 'menu-active' : ''}`} role="row" key={w.start}>
                     <button className="rota-week-cell" onClick={() => openWeek(w, wrTab === 'schedule' ? 'siatka' : 'wykonanie')}><Calendar size={17} /><span><strong>{range(w)}</strong><small>{w.days.length} dni ze zmianami</small></span></button>
-                    <span className={`rota-stage stage-${stg.toLowerCase().replace(' ', '-')}`}><i />{stg}</span>
-                    <button className={`rota-status-cell ${weekDone(w) ? 'done' : ''}`} title="Completed dla całego tygodnia" onClick={() => toggleCompletedTydzien(w)}>{weekDone(w) ? <Check size={15} /> : <span>—</span>}</button>
-                    <button className={`rota-status-cell ${st.reviewed ? 'done' : ''}`} title="Reviewed" onClick={() => toggleReviewedTydzien(w)}>{st.reviewed ? <Check size={15} /> : <span>—</span>}</button>
+                    <span className={`rota-stage stage-${stg.toLowerCase().replace(' ', '-')}`} title={STAGE_PL[stg]}><i />{STAGE_PL[stg]}</span>
+                    <button className={`rota-status-cell ${weekDone(w) ? 'done' : ''}`} title="Oznacz cały tydzień jako ukończony" onClick={() => toggleCompletedTydzien(w)}>{weekDone(w) ? <Check size={15} /> : <span>—</span>}</button>
+                    <button className={`rota-status-cell ${st.reviewed ? 'done' : ''}`} title="Zatwierdź tydzień" onClick={() => toggleReviewedTydzien(w)}>{st.reviewed ? <Check size={15} /> : <span>—</span>}</button>
                     <button className={`rota-status-cell ${st.closed ? 'closed' : ''}`} title={st.closed ? 'Otwórz ponownie (ASM, z powodem)' : 'Zamknij tydzień'} onClick={() => toggleClosedTydzien(w)}>{st.closed ? <Lock size={14} /> : <span>—</span>}</button>
                     <strong className="rota-number">{godzTyg(w).toFixed(1).replace('.', ',')} h</strong>
                     <strong className="rota-number">{Math.round(kosztTyg(w)).toLocaleString('pl-PL')} zł</strong>
@@ -3354,7 +3354,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                 ); })}
                 {widoczneRoty.length === 0 && <div className="rota-list-empty"><Search size={18} /><span><strong>Brak tygodni dla wybranych filtrów</strong><small>Zmień status, wyszukiwaną datę albo utwórz nowy grafik.</small></span></div>}
               </div>
-              <footer className="rota-list-footer"><span>Wyświetlono {widoczneRoty.length} z {weeks.length} tygodni</span><small>Completed = gotowy do review • Reviewed = zatwierdzony • Closed = zamknięty i zablokowany na serwerze</small></footer>
+              <footer className="rota-list-footer"><span>Wyświetlono {widoczneRoty.length} z {weeks.length} tygodni</span><small>Ukończony = wszystkie dni rozliczone • Zatwierdzony = sprawdzony przez ASM • Zamknięty = edycja zablokowana</small></footer>
             </section>
 
             {nowyOpen && <DialogS title="Nowy grafik tygodniowy" kicker="GRAFIK" description="Wybierz tydzień i punkt startowy planowania." onClose={() => setNowyOpen(false)} actions={<><button onClick={() => setNowyOpen(false)}>Anuluj</button><button className="dialog-primary" onClick={utworzTydzien}><Plus size={15} /> Utwórz i otwórz</button></>}>
@@ -3387,7 +3387,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
       {fokus ? (
         <header className="gantt-focus-header">
           <div className="gantt-focus-brand"><img src="/brand/atmosphere-symbol-graphite.svg" alt="Atmosphere" style={{ width: 26, height: 'auto' }} /><b style={{ display: 'none' }}>ORDO</b><span>WORKFORCE STUDIO</span></div>
-          <div className="gantt-focus-context"><span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span><strong>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</strong><small>{zakresTyg === 'dzien' ? dateLabel(day) : 'Pełny ekran do układania grafiku'} • {UNIT.city}, {UNIT.name}</small></div>
+          <div className="gantt-focus-context"><span>GRAFIK • SIATKA DNIA • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span><strong>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</strong><small>{zakresTyg === 'dzien' ? dateLabel(day) : 'Pełny ekran do układania grafiku'} • {UNIT.city}, {UNIT.name}</small></div>
           <div className="gantt-focus-tools" aria-label="Narzędzia grafiku">
             {zgodChip('')}
             <button onClick={() => otworzWydruk(day)} title="Wydruk dnia"><Printer size={16} /><span>Wydruk</span></button>
@@ -3400,7 +3400,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
         <div className="shrink-0" style={{ padding: '16px 26px 0' }}>
           <div className="module-heading" style={{ marginBottom: 10 }}>
             <div>
-              <span>WORKFORCE • SCHEDULE • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span>
+              <span>GRAFIK • SIATKA DNIA • {weekDays[0].slice(8)}.{weekDays[0].slice(5, 7)}–{weekDays[6].slice(8)}.{weekDays[6].slice(5, 7)} {weekDays[6].slice(0, 4)}</span>
               <h1>{zakresTyg === 'dzien' ? 'Grafik dzienny' : 'Grafik tygodniowy'}</h1>
               <p>{zakresTyg === 'dzien' ? dateLabel(day) : 'Podgląd zmian całego zespołu — przewijaj dni poziomo, kolumna pracowników pozostaje na miejscu.'}{locked ? ' • tydzień zamknięty (tylko podgląd)' : ''}</p>
             </div>
@@ -3513,7 +3513,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
                     setAddSaving(false);
                     if (ok) setAddOsoba('');
                   }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>{addSaving ? 'Dodaję…' : 'Dodaj do grafiku'}</button>
-                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku. Wykonanie powstanie z odbić REX Clock lub ręcznej korekty. {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
+                  <span className="text-xs" style={{ color: colors.primary.light }}>Zmiana trafia do grafiku. Wykonanie powstanie z odbić w Employee Hub lub ręcznej korekty. {(() => { const k = (data.accounts || []).find((a) => [a.grafikName, ...(a.aliasy || []), a.name].filter(Boolean).some((n) => String(n).toUpperCase().trim() === addOsoba.trim().toUpperCase())); return addOsoba.trim() ? (k ? `Konto: ${k.name}` : '⚠ brak konta o tej nazwie — zmiana zapisze się bez przypisania') : ''; })()}</span>
                 </div>
               </div>
             )}
@@ -3524,7 +3524,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
           <span className="text-xs font-medium" style={{ color: colors.primary.light }}>Filtr / kolejność:</span>
           <select value={fStation} onChange={(e) => setFStation(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="">Wszystkie stanowiska</option>{stacje.map((s2) => <option key={s2} value={s2}>{s2}</option>)}</select>
           <select value={order} onChange={(e) => setOrder(e.target.value)} className="px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: colors.primary.bg }}><option value="entry">Kolejność wpisu</option><option value="az">Alfabetycznie</option><option value="diff">Wg różnicy</option></select>
-          <span className="ml-auto flex items-center gap-2"><span className="text-[10.5px] font-medium" style={{ color: '#2674B8' }}>● auto-sync z REX Clock co 60 s</span><button disabled={locked} onClick={() => synchronizujOdbicia(false)} className="text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Synchronizuj teraz</button></span>
+          <span className="ml-auto flex items-center gap-2"><span className="text-[10.5px] font-medium" style={{ color: '#2674B8' }}>● auto-sync odbić co 60 s</span><button disabled={locked} onClick={() => synchronizujOdbicia(false)} className="text-sm px-3 py-1.5 rounded-lg text-white font-medium disabled:opacity-40" style={{ backgroundColor: colors.primary.medium }}>Synchronizuj teraz</button></span>
         </div>
         <div className="bg-white rounded-xl shadow-sm overflow-x-auto border" style={{ borderColor: colors.primary.bg }}>
           <div className="min-w-[820px]">
@@ -3571,7 +3571,7 @@ const WorkingTime = ({ data, canEdit, wrTab, setWrTab, wrNonce }) => {
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: '#DCE3E9', borderLeftWidth: 4, borderLeftColor: '#2674B8' }}>
               <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b" style={{ borderColor: '#DCE3E9', backgroundColor: '#F1F6FA' }}>
                 <p className="text-sm font-bold" style={{ color: '#2674B8' }}>Praca bez planu ({bezPlanu.length})</p>
-                <p className="text-[11px]" style={{ color: colors.primary.light }}>Odbicia z REX Clock bez zaplanowanej zmiany — dodaj do grafiku, aby weszły do rozliczenia.</p>
+                <p className="text-[11px]" style={{ color: colors.primary.light }}>Odbicia bez zaplanowanej zmiany — dodaj do grafiku, aby weszły do rozliczenia.</p>
               </div>
               {bezPlanu.map((pr) => { const konto = (data.accounts || []).find((a) => a.id === pr.accountId); return (
                 <div key={pr.accountId || pr.name} className="px-4 py-2.5 flex flex-wrap items-center gap-3 border-b last:border-0" style={{ borderColor: '#FBF4E5' }}>

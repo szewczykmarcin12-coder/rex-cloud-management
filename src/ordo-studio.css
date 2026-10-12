@@ -237,7 +237,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .primary-button:hover { background: linear-gradient(135deg, #21659F, #A94455); }
 .decision-banner { border-color: #E8F0F7; background: linear-gradient(90deg, #E8F0F7, #F7F8FA); box-shadow: 0 5px 18px rgba(38,116,184,.035); }
 .decision-symbol { color: var(--maroon-700); background: #E8F0F7; }
-.decision-actions > button:first-child { border-color: #79A2C0; color: var(--maroon-700); background: #fffdfc; }
+.decision-actions > button:first-child { border-color: #79A2C0; color: var(--maroon-700); background: #FFFFFF; }
 .decision-actions .dismiss { color: #65717C; }
 
 .panel, .metric-card { border-color: var(--line); background: var(--panel); box-shadow: 0 5px 18px rgba(31,53,72,.035); }
@@ -365,7 +365,7 @@ body { background:var(--canvas) }
   background:#fff;
   cursor:pointer;
 }
-.dialog-header > button:hover { color:#292D32;background:#f8f2f4 }
+.dialog-header > button:hover { color:#292D32;background:#F7F8FA }
 .dialog-body { overflow:auto;padding:20px 22px }
 .dialog-actions {
   display:flex;
@@ -391,7 +391,7 @@ body { background:var(--canvas) }
   font-size:15px;
   font-weight:750;
 }
-.dialog-actions button:hover,.dialog-button:hover { background:#f8f2f4 }
+.dialog-actions button:hover,.dialog-button:hover { background:#F7F8FA }
 .dialog-actions .dialog-primary,.dialog-button.dialog-primary { color:#fff;border-color:#2674B8;background:#2674B8 }
 .dialog-actions .dialog-primary:hover,.dialog-button.dialog-primary:hover { background:#21659F }
 .dialog-actions .dialog-danger { color:#2674B8;border-color:#79A2C0;background:#fff }
@@ -431,7 +431,7 @@ body { background:var(--canvas) }
 }
 .dialog-list > *:last-child { border-bottom:0 }
 .dialog-list > button { cursor:pointer }
-.dialog-list > button:hover { background:#faf5f6 }
+.dialog-list > button:hover { background:#F7F8FA }
 .dialog-list > button > i,.dialog-list > div > i {
   width:32px;
   height:32px;
@@ -596,7 +596,7 @@ body,
 
 
 /* ═══ v6.1: ekran logowania Studio (karta dzielona) ═══ */
-.stl-screen { min-height: 100vh; display: grid; place-items: center; padding: 28px; background: #efeaec; }
+.stl-screen { min-height: 100vh; display: grid; place-items: center; padding: 28px; background: #EDF0F3; }
 .stl-card { width: min(1060px, 96vw); min-height: 560px; display: grid; grid-template-columns: 1.08fr 1fr; overflow: hidden; border-radius: 26px; background: #fff; box-shadow: 0 30px 80px rgba(31,53,72,.16); }
 .stl-left { display: grid; place-items: center; padding: 48px 56px; }
 .stl-left form { width: min(360px, 100%); }
@@ -641,7 +641,7 @@ body,
 .sidebar nav button.nav-sub svg { opacity: .8; }
 .sidebar nav button.nav-sub.active { color: #fff; background: rgba(38,116,184,.16); }
 .sidebar nav button.nav-sub.active::before { height: 16px; }
-.module-bar { flex-shrink: 0; padding: 8px 28px 0; border-bottom: 1px solid var(--line); background: #fffdfc; }
+.module-bar { flex-shrink: 0; padding: 8px 28px 0; border-bottom: 1px solid var(--line); background: #FBF4E5; }
 .module-bar-row { display: flex; align-items: center; gap: 14px; min-height: 36px; }
 .module-bar-area { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding-right: 14px; border-right: 1px solid var(--line); color: #65717C; font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
 .module-bar-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }

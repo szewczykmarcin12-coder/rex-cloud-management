@@ -9,7 +9,10 @@ import { Printer, X } from 'lucide-react';
 
 const OS_H = Array.from({ length: 13 }, (_, i) => (6 + i * 2) % 24);          // 06 08 … 04 06
 const gL = (h) => String(h).padStart(2, '0');
-const TONE_LBL = [['deep', 'Manager'], ['mid', 'Front / obsługa'], ['soft', 'Kuchnia'], ['outline', 'Prep / pozostałe']];
+// tony rodzin stanowisk (lib/stations.js): deep = kierownik, mid = front, soft = kuchnia, support = wsparcie / zadania
+// (klasa „support” zamiast „outline” — ta druga koliduje z klasą narzędziową Tailwind i rysowała ciemną obwódkę)
+const TONE_LBL = [['deep', 'Kierownik'], ['mid', 'Front / obsługa'], ['soft', 'Kuchnia'], ['support', 'Wsparcie / zadania']];
+const toneCls = (t) => (t === 'outline' ? 'support' : t || 'mid');
 
 export const DailyRosterPrint = ({ open, data, onClose }) => {
   useEffect(() => {
@@ -41,7 +44,8 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
       <article className={`ordo-print-page opv3${gesto}`}>
         <header className="opv3-head">
           <div className="opv3-brand"><img src="/brand/atmosphere-studio-logo-graphite.svg" alt="Atmosphere Studio" /></div>
-          <div className="opv3-title"><span>WORKFORCE / SCHEDULE</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong>{/^wersja robocza/i.test(d.versionLabel || '') && <small className="opv3-draft">wersja robocza — przed publikacją</small>}</div>
+          <div className="opv3-title"><span>GRAFIK • DOKUMENT DNIA</span><h1>Grafik dzienny</h1><strong>{d.dateLabel}</strong></div>
+          <div className={`opv3-status ${/^wersja robocza/i.test(d.versionLabel || '') ? 'draft' : 'pub'}`}><span>STATUS</span><b>{/^wersja robocza/i.test(d.versionLabel || '') ? 'wersja robocza' : 'opublikowany'}</b><small>{/^wersja robocza/i.test(d.versionLabel || '') ? 'przed publikacją' : (d.versionLabel || 'obowiązuje zespół')}</small></div>
           <div className="opv3-loc"><span>LOKAL</span><strong>{d.restaurantName} – {d.restaurantDetail}</strong><small>{d.locationCode} • dokument operacyjny</small></div>
         </header>
 
@@ -66,12 +70,12 @@ export const DailyRosterPrint = ({ open, data, onClose }) => {
               <div className={'opv3-tr' + (p.segments.length > 1 ? ' multi' : '')} key={p.name}>
                 <span className="opv3-who"><i>{p.initials}</i><div><strong>{p.name}</strong><small>{String(p.job || '').replace('Młodszy ', 'Mł. ')}</small></div></span>
                 <span className="opv3-time"><div>{p.segments.map((s, i) => <b key={i}>{s.time}</b>)}</div></span>
-                <span className="opv3-st">{p.segments.map((s, i) => <b key={i} className={`opv3-chip ${s.tone || 'mid'}`}>{s.role}</b>)}</span>
+                <span className="opv3-st">{p.segments.map((s, i) => <b key={i} className={`opv3-chip ${toneCls(s.tone)}`}>{s.role}</b>)}</span>
                 <span className="opv3-brk">{p.przerwa}</span>
                 <span className="opv3-tl">
                   <i className="opv3-grid">{Array.from({ length: 12 }, (_, i) => <b key={i} />)}</i>
                   {p.segments.map((s, i) => { const l = Math.max(0, (s.start - 6) / 24), w = Math.min((s.end - s.start) / 24, 1 - l); return (
-                    <em key={i} className={`opv3-bar ${s.tone || 'mid'}`} style={{ left: `${l * 100}%`, width: `${w * 100}%` }}><small>{p.initials} {s.time}</small></em>
+                    <em key={i} className={`opv3-bar ${toneCls(s.tone)}`} style={{ left: `${l * 100}%`, width: `${w * 100}%` }}><small>{p.initials} {s.time}</small></em>
                   ); })}
                 </span>
               </div>

@@ -50,7 +50,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
   const wnioski = [
     najdrozszy ? [`Przejrzyj obsadę w ${dniN[najdrozszy.i]}`, `najwyższy stosunek godzin do sprzedaży w okresie`, `Potencjał: obniżenie COL`, 'save'] : ['Uzupełnij dane sprzedaży', 'import w Administracji → Import i eksport lub w Modelu popytu', 'Odblokuje analizę COL', 'save'],
     [`Szkolenia: ${szkS.toFixed(0)} h w okresie`, szkS ? 'sprawdź rozliczenie par instruktor–uczeń' : 'brak godzin szkoleniowych', `${pc(szkS)} wszystkich godzin`, 'skill'],
-    [zgodnosc < 100 ? 'Domknij karty czasu' : 'Karty czasu domknięte', `${dniComp}/${dniZmian} dni grafiku w okresie oznaczonych Completed`, `Zamknięcie kart: ${zgodnosc}%`, 'forecast'],
+    [!dniZmian ? 'Brak dni z grafikiem' : zgodnosc < 100 ? 'Domknij karty czasu' : 'Karty czasu domknięte', !dniZmian ? 'w tym okresie nie ma zmian do rozliczenia' : `${dniComp}/${dniZmian} dni grafiku w okresie oznaczonych jako ukończone`, !dniZmian ? 'brak danych' : `Zamknięcie kart: ${zgodnosc}%`, 'forecast', !dniZmian ? 'neutral' : zgodnosc >= 100 ? 'ok' : zgodnosc >= 80 ? 'warn' : 'bad'],
   ];
 
   const eksport = () => {
@@ -74,7 +74,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
         <MMetric icon={CircleDollarSign} label={tryb === 'r12' ? 'COL 12 mies. (szacunek)' : 'COL miesiąca (szacunek)'} value={colR != null ? `${colR.toFixed(1).replace('.', ',')}%` : '—'} helper={colR != null ? `koszt / sprzedaż${kosztInfo ? ' • ' + kosztInfo : ''}` : 'brak danych sprzedaży w okresie'} tone="mint" />
         <MMetric icon={Gauge} label="SPLH" value={splh != null ? `${Math.round(splh)} zł` : '—'} helper={splh != null ? 'sprzedaż / roboczogodzina' : 'wymaga sprzedaży i godzin w okresie'} tone="blue" />
         <MMetric icon={Clock3} label="Godziny (okres)" value={`${fmtA(sumH)} h`} helper={`${pod.mieszDane} z ${okres.length} mies. z danymi`} tone="violet" />
-        <MMetric icon={ShieldCheck} label="Zamknięcie kart czasu" value={`${zgodnosc}%`} helper={dniZmian ? `${dniComp}/${dniZmian} dni grafiku w okresie` : 'brak dni z grafikiem w okresie'} tone="mint" />
+        <MMetric icon={ShieldCheck} label="Zamknięcie kart czasu" value={dniZmian ? `${zgodnosc}%` : '—'} helper={dniZmian ? `${dniComp}/${dniZmian} dni grafiku w okresie` : 'brak dni z grafikiem w okresie'} tone={!dniZmian ? 'blue' : zgodnosc >= 100 ? 'mint' : zgodnosc >= 80 ? 'amber' : 'coral'} />
       </section>
       <section className="analytics-grid">
         <article className="panel performance-chart">
@@ -92,7 +92,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
         </article>
         <article className="panel insights-panel">
           <div className="panel-title"><div><span>WNIOSKI</span><h2>Co warto zrobić</h2></div><Sparkles size={20} /></div>
-          {wnioski.map(([title, detail, impact, tone]) => <button className="insight-item" key={title} onClick={() => setPage(tone === 'save' ? 'forecast' : tone === 'skill' ? 'wt' : 'wt')}><i className={tone}><Sparkles size={16} /></i><div><strong>{title}</strong><span>{detail}</span><em>{impact}</em></div><ChevronRight size={17} /></button>)}
+          {wnioski.map(([title, detail, impact, tone, stan]) => <button className={`insight-item${stan ? ' ' + stan : ''}`} key={title} onClick={() => setPage(tone === 'save' ? 'forecast' : tone === 'skill' ? 'wt' : 'wt')}><i className={tone}><Sparkles size={16} /></i><div><strong>{title}</strong><span>{detail}</span><em>{impact}</em></div><ChevronRight size={17} /></button>)}
         </article>
         <article className="panel category-cost-panel">
           <div className="panel-title"><div><span>KOSZT WEDŁUG GRUP • SZACUNEK</span><h2>Struktura roboczogodzin</h2></div><strong title={`Szacunek: UZ = stawka × h, UOP = wynagrodzenie / 160 h × h. ${kosztInfo || 'komplet stawek'}`}>{fmtA(sumK)} zł</strong></div>
@@ -102,7 +102,7 @@ export const AnalyticsPage = ({ data, setPage }) => {
           </div>
         </article>
         <article className="panel forecast-quality-panel">
-          <div className="panel-title"><div><span>JAKOŚĆ DANYCH • {etykietaOkresu(okres)}</span><h2>Kompletność okresu</h2></div><em>{zgodnosc}%</em></div>
+          <div className="panel-title"><div><span>JAKOŚĆ DANYCH • {etykietaOkresu(okres)}</span><h2>Kompletność okresu</h2></div><em className={!dniZmian ? 'status-active' : zgodnosc >= 100 ? 'status-ready' : zgodnosc >= 80 ? 'status-warning' : 'status-danger'}>{dniZmian ? `${zgodnosc}%` : 'brak danych'}</em></div>
           {[['Dni z grafikiem', `${dniZmian}`, dniZmian ? 100 : 0], ['Dni ze sprzedażą', `${dniSprzOkres}`, dniZmian ? Math.min(100, dniSprzOkres / dniZmian * 100) : 0], ['Dni Completed', `${dniComp}`, zgodnosc], ['Zmiany ze stawką', `${pod.zmian ? Math.round((pod.zmian - pod.bezStawki) / pod.zmian * 100) : 0}%`, pod.zmian ? (pod.zmian - pod.bezStawki) / pod.zmian * 100 : 0]].map(([label, value, score]) => (
             <div className="quality-row" key={String(label)}><span>{label}</span><div><i style={{ width: `${score}%` }} /></div><strong>{value}</strong></div>
           ))}

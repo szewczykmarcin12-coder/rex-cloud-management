@@ -72,8 +72,11 @@ export const PlanObsada = ({ data, setPage }) => {
   const kpi = useMemo(() => {
     let plan = 0, req = 0, exc = 0, def = 0, koszt = 0, sprzedaz = 0;
     days.forEach((d) => { const S = dniS[d]; if (!S) return; plan += S.zmiany.reduce((a, x) => a + godzZ(x), 0); req += S.pods.requiredH; exc += S.pods.excessH; def += S.pods.deficitH; S.zmiany.forEach((x) => { koszt += kosztGodzin(kontoZm(x), godzZ(x)); }); sprzedaz += fcDni[d] || 0; });
-    const score = Math.max(5, Math.min(100, Math.round(100 - Math.min(45, def * 4) - Math.min(30, exc * 1.5))));
-    return { plan, req, exc, def, koszt, sprzedaz, splhP: plan ? sprzedaz / plan : 0, colP: sprzedaz ? koszt / sprzedaz * 100 : 0, score };
+    // Ocena grafiku: pusty grafik = nieoceniony (null). Krytyczny niedobór ogranicza ocenę niezależnie od reszty:
+    // pokrycie wymaganych godzin (0–100 %) jest sufitem, od którego odejmujemy karę za nadmiar crew.
+    const pokrycie = req > 0 ? Math.max(0, Math.min(1, (req - def) / req)) : 1;
+    const score = plan <= 0 ? null : Math.max(0, Math.min(100, Math.round(pokrycie * 100 - Math.min(30, exc * 1.5))));
+    return { plan, req, exc, def, koszt, sprzedaz, splhP: plan ? sprzedaz / plan : 0, colP: sprzedaz ? koszt / sprzedaz * 100 : 0, score, pokryciePct: Math.round(pokrycie * 100) };
   }, [days, dniS, fcDni, data.accounts]);
 
   // konflikty zmian z absencjami / dyspozycjami (zatwierdzonymi)
@@ -208,7 +211,7 @@ export const PlanObsada = ({ data, setPage }) => {
       {/* KPI */}
       {/* 4 najważniejsze metryki w jednym rzędzie (ocena grafiku jako pierwsza), szczegóły w drugim rzędzie */}
       <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-        <KPI_KARTA label="Ocena grafiku" val={`${kpi.score} / 100`} sub={kpi.score >= 85 ? 'dobry plan' : kpi.score >= 70 ? 'do poprawy' : 'wymaga zmian'} kol={kpi.score >= 85 ? '#407362' : kpi.score >= 70 ? '#886929' : '#A94455'} />
+        <KPI_KARTA label="Ocena grafiku" val={kpi.score == null ? 'nieoceniony' : `${kpi.score} / 100`} sub={kpi.score == null ? 'brak zaplanowanych godzin w tym tygodniu' : kpi.def > 0 && kpi.pokryciePct < 90 ? `niekompletny — pokryte ${kpi.pokryciePct} % wymaganych godzin` : kpi.score >= 85 ? 'dobry plan' : kpi.score >= 70 ? 'do poprawy' : 'wymaga zmian'} kol={kpi.score == null ? undefined : kpi.score >= 85 ? '#407362' : kpi.score >= 70 ? '#886929' : '#A94455'} />
         <KPI_KARTA label="Godziny planu" val={pobH1(kpi.plan)} sub={`${kpi.plan - kpi.req >= 0 ? '+' : ''}${pobH1(kpi.plan - kpi.req)} względem wymaganych ${pobH1(kpi.req)}`} />
         <KPI_KARTA label="Niedobór" val={pobH1(kpi.def)} sub={`${niedobory.length} krytycznych slotów w wybranym dniu`} kol={kpi.def > 0 ? '#A94455' : '#407362'} />
         <KPI_KARTA label="Nadmiar (crew)" val={pobH1(kpi.exc)} sub={`${kpi.plan ? (kpi.exc / kpi.plan * 100).toFixed(1).replace('.', ',') : 0} % godzin planu`} kol={kpi.exc > 0 ? '#886929' : '#407362'} />
@@ -320,13 +323,13 @@ export const PlanObsada = ({ data, setPage }) => {
           <aside className="space-y-3">
             <div className="bg-white rounded-2xl border p-4" style={{ borderColor: '#DCE3E9' }}>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] font-extrabold tracking-[0.12em]" style={{ color: '#2674B8' }}>⚡ SMART SCHEDULER</p>
+                <p className="text-[11px] font-extrabold tracking-[0.12em]" style={{ color: '#2674B8' }}>OCENA I REKOMENDACJE</p>
                 <button onClick={() => setRekomOn(false)} className="w-7 h-7 rounded-lg border flex items-center justify-center" style={{ borderColor: '#DCE3E9' }}><X size={13} /></button>
               </div>
               <p className="text-[16px] font-bold mb-3" style={{ color: colors.primary.darkest }}>Rekomendacje zmian</p>
               <div className="rounded-xl p-3 flex items-center gap-3 mb-3" style={{ backgroundColor: '#F7F8FA' }}>
-                <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" fill="none" stroke="#DCE3E9" strokeWidth="5" /><circle cx="23" cy="23" r="19" fill="none" stroke={kpi.score >= 85 ? '#2674B8' : kpi.score >= 70 ? '#79A2C0' : '#A94455'} strokeWidth="5" strokeDasharray={`${kpi.score / 100 * 119} 119`} strokeLinecap="round" transform="rotate(-90 23 23)" /><text x="23" y="27" fontSize="12" fontWeight="800" textAnchor="middle" fill="#292D32">{kpi.score}</text></svg>
-                <div><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Plan do poprawy' : 'Plan wymaga zmian'}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{(niedobory.length ? 1 : 0) + (doSkrocenia ? 1 : 0) + konflikty.length} sugestie mogą poprawić wynik</p></div>
+                <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" fill="none" stroke="#DCE3E9" strokeWidth="5" /><circle cx="23" cy="23" r="19" fill="none" stroke={kpi.score == null ? '#DCE3E9' : kpi.score >= 85 ? '#407362' : kpi.score >= 70 ? '#886929' : '#A94455'} strokeWidth="5" strokeDasharray={`${kpi.score / 100 * 119} 119`} strokeLinecap="round" transform="rotate(-90 23 23)" /><text x="23" y="27" fontSize="12" fontWeight="800" textAnchor="middle" fill="#292D32">{kpi.score}</text></svg>
+                <div><p className="text-[13px] font-bold" style={{ color: colors.primary.darkest }}>{kpi.score == null ? 'Grafik nieoceniony — brak zmian' : kpi.def > 0 && kpi.pokryciePct < 90 ? 'Plan niekompletny' : kpi.score >= 85 ? 'Dobry plan' : kpi.score >= 70 ? 'Plan do poprawy' : 'Plan wymaga zmian'}</p><p className="text-[11px]" style={{ color: colors.primary.light }}>{(niedobory.length ? 1 : 0) + (doSkrocenia ? 1 : 0) + konflikty.length} sugestie mogą poprawić wynik</p></div>
               </div>
               <div className="space-y-3">
                 {niedobory.slice(0, 2).map((z, i) => (
