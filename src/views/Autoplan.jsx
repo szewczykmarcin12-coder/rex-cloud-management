@@ -83,7 +83,7 @@ export const AutoplanAOP = ({ data, setPage }) => {
       <section className="forecast-layout">
         <aside className="forecast-controls panel">
           <div className="panel-title"><div><span>ZAŁOŻENIA</span><h2>Okres i budżet zespołu</h2></div><Sparkles size={19} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="pair" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
             <label className="input-label">Od<div className="number-input"><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div></label>
             <label className="input-label">Do<div className="number-input"><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div></label>
           </div>

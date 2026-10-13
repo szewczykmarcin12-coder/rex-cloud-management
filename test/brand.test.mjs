@@ -118,6 +118,24 @@ describe('Atmosphere — nazewnictwo, atrapy, uszkodzone style', () => {
     expect(new Set(['MANAGER', 'KONTROLER', 'KANAPKI / WRAPY', 'PREP', 'SZKOLENIA'].map((st) => stationStyle(st).accent)).size).toBe(5);
     expect(src(join(ROOT, 'src/views/WorkModel.jsx'))).toContain('className="wm-dict-toggles"');
   });
+  it('stacje na żywo, tabela zespołu i pola dat: stacja obsadzona = błękit (nie sukces), przyciski drugorzędne bez bordo, login neutralny, kolumna akcji stała', () => {
+    const ov = src(join(ROOT, 'src/ordo-overrides.css')); const app = src(join(ROOT, 'src/App.jsx'));
+    expect(ov).toMatch(/\.station-card\.mint \{ border-top-color: var\(--at-brand-primary\)/);
+    expect(ov).toMatch(/\.mini-avatars i \{ color: var\(--at-brand-primary\)/);
+    expect(ov).toMatch(/\.fix-button \{ color: var\(--at-ui-text\); border: 1px solid var\(--at-ui-input-border\)/);
+    expect(ov).toMatch(/\.team-head, \.team-row \{ grid-template-columns: minmax\(180px, 1\.4fr\) \.8fr 1fr \.55fr minmax\(150px, 1\.3fr\) \.75fr 168px/);
+    expect(ov).toMatch(/\.number-input input \{ min-width: 0; width: 100%/);
+    expect(app).not.toContain('Obsada pełna');
+    expect(app).toContain('<span>Login</span><span>Akcje</span>');
+  });
+  it('nagłówek i treść w tej samej kolumnie (Zamiany, Wydruki, Ustawienia), kicker modułu zamiast „ATMOSPHERE STUDIO” z kropką; świeże dane POS znikają same', () => {
+    const app = src(join(ROOT, 'src/App.jsx'));
+    expect(app).not.toMatch(/className="flex-1 p-8/);
+    expect(app).toContain('<Header kicker="ZESPÓŁ • ZAMIANY I NIEOBECNOŚCI"');
+    expect(src(join(ROOT, 'src/ui/primitives.jsx'))).not.toContain('<span className="status-pulse" />');
+    expect(app).toMatch(/setTimeout\(\(\) => setWidoczny\(false\), 6000\)/);
+    expect(app).not.toMatch(/background: stale \? undefined : '#f3f7f4'/);
+  });
   it('logo Studio w menu ma pełną szerokość (nie 168 px), a hierarchia nagłówków jest jedna (24 px h1 modułu)', () => {
     const ov = src(join(ROOT, 'src/ordo-overrides.css'));
     expect(ov).not.toMatch(/\.brand-logo \{ width: 168px/);

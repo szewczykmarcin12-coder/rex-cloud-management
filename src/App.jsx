@@ -233,7 +233,7 @@ const ObsadaLive = ({ data, setPage }) => {
                 <article className="station-card mint" key={st2}>
                   <div className="station-top"><span>{st2}</span><em>{os.length}/{os.length}</em></div>
                   <div className="station-people"><div className="mini-avatars">{os.slice(0, 2).map((x, i) => <i key={i}>{imie(x)[0]}</i>)}{os.length > 2 && <i>+</i>}</div><strong>{os.map(imie).join(', ')}</strong></div>
-                  <div className="station-state"><CheckCircle2 size={14} /> Obsada pełna</div>
+                  <div className="station-state"><CheckCircle2 size={14} /> {os.length} {os.length === 1 ? 'osoba' : os.length < 5 ? 'osoby' : 'osób'} na stanowisku</div>
                 </article>
               ); })
             : naGodzinie.map((x, i) => (
@@ -660,16 +660,21 @@ const pokrycieDnia = (dir, ind, zmiany, kontoZ, mnoznik = 1) => {
 
 // ── Rytm danych POS: import we wtorek z ostatnich 8 tygodni; prognoza dzienna liczy się od razu, plan miesiąca trzeba przeliczyć ──
 const PosFreshness = ({ sw, onImport, compact = false }) => {
+  const stale = !!(sw && (sw.przeterminowane || !sw.ostatniDzien));
+  // świeże dane: komunikat pojawia się na chwilę po wejściu i znika; zaległe: zostaje, bo wymaga działania
+  const [widoczny, setWidoczny] = useState(true);
+  useEffect(() => { if (!sw || stale) { setWidoczny(true); return undefined; } setWidoczny(true); const t = setTimeout(() => setWidoczny(false), 6000); return () => clearTimeout(t); }, [sw && sw.ostatniDzien, stale]);
   if (!sw) return null;
   const fmtD = (d) => d ? `${d.slice(8)}.${d.slice(5, 7)}` : '—';
-  const stale = sw.przeterminowane;
   const tekst = !sw.ostatniDzien ? 'Brak historii sprzedaży z POS — wgraj „Sales Day by Day” (ostatnie 8 tygodni) i „Daily Operations”.'
-    : `Dane POS do ${fmtD(sw.ostatniDzien)} (${sw.dniOdOstatniego} dni temu)${sw.basis ? `, podstawa ${sw.basis === 'net' ? 'netto' : 'brutto'}` : ''} • następny import: wtorek ${fmtD(sw.nastepnyImport)} (ostatnie 8 tygodni, dni nakładające się nadpiszą się)`;
-  if (compact) return <span className={stale ? 'status-warning' : 'status-ready'} title={tekst}>{stale ? 'dane POS zaległe' : `POS do ${fmtD(sw.ostatniDzien)}`}</span>;
+    : `Dane POS do ${fmtD(sw.ostatniDzien)} (${sw.dniOdOstatniego} dni temu)${sw.basis ? `, podstawa ${sw.basis === 'net' ? 'netto' : 'brutto'}` : ''} • następny import: wtorek ${fmtD(sw.nastepnyImport)}`;
+  if (compact) return <span className={stale ? 'status-warning' : 'status-active'} title={tekst}>{stale ? 'dane POS zaległe' : `POS do ${fmtD(sw.ostatniDzien)}`}</span>;
+  if (!stale && !widoczny) return null;
   return (
-    <div className={'dialog-notice' + (stale ? '' : ' ok')} style={{ marginBottom: 12, background: stale ? undefined : '#f3f7f4', borderColor: stale ? undefined : '#cfe3d6' }}>
-      {stale ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}<span>{stale ? 'Import wtorkowy zaległy. ' : ''}{tekst}</span>
-      {onImport && <button className="secondary-action" style={{ marginLeft: 'auto' }} onClick={onImport}><Upload size={14} /> Import POS</button>}
+    <div className={stale ? 'dialog-notice' : 'model-note pos-fresh'} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }} role="status">
+      {stale ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}<span style={{ flex: 1 }}>{stale ? 'Import wtorkowy zaległy. ' : ''}{tekst}</span>
+      {stale && onImport && <button className="secondary-action" onClick={onImport}><Upload size={14} /> Import POS</button>}
+      {!stale && <button className="row-more" aria-label="Zamknij" onClick={() => setWidoczny(false)}><X size={14} /></button>}
     </div>
   );
 };
@@ -752,7 +757,7 @@ const Dashboard = ({ data, setPage, userName }) => {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <Header title={`Dzień dobry, ${(userName || 'Manager').split(' ')[0]}`} subtitle={`${dniPelne[new Date().getDay()]}, ${new Date().getDate()} ${monthsGen[new Date().getMonth()]} · ${unitLabel()}`}>
+      <Header kicker="CENTRUM PRACY • PULPIT" title={`Dzień dobry, ${(userName || 'Manager').split(' ')[0]}`} subtitle={`${dniPelne[new Date().getDay()]}, ${new Date().getDate()} ${monthsGen[new Date().getMonth()]} · ${unitLabel()}`}>
         <button className="date-button" onClick={() => setPage('forecast')}><TrendingUp size={15} /><span>Planowanie i popyt</span></button>
         <button className="primary-button" onClick={() => setPage('wt')}><Calendar size={15} /> Otwórz grafik</button>
       </Header>
@@ -1212,8 +1217,8 @@ const PrintPage = ({ data }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Drukuj grafik" subtitle="Generuj PDF A4 poziomo z miejscem na notatki kierownika" />
-      <div className="flex-1 p-8 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+      <Header kicker="ANALIZY I RAPORTY • WYDRUKI I PDF" title="Drukuj grafik" subtitle="Generuj PDF A4 poziomo z miejscem na notatki kierownika" />
+      <div className="flex-1 page-wrap w-full overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight, paddingTop: 12 }}>
         {data.shifts.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center shadow-sm"><Printer className="w-16 h-16 mx-auto mb-4" style={{ color: colors.primary.light }} /><p style={{ color: colors.primary.light }}>Brak grafiku do wydruku. Zaimportuj plik Excel.</p></div>
         ) : (
@@ -1712,8 +1717,8 @@ const SettingsPage = ({ data }) => {
   const inp = "w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none";
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
-      <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
+      <Header kicker="ADMINISTRACJA • USTAWIENIA I AUDYT" title="Ustawienia" subtitle="Dostęp i konfiguracja panelu" />
+      <div className="flex-1 page-wrap w-full space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight, paddingTop: 12 }}>
 
         <UnitCard data={data} />
 
@@ -1907,15 +1912,15 @@ const AdminEmployees = ({ data }) => {
             <div className="team-search"><Search size={16} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj po nazwisku lub loginie" /></div>
           </div>
           <div className="team-table">
-            <div className="team-head"><span>Pracownik</span><span>Umowa</span><span>Plan miesiąca</span><span>Bilans</span><span>Kwalifikacje</span><span>Gotowość</span><span /></div>
+            <div className="team-head"><span>Pracownik</span><span>Umowa</span><span>Plan miesiąca</span><span>Bilans</span><span>Kwalifikacje</span><span>Login</span><span>Akcje</span></div>
             {widT.map((e) => { const plan = planM.get(e.id) || 0; const cel = celM(e); const bil = bilansM(e); return (
               <div className="team-row" key={e.id}>
                 <span className="team-person"><i>{String(e.name || '?').split(/\s+/).map((c) => c[0]).join('').slice(0, 2).toUpperCase()}</i><span><strong>{e.name}</strong><small>{funkcjaLabel(e.funkcja)}{e.instruktor ? ' • instruktor' : ''}</small></span></span>
                 <span><strong>{umowaLabel(e.umowa)}</strong><small>{e.umowa === 'UOP' ? `${e.wymiarTygH || 40} h` : e.umowa ? 'elastyczna' : 'uzupełnij w karcie'}</small></span>
                 <span className="hours-cell"><div><b style={{ width: `${cel ? Math.min(100, plan / cel * 100) : plan ? 100 : 0}%` }} /></div><strong>{plan.toFixed(0)} / {cel || '—'} h</strong></span>
-                <span className={bil != null && Math.abs(bil) > 5 ? 'balance-alert' : 'balance-ok'}>{bil == null ? '—' : `${bil > 0 ? '+' : ''}${bil} h`}</span>
+                <span className={bil == null || Math.abs(bil) <= 5 ? 'balance-ok' : bil < -16 ? 'balance-bad' : 'balance-alert'} title={bil == null ? 'brak celu godzin' : bil < 0 ? 'poniżej celu' : 'ponad cel'}>{bil == null ? '—' : `${bil > 0 ? '+' : ''}${bil} h`}</span>
                 <span className="skill-list">{(e.stanowiska && e.stanowiska.length ? e.stanowiska : [funkcjaLabel(e.funkcja)]).slice(0, 3).map((sk) => <em key={sk}>{sk}</em>)}</span>
-                <span><em className="status-ready">{e.login}</em></span>
+                <span><em className="status-ready" title="login do Employee Hub">{e.login}</em></span>
                 <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                   <button className="fix-button" onClick={() => edytuj(e)}>Edytuj</button>
                   <button className="fix-button" title="Reset PIN" onClick={() => reset(e)}><Lock size={11} /> PIN</button>
@@ -1970,12 +1975,10 @@ const AdminSwaps = ({ data }) => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <Header title="Zamiany i nieobecności" subtitle="Jedna kolejka decyzji: urlopy i nieobecności oraz giełda zamian. Okno dyspozycji ustawiasz w Dyspozycyjności." />
-      <div className="flex-1 p-8 space-y-6 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}>
-        <div className="flex items-center justify-between">
-          <div />
-          <Btn variant="secondary" icon={RefreshCw} onClick={data.refreshSwaps}>Odśwież</Btn>
-        </div>
+      <Header kicker="ZESPÓŁ • ZAMIANY I NIEOBECNOŚCI" title="Zamiany i nieobecności" subtitle="Jedna kolejka decyzji: urlopy i nieobecności oraz giełda zamian. Okno dyspozycji ustawiasz w Dyspozycyjności.">
+        <button className="secondary-action" onClick={data.refreshSwaps}><RefreshCw size={15} /> Odśwież</button>
+      </Header>
+      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: colors.primary.bgLight }}><div className="page-wrap space-y-6" style={{ paddingTop: 12 }}>
 
         <AbsencesAdmin data={data} />
 
@@ -2030,7 +2033,7 @@ const AdminSwaps = ({ data }) => {
             </div>
           )}
         </div>
-      </div>
+      </div></div>
     </div>
   );
 };

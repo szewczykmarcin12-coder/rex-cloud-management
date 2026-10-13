@@ -459,3 +459,34 @@ input[type="checkbox"], input[type="radio"] { accent-color: #2674B8; }
 .wm-dict-name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; } .wm-dict-name em { margin-left: auto; font-style: normal; font-size: 10.5px; color: var(--at-status-warning-text); white-space: nowrap; }
 .wm-dict-toggles { display: flex; gap: 12px; flex-wrap: wrap; padding-left: 15px; } .wm-dict-toggles label { display: flex; gap: 4px; align-items: center; white-space: nowrap; color: var(--at-ui-text-secondary); font-size: 11px; cursor: pointer; }
 .wm-dict-toggles input { margin: 0; }
+
+/* v15.5 — stacje na żywo, tabela zespołu, pola dat */
+/* stacja obsadzona = stan normalny (błękit, neutralny opis), nie „sukces”; luka = błąd */
+.station-card.mint { border-top-color: var(--at-brand-primary); background: #FFFFFF; }
+.station-card.mint .station-state { color: var(--at-ui-text-secondary); background: transparent; border-top-color: var(--at-ui-border); }
+.station-card.mint .station-state svg { color: var(--at-brand-primary); }
+.station-card.coral { border-top-color: var(--at-status-danger-text); }
+.station-card.coral .station-state { color: var(--at-status-danger-text); background: var(--at-status-danger-fill); padding: 6px 8px; border-radius: 6px; border-top: 0; }
+.station-top span { color: var(--at-ui-text); } .station-top em { color: var(--at-ui-text-secondary); font-style: normal; }
+.mini-avatars i { color: var(--at-brand-primary); background: var(--at-ui-selected); border-color: #FFFFFF; }
+/* tabela zespołu: kolumna akcji o stałej szerokości, przyciski drugorzędne, login jako neutralny identyfikator */
+.team-head, .team-row { grid-template-columns: minmax(180px, 1.4fr) .8fr 1fr .55fr minmax(150px, 1.3fr) .75fr 168px; column-gap: 12px; }
+.team-row > span { min-width: 0; }
+.skill-list em { color: var(--at-brand-primary); background: var(--at-ui-selected); white-space: nowrap; }
+.team-row .status-ready { color: var(--at-ui-text); background: var(--at-ui-disabled-bg); font-family: ui-monospace, "Segoe UI Mono", Menlo, monospace; font-weight: 700; letter-spacing: .02em; }
+.fix-button { color: var(--at-ui-text); border: 1px solid var(--at-ui-input-border); background: #FFFFFF; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.fix-button:hover { background: var(--at-ui-subtle-blue); border-color: var(--at-brand-primary); color: var(--at-brand-primary); }
+.row-more { color: var(--at-ui-text-secondary); } .row-more:hover { color: var(--at-status-danger-text); }
+.balance-ok { color: var(--at-ui-text); } .balance-alert { color: var(--at-status-warning-text); font-weight: 700; } .balance-bad { color: var(--at-status-danger-text); font-weight: 700; }
+.hours-cell div b { background: var(--at-brand-primary); }
+/* pola dat/liczb w panelach bocznych nie wychodzą poza kolumnę */
+.number-input { min-width: 0; } .number-input input { min-width: 0; width: 100%; font-size: 13.5px; }
+.number-input input[type="date"], .number-input input[type="month"] { padding: 0 6px; font-size: 12.5px; letter-spacing: -.01em; }
+.forecast-controls > div[style*="grid-template-columns: 1fr 1fr"], .forecast-controls .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+/* v15.6 — nagłówek strony: kicker jak w pozostałych modułach (11 px, .12em), bez zielonej kropki; komunikat o świeżych danych POS znika sam */
+.eyebrow { font-size: 11px; letter-spacing: .12em; font-weight: 700; color: var(--at-ui-text-secondary); text-transform: uppercase; }
+.page-heading { align-items: flex-start; } .heading-actions { margin-top: 6px; display: flex; gap: 8px; }
+.pos-fresh { margin-top: 0; animation: pos-fresh-in .25s ease-out; } .pos-fresh .row-more { width: 24px; height: 24px; }
+@keyframes pos-fresh-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* strony z nagłówkiem Header: treść w tej samej kolumnie co nagłówek (max 1600 px, wyśrodkowana) — bez przesunięcia na szerokich ekranach */
+.page-wrap.w-full { width: 100%; }

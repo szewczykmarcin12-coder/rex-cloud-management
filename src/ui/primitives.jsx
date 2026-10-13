@@ -24,11 +24,11 @@ const StatCard = ({ label, value, icon: Icon, color }) => (
   </article>
 );
 
-export const Header = ({ title, subtitle, children }) => (
+export const Header = ({ title, subtitle, kicker, children }) => (
   <div className="page-wrap" style={{ paddingTop: 24, paddingBottom: 0 }}>
     <div className="page-heading" style={{ marginBottom: 6 }}>
       <div>
-        <div className="eyebrow"><span className="status-pulse" /> ATMOSPHERE STUDIO</div>
+        <div className="eyebrow">{kicker || 'ATMOSPHERE STUDIO'}</div>
         <h1>{title}</h1>
         {subtitle && <p>{subtitle}</p>}
       </div>
