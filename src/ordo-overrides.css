@@ -453,10 +453,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: #2674B8; }
 .rota-stage.stage-completed, .rota-stage.stage-reviewed { color: var(--at-status-success-text); background: var(--at-status-success-fill); }
 /* przyciski drugorzędne z długim tekstem (np. w panelu bocznym) zawijają się w polu zamiast z niego wychodzić */
 .forecast-controls .secondary-action, .forecast-controls .primary-action { white-space: normal; text-align: left; line-height: 1.25; height: auto; min-height: 36px; padding-top: 7px; padding-bottom: 7px; }
-/* słownik stanowisk w Modelu pracy: nazwa z zawijaniem w swojej kolumnie, stałe kolumny przełączników */
-.wm-dict-row { display: grid; grid-template-columns: minmax(0, 1fr) 54px 56px 60px; gap: 6px; align-items: center; padding: 6px 8px; font-size: 11px; }
-.wm-dict-row > span:first-child { min-width: 0; display: flex; align-items: flex-start; gap: 6px; } .wm-dict-row > span:first-child b { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
-.wm-dict-row > span:first-child i { flex: 0 0 8px; margin-top: 3px; }
-.wm-dict-row label { display: flex; gap: 3px; align-items: center; white-space: nowrap; color: var(--at-ui-text-secondary); font-size: 10.5px; }
-.wm-dict-head { display: grid; grid-template-columns: minmax(0, 1fr) 54px 56px 60px; gap: 6px; padding: 0 8px 4px; font-size: 10px; letter-spacing: .08em; font-weight: 700; color: var(--at-ui-text-secondary); }
-.wm-dict-head span + span { text-align: left; }
+/* słownik stanowisk w Modelu pracy: dwa wiersze na stanowisko (nazwa, potem przełączniki) — czytelne także w wąskim panelu */
+.wm-dict-row { display: flex; flex-direction: column; gap: 5px; padding: 7px 9px; font-size: 11.5px; }
+.wm-dict-name { display: flex; align-items: center; gap: 7px; min-width: 0; } .wm-dict-name i { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.wm-dict-name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; } .wm-dict-name em { margin-left: auto; font-style: normal; font-size: 10.5px; color: var(--at-status-warning-text); white-space: nowrap; }
+.wm-dict-toggles { display: flex; gap: 12px; flex-wrap: wrap; padding-left: 15px; } .wm-dict-toggles label { display: flex; gap: 4px; align-items: center; white-space: nowrap; color: var(--at-ui-text-secondary); font-size: 11px; cursor: pointer; }
+.wm-dict-toggles input { margin: 0; }

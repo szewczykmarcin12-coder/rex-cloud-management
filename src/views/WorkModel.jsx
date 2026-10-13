@@ -102,14 +102,16 @@ export const WorkModelView = ({ data, setPage }) => {
           <label className="input-label">Udział operacyjny godziny kierownika (w obsadzie produkcyjnej)<div className="number-input"><input type="number" min={0} max={100} value={Math.round((model.mgrOperacyjnyUdzial != null ? model.mgrOperacyjnyUdzial : 0.7) * 100)} onChange={(e) => { setModel((m) => ({ ...m, mgrOperacyjnyUdzial: Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100 })); setDirty(true); }} /><span>%</span></div></label>
           <div className="control-divider" />
           <div className="panel-title"><div><span>SŁOWNIK</span><h2>Stanowiska</h2></div></div>
-          <div className="wm-dict-head"><span>STANOWISKO</span><span title="Przerwa w obsadzie = luka krytyczna">KRYT.</span><span title="Czas administracyjny — nie liczy się jako obsada produkcyjna">ADMIN</span><span title="Zadanie okresowe (np. dostawa), nie stanowisko ciągłe">ZADANIE</span></div>
+          <p style={{ fontSize: 11, color: '#65717C', margin: '0 0 6px' }}>Krytyczne = przerwa w obsadzie jest luką krytyczną • Admin = czas administracyjny, nie obsada • Zadanie = praca okresowa (np. dostawa).</p>
           <div style={{ display: 'grid', gap: 4 }}>
             {stacje.map((st) => { const d = (model.stanowiska || {})[st] || {}; const sl = slownik.find((x) => x.kod === st); return (
               <div key={st} className="panel wm-dict-row">
-                <span><i style={{ width: 8, height: 8, borderRadius: 2, background: stationAccent(st), display: 'inline-block' }} /><b title={st}>{st}</b>{!sl && <em style={{ color: '#886929' }} title="poza słownikiem">?</em>}</span>
-                <label title="Przerwa w obsadzie = luka krytyczna"><input type="checkbox" checked={!!d.krytyczne} onChange={(e) => updSt(st, { krytyczne: e.target.checked })} /></label>
-                <label title="Czas administracyjny — nie liczy się jako obsada produkcyjna"><input type="checkbox" checked={!!d.admin} onChange={(e) => updSt(st, { admin: e.target.checked })} /></label>
-                <label title="Zadanie okresowe (np. dostawa), nie stanowisko ciągłe"><input type="checkbox" checked={!!d.zadanieOkresowe} onChange={(e) => updSt(st, { zadanieOkresowe: e.target.checked })} /></label>
+                <div className="wm-dict-name"><i style={{ background: stationAccent(st) }} /><b title={st}>{st}</b>{!sl && <em title="poza słownikiem">poza słownikiem</em>}</div>
+                <div className="wm-dict-toggles">
+                  <label><input type="checkbox" checked={!!d.krytyczne} onChange={(e) => updSt(st, { krytyczne: e.target.checked })} />krytyczne</label>
+                  <label><input type="checkbox" checked={!!d.admin} onChange={(e) => updSt(st, { admin: e.target.checked })} />admin</label>
+                  <label><input type="checkbox" checked={!!d.zadanieOkresowe} onChange={(e) => updSt(st, { zadanieOkresowe: e.target.checked })} />zadanie</label>
+                </div>
               </div>
             ); })}
           </div>

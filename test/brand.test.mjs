@@ -116,7 +116,7 @@ describe('Atmosphere — nazewnictwo, atrapy, uszkodzone style', () => {
     expect(ov).toMatch(/\.dyspo-tag\.no, \.dy-kal-day\.no \{ color: var\(--at-ui-text-secondary\); background: var\(--at-ui-disabled-bg\)/);
     expect(Object.keys(STATION_ACCENT_TEST).length).toBe(0);
     expect(new Set(['MANAGER', 'KONTROLER', 'KANAPKI / WRAPY', 'PREP', 'SZKOLENIA'].map((st) => stationStyle(st).accent)).size).toBe(5);
-    expect(src(join(ROOT, 'src/views/WorkModel.jsx'))).toContain('className="panel wm-dict-row"');
+    expect(src(join(ROOT, 'src/views/WorkModel.jsx'))).toContain('className="wm-dict-toggles"');
   });
   it('logo Studio w menu ma pełną szerokość (nie 168 px), a hierarchia nagłówków jest jedna (24 px h1 modułu)', () => {
     const ov = src(join(ROOT, 'src/ordo-overrides.css'));
